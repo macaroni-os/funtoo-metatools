@@ -1,16 +1,23 @@
+#!/usr/bin/env python3
+
 import pop.hub
-
 hub = pop.hub.Hub()
-hub.pop.sub.add('pkgtools')
-print("Hub.pkgtools is", hub.pkgtools)
+hub.pop.sub.add('pkgtools', omit_class=False)
 
-# If I manually add subs, they get added directly to the hub:
-print(hub.rpc.math.oni)
-print(hub.pkgtools.fetch.get_url_from_redirect)
-print(hub.plugins)
-print(hub.plugins.misc.miscfunc)
+class DiscordBuild(hub.pkgtools.ebuild.BreezyBuild):
 
-# If I call load_subdirs() it seems to do what I expect and create a complex heirarchy for me.
-print(hub.pkgtools.rpc.math.oni)
-print(hub.pkgtools.fardman.super.zoink)
-print(hub.pkgtools.fardman.plugins.zupe.boink)
+	cat = "net-im"
+	name = "discord"
+
+	def setup(self):
+		url = hub.pkgtools.fetch.get_url_from_redirect("https://discordapp.com/api/download?platform=linux&format=deb")
+		self.artifacts = [ url ]
+		self.version = url.split("/")[-1].lstrip("discord-").rstrip(".deb")
+
+
+hub.pkgtools.ebuild.say_hello("hi")
+
+if __name__ == "__main__":
+	DiscordBuild().generate()
+
+# vim: ts=4 sw=4 noet
