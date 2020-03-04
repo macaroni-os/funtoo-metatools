@@ -3,7 +3,9 @@
 import pop.hub
 hub = pop.hub.Hub()
 hub.pop.sub.add('pkgtools', omit_class=False)
-
+hub.pop.sub.add(dyne_name='ego')
+hub.pop.sub.add(dyne_name='ego.plugins')
+hub.ego.plugins.sync.dosync("Fdasflk")
 class DiscordBuild(hub.pkgtools.ebuild.BreezyBuild):
 
 	cat = "net-im"
