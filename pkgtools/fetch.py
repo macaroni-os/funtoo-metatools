@@ -15,12 +15,12 @@ class FetchError(Exception):
 def __init__(hub):
 	print("Initialized!")
 
-def get_url_from_redirect(hub, url):
+async def get_url_from_redirect(hub, url):
 	logging.info("Querying %s to get redirect URL..." % url)
-	http_client = httpclient.HTTPClient()
+	http_client = httpclient.AsyncHTTPClient()
 	try:
 		req = HTTPRequest(url=url, follow_redirects=False)
-		http_client.fetch(req)
+		await http_client.fetch(req)
 	except httpclient.HTTPError as e:
 		if e.response.code == 302:
 			return e.response.headers["location"]
