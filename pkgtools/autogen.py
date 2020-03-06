@@ -9,7 +9,7 @@ async def start(hub):
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
 
-	repo_context = hub.pkgtools.repository.repository_of(hub.CALLER_PATH)
+	repo_context = hub.pkgtools.repository.repository_of(hub.OPTS['repo'])
 	if repo_context is None:
 		print("Could not determine what respository I'm in. Exiting.")
 		sys.exit(1)
