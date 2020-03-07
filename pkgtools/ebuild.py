@@ -10,23 +10,43 @@ import tornado.template
 import logging
 logging.basicConfig(level=logging.INFO)
 
+QUE = []
+ARTIFACT_TEMP_PATH="/var/tmp/distfiles"
+
+def push(hub, **kwargs):
+	"""
+		Add an ebuild to the queue for generation.
+	"""
+	setup = None
+	if 'setup' in kwargs:
+		setup = kwargs['setup']
+		del kwargs['setup']
+	builder = BreezyBuild(**kwargs)
+	if setup:
+		setup(hub, builder)
+	QUE.append([lambda: builder.generate(tree)])
+
+async def go(hub):
+	for future in asyncio.as_completed(QUE):
+		builder = await(future)
+		hub.CPM_LOGGER.record(tree.name, builder.catpkg, is_fixup=True)
+
 def __init__(hub):
 	pass
 
 class BreezyError(Exception):
 	pass
 
-class ArtifactFetcher:
+class Artifact:
 
-	def __init__(self, artifact, temp_path="/var/tmp/distfiles"):
-		self.artifact = artifact
-		self.filename = artifact.split("/")[-1]
+	def __init__(self, url=None, final_name=None):
+		self.url = url
+		self.filename = url.split("/")[-1]
 		self._fd = None
 		self._sha512 = hashlib.sha512()
 		self._blake2b = hashlib.blake2b()
 		self._size = 0
-		self.temp_path = temp_path
-		os.makedirs(self.temp_path, exist_ok=True)
+		self._final_name = final_name
 
 	@property
 	def exists(self):
@@ -34,11 +54,14 @@ class ArtifactFetcher:
 
 	@property
 	def temp_name(self):
-		return os.path.join(self.temp_path, "%s.__download__" % self.filename)
+		return os.path.join(ARTIFACT_TEMP_PATH, "%s.__download__" % self.filename)
 
 	@property
 	def final_name(self):
-		return os.path.join(self.temp_path, "%s" % self.filename)
+		if self._final_name:
+			return os.path.join(ARTIFACT_TEMP_PATH, self._final_name)
+		else:
+			return os.path.join(ARTIFACT_TEMP_PATH, "%s" % self.filename)
 
 	@property
 	def sha512(self):
@@ -51,6 +74,12 @@ class ArtifactFetcher:
 	@property
 	def size(self):
 		return self._size
+
+	def extract(self):
+		pass
+
+	def cleanup(self):
+		pass
 
 	def update_digests(self):
 		logging.info("Calculating digests for %s..." % self.final_name)
@@ -76,12 +105,12 @@ class ArtifactFetcher:
 			self.update_digests()
 			logging.warning("File %s exists (size %s); not fetching again." % ( self.filename, self.size ))
 			return
-		logging.info("Fetching %s..." % self.artifact)
+		logging.info("Fetching %s..." % self.url)
 		if self._fd is None:
 			self._fd = open(self.temp_name, "wb")
 		http_client = httpclient.AsyncHTTPClient()
 		try:
-			req = HTTPRequest(url=self.artifact, streaming_callback=self.on_chunk)
+			req = HTTPRequest(url=self.url, streaming_callback=self.on_chunk)
 			await http_client.fetch(req)
 		except httpclient.HTTPError as e:
 			raise BreezyError("Fetch Error")
@@ -99,35 +128,45 @@ class BreezyBuild:
 	template = None
 	version = None
 	revision = 0
-	destination = None
-	template = None
+	tree = None
+	template_vars = None
 
-	def __init__(self, dest=None):
-		self.destination = dest
-		self.fetchers = []
+	def __init__(self,
+		artifacts: list = None,
+		template: str = None,
+		**kwargs
+	):
+		self.artifacts = []
 		self._pkgdir = None
+		self.template_args = kwargs
+		for kwarg in [ 'cat', 'name', 'version', 'revision' ]
+			if kwarg in kwargs:
+				setattr(self, kwarg, kwargs[kwarg])
 		if self.template is None:
 			self.template = self.name + ".tmpl"
+		else:
+			self.template = template
 
-	async def setup(self):
-		pass
+		self.artifacts = []
+
+		# This following code allows us to use the template variables in the
+		# artifact URLs and have them expand. We instantiate the Artifact objects
+		# ourselves so we can do this:
+
+		if artifacts is not None:
+			for artifact in artifacts:
+				for key, val in artifact.items():
+					artifact[key] = val.format(self.template_args)
+				self.artifacts.append(Artifact(**kwargs))
 
 	async def fetch_all(self):
-		results = []
 		for artifact in self.artifacts:
-			af = ArtifactFetcher(artifact)
-			results.append(af)
-			try:
-				await af.fetch()
-			except BreezyError as e:
-				print("Fetch error for %s" % artifact)
-				sys.exit(1)
-		return results
+			await af.fetch()
 
 	@property
 	def pkgdir(self):
 		if self._pkgdir is None:
-			self._pkgdir = os.path.join(self.destination, self.cat, self.name)
+			self._pkgdir = os.path.join(self.tree.root, self.cat, self.name)
 			os.makedirs(self._pkgdir, exist_ok=True)
 		return self._pkgdir
 
@@ -143,51 +182,55 @@ class BreezyBuild:
 		return os.path.join(self.pkgdir, self.ebuild_name)
 
 	@property
+	def catpkg(self):
+		return self.cat + "/" + self.name
+
+	def __getitem__(self, key):
+		return self.template_args[key]
+
+	@property
+	def catpkg_version_rev(self):
+		if self.revision == 0:
+			return self.cat + "/" + self.name + '-' + self.version
+		else:
+			return self.cat + "/" + self.name + '-' + self.version + '_r%s' % self.revision
+
+	@property
 	def template_path(self):
-		tpath = os.path.join(self.destination, self.cat, self.name, "templates")
+		tpath = os.path.join(self.tree.root, self.cat, self.name, "templates")
 		os.makedirs(tpath, exist_ok=True)
 		return tpath
 
-	def generate_metadata_for(self, fetchers):
+	def generate_metadata_for(self):
 		with open(self.pkgdir + "/Manifest", "w") as mf:
-			for fetcher in fetchers:
-				mf.write("DIST %s %s BLAKE2B %s SHA512 %s\n" % ( fetcher.filename, fetcher.size, fetcher.blake2b, fetcher.sha512 ))
+			for artifact in self.artifacts:
+				mf.write("DIST %s %s BLAKE2B %s SHA512 %s\n" % ( artifact.filename, artifact.size, artifact.blake2b, artifact.sha512 ))
 		logging.info("Manifest generated.")
 
 	async def get_artifacts(self):
-		self.generate_metadata_for(await self.fetch_all())
+		await self.fetch_all()
+		self.generate_metadata()
 
-
-	def create_ebuild(self, template_vars: dict = None):
+	def create_ebuild(self):
 		# TODO: fix path on next line to point somewhere logical.
 		loader = tornado.template.Loader(self.template_path)
 		template = loader.load(self.template)
 		# generate template variables
-		tvars = {}
-		if template_vars is not None:
-			tvars.update(template_vars)
-		tvars["template"] = self.template
-		tvars["name"] = self.name
-		tvars["cat"] = self.cat
-		tvars["version"] = self.version
-		tvars["revision"] = self.revision
-		tvars["artifacts"] = self.artifacts
 		with open(self.ebuild_path, "wb") as myf:
-			myf.write(template.generate(**tvars))
+			myf.write(template.generate(**self.template_vars))
 		logging.info("Ebuild %s generated." % self.ebuild_path)
 
-	async def generate(self):
-		logging.info("Breezy 1.0")
+	async def generate(self, tree):
 		try:
 			if self.cat is None:
 				raise BreezyError("Please set 'cat' to the category name of this ebuild.")
 			if self.name is None:
 				raise BreezyError("Please set 'name' to the package name of this ebuild.")
-			await self.setup()
 			self.create_ebuild()
 			await self.get_artifacts()
 		except BreezyError as e:
 			print(e)
 			sys.exit(1)
+		return self
 
 # vim: ts=4 sw=4 noet

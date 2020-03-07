@@ -17,7 +17,7 @@ async def start(hub):
 	for mod in hub.autogen:
 		if not hasattr(mod, 'generate'):
 			continue
-		func = getattr(mod, 'generate')
-		await func(repo_context=repo_context)
+		generate = getattr(mod, 'generate')
+		await generate(tree=repo_context)
 
 # vim: ts=4 sw=4 noet

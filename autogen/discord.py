@@ -2,18 +2,16 @@
 
 import asyncio
 
-async def generate(hub, repo_context):
+async def setup(hub, builder):
+	url = await hub.pkgtools.fetch.get_url_from_redirect("https://discordapp.com/api/download?platform=linux&format=deb")
+	builder.artifacts = [ url ]
+	builder.version = url.split("/")[-1].lstrip("discord-").rstrip(".deb")
 
-	class DiscordBuild(hub.pkgtools.ebuild.BreezyBuild):
-
-		cat = "net-im"
-		name = "discord"
-
-		async def setup(self):
-			url = await hub.pkgtools.fetch.get_url_from_redirect("https://discordapp.com/api/download?platform=linux&format=deb")
-			self.artifacts = [ url ]
-			self.version = url.split("/")[-1].lstrip("discord-").rstrip(".deb")
-
-	await DiscordBuild(dest=repo_context).generate()
+async def generate(hub, tree):
+	hub.pkgtools.ebuild.push(
+		name="discord",
+		cat="net-im",
+		setup=setup
+	)
 
 # vim: ts=4 sw=4 noet
