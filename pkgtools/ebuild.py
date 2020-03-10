@@ -4,9 +4,12 @@ import os
 import sys
 import hashlib
 import asyncio
+from subprocess import getstatusoutput
+
 from tornado import httpclient
 from tornado.httpclient import HTTPRequest
-import tornado.template
+#import tornado.template
+import jinja2
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -18,10 +21,11 @@ async def go(hub):
 	for future in asyncio.as_completed(QUE):
 		builder = await future
 		# TODO: do we really have a CONTEXT.name defined? Don't we need to pass this in somewhere?
-		hub.CPM_LOGGER.record(hub.pkgtools.repository.CONTEXT.name, builder.catpkg, is_fixup=True)
+		if hub.CPM_LOGGER:
+			hub.CPM_LOGGER.record(hub.pkgtools.repository.CONTEXT.name, builder.catpkg, is_fixup=True)
 
 def __init__(hub):
-	pass
+	hub.CPM_LOGGER = None
 
 class BreezyError(Exception):
 	pass
@@ -29,6 +33,7 @@ class BreezyError(Exception):
 class Artifact:
 
 	def __init__(self, url=None, final_name=None):
+
 		self.url = url
 		self.filename = url.split("/")[-1]
 		self._fd = None
@@ -36,6 +41,13 @@ class Artifact:
 		self._blake2b = hashlib.blake2b()
 		self._size = 0
 		self._final_name = final_name
+
+	@property
+	def src_uri(self):
+		if self.final_name is None:
+			return self.url
+		else:
+			return self.url + " -> " + self.final_name
 
 	@property
 	def exists(self):
@@ -64,11 +76,19 @@ class Artifact:
 	def size(self):
 		return self._size
 
+	@property
+	def extract_path(self):
+		return os.path.join(ARTIFACT_TEMP_PATH, "extract", os.path.basename(self.final_name))
+
 	def extract(self):
-		pass
+		ep = self.extract_path
+		print(ep)
+		os.makedirs(ep, exist_ok=True)
+		# TODO: test for failure
+		getstatusoutput("tar -C %s -xf %s" % (ep, self.final_name))
 
 	def cleanup(self):
-		pass
+		getstatusoutput("rm -rf " + self.extract_path)
 
 	def update_digests(self):
 		logging.info("Calculating digests for %s..." % self.final_name)
@@ -96,7 +116,7 @@ class Artifact:
 			return
 		logging.info("Fetching %s..." % self.url)
 		if self._fd is None:
-			os.makedirs(os.path.dirname(self.temp_name), exist_ok=True)
+			os.makedirs(ARTIFACT_TEMP_PATH, exist_ok=True)
 			self._fd = open(self.temp_name, "wb")
 		http_client = httpclient.AsyncHTTPClient()
 		try:
@@ -119,41 +139,37 @@ class BreezyBuild:
 	version = None
 	revision = 0
 	tree = None
-	template_vars = None
+	template_args = None
 
 	def __init__(self,
 		hub,
 		artifacts: list = None,
 		template: str = None,
+		template_text: str = None,
 		**kwargs
 	):
 		self.hub = hub
-		self.tree = hub.pkgtools.repository.CONTEXT
-		self.artifacts = []
+		self.tree = hub.CONTEXT
 		self._pkgdir = None
 		self.template_args = kwargs
 		for kwarg in [ 'cat', 'name', 'version', 'revision' ]:
 			if kwarg in kwargs:
 				setattr(self, kwarg, kwargs[kwarg])
-		if self.template is None:
+		logging.info("Creating %s/%s/%s" % (self.tree.root, self.cat, self.name))
+		self.template = template
+		self.template_text = template_text
+		if self.template_text is None and self.template is None:
 			self.template = self.name + ".tmpl"
+
+		if artifacts is None:
+			self.artifacts = []
 		else:
-			self.template = template
-
-		self.artifacts = []
-
-		# This following code allows us to use the template variables in the
-		# artifact URLs and have them expand. We instantiate the Artifact objects
-		# ourselves so we can do this:
-
-		if artifacts is not None:
-			for artifact_kwargs in artifacts:
-				for key, val in artifact_kwargs.items():
-					artifact_kwargs[key] = val.format(**self.template_args)
-				self.artifacts.append(Artifact(**artifact_kwargs))
+			self.artifacts = artifacts
+		self.template_args["artifacts"] = self.artifacts
 
 	def push(self):
-		QUE.append([lambda: self.generate()])
+		task = asyncio.create_task(self.generate())
+		QUE.append(task)
 
 	async def fetch_all(self):
 		for artifact in self.artifacts:
@@ -189,15 +205,16 @@ class BreezyBuild:
 		if self.revision == 0:
 			return self.cat + "/" + self.name + '-' + self.version
 		else:
-			return self.cat + "/" + self.name + '-' + self.version + '_r%s' % self.revision
+			return self.cat + "/" + self.name + '-' + self.version + '-r%s' % self.revision
 
 	@property
 	def template_path(self):
 		tpath = os.path.join(self.tree.root, self.cat, self.name, "templates")
-		os.makedirs(tpath, exist_ok=True)
 		return tpath
 
 	def generate_metadata(self):
+		if not len(self.artifacts):
+			return
 		with open(self.pkgdir + "/Manifest", "w") as mf:
 			for artifact in self.artifacts:
 				mf.write("DIST %s %s BLAKE2B %s SHA512 %s\n" % ( artifact.filename, artifact.size, artifact.blake2b, artifact.sha512 ))
@@ -207,13 +224,24 @@ class BreezyBuild:
 		await self.fetch_all()
 		self.generate_metadata()
 
-	def create_ebuild(self):
-		# TODO: fix path on next line to point somewhere logical.
-		loader = tornado.template.Loader(self.template_path)
-		template = loader.load(self.template)
-		# generate template variables
+	def create_ebuild_tornado(self):
+		if not self.template_text:
+			loader = tornado.template.Loader(self.template_path)
+			template = loader.load(self.template)
+		else:
+			template = tornado.template.Template(self.template_text)
 		with open(self.ebuild_path, "wb") as myf:
-			myf.write(template.generate(**self.template_vars))
+			myf.write(template.generate(**self.template_args))
+		logging.info("Ebuild %s generated." % self.ebuild_path)
+
+	def create_ebuild(self):
+		if not self.template_text:
+			with open(os.path.join(self.template_path, self.template), "r") as tempf:
+				template = jinja2.Template(tempf.read())
+		else:
+			template = jinja2.Template(self.template_text)
+		with open(self.ebuild_path, "wb") as myf:
+			myf.write(template.render(**self.template_args).encode("utf-8"))
 		logging.info("Ebuild %s generated." % self.ebuild_path)
 
 	async def generate(self):

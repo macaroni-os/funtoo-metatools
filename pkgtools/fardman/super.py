@@ -1,2 +1,0 @@
-def zoink():
-    print("zoink!")

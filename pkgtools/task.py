@@ -5,12 +5,11 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from multiprocessing import cpu_count
 
 def __init__(hub):
-    hub.LOOP = asyncio.get_event_loop()
-    hub.CPU_BOUND_EXECUTOR = ThreadPoolExecutor(max_workers=cpu_count())
+	hub.LOOP = asyncio.get_event_loop()
+	hub.CPU_BOUND_EXECUTOR = ThreadPoolExecutor(max_workers=cpu_count())
 
 def run_async_adapter(corofn, *args):
 	"""
-
 	Use this method to run an asynchronous worker within a ThreadPoolExecutor.
 	Without this special wrapper, this normally doesn't work, and the
 	ThreadPoolExecutor will not allow async calls.  But with this wrapper, our

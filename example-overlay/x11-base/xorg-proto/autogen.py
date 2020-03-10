@@ -5,15 +5,14 @@ from glob import glob
 from collections import defaultdict
 import itertools
 
-async def get_meson_mappings(hub, ebuild):
+
+async def get_meson_mappings(hub, master_cpv, artifact):
 
 	"""
 	Returns a list of entries from the meson files -- each entry in the
 	list is a tuple containing cpv of our xproto ebuild, the meson package
 	name, and the meson version.
 	"""
-	master_cpv = ebuild.catpkg_version_rev
-	artifact = ebuild.artifacts[0]
 	await artifact.fetch()
 	artifact.extract()
 	meson_file = os.path.expanduser(artifact.extract_path + "/*/meson.build")
@@ -29,6 +28,7 @@ async def get_meson_mappings(hub, ebuild):
 		meta_mappings[(pkg, ver)].add(master_cpv)
 	artifact.cleanup()
 	return meta_mappings
+
 
 def get_pkgs_from_meson(master_cpv, fn, prefix="pcs"):
 	"""
@@ -56,6 +56,7 @@ def get_pkgs_from_meson(master_cpv, fn, prefix="pcs"):
 					ver = ls[1].strip().strip("'")
 					yield master_cpv, pkg, ver
 
+
 async def generate(hub):
 
 	"""
@@ -70,7 +71,7 @@ async def generate(hub):
 	We will then add these 'stub' ebuilds to the queue for generation. And finally we will
 	generate the xorg-proto ebuild too.
 
-	The 'stub' ebuilds don't actually contain anything. They just will DEPEND on the main
+	The 'stub' ebuilds don't actually contain anything. They just will RDEPEND on the main
 	xorg-proto ebuild. We can in theory have a single stub ebuild that could depend on two
 	or more xorg-proto ebuilds using '||' dependencies.
 
@@ -79,8 +80,7 @@ async def generate(hub):
 
 	"""
 
-	ebuild = hub.pkgtools.ebuild.BreezyBuild(
-		hub,
+	template_args = dict(
 		cat="x11-base",
 		name="xorg-proto",
 		version="2018.4_p20180627",
@@ -88,15 +88,47 @@ async def generate(hub):
 		GITHUB_REPO="xorg-xorgproto",
 		GITHUB_USER="freedesktop",
 		GITHUB_TAG="af9b5f43439378efd1e12d11d487a71f42790fec",
-		artifacts = [
-			dict(url="https://www.github.com/{GITHUB_USER}/{GITHUB_REPO}/tarball/{GITHUB_TAG}", final_name="{name}-{GITHUB_TAG}.tar.gz")
-		]
 	)
-	ebuild.push()
-	template_text = "foo"
+	cpvr = "{cat}/{name}-{version}-r{revision}".format(**template_args)
+	url = "https://www.github.com/{GITHUB_USER}/{GITHUB_REPO}/tarball/{GITHUB_TAG}".format(**template_args)
+	final_name = "{name}-{GITHUB_TAG}.tar.gz".format(**template_args)
+	artifact = hub.pkgtools.ebuild.Artifact(url=url, final_name=final_name)
+
+	sub_ebuild_template = """# Distributed under the terms of the GNU General Public License v2
+EAPI=6
+
+inherit multilib-minimal
+
+DESCRIPTION="X.Org Protocol ${proto} package stub ."
+
+KEYWORDS="*"
+
+SLOT="0/stub"
+
+RDEPEND="
+{%- if all_meta_atoms|length == 1 -%}
+={{all_meta_atoms[0]}}
+{%- else -%}
+|| ( {{ meta_atom|join(' ') }} )
+{%- endif -%}"
+DEPEND="${RDEPEND}"
+
+S="${WORKDIR}"
+
+multilib_src_configure() { return 0; }
+src_configure() { return 0; }
+multilib_src_compile() { return 0; }
+src_compile() { return 0; }
+multilib_src_install() { return 0; }
+src_install() { return 0; }
+
+"""
+
 	meta_mappings = defaultdict(set)
-	for pv_key, new_set in (await get_meson_mappings(hub, ebuild)).items():
+	peeves = []
+	for pv_key, new_set in (await get_meson_mappings(hub, cpvr, artifact)).items():
 		meta_mappings[pv_key] |= new_set
+		peeves.append("x11-proto/%s-%s" % pv_key)
 
 	for pv_key, all_meta_atoms in meta_mappings.items():
 		all_meta_atoms = sorted(list(all_meta_atoms))
@@ -105,9 +137,18 @@ async def generate(hub):
 			name=pv_key[0],
 			cat='x11-proto',
 			version=pv_key[1],
-			template_vars={ "all_meta_atoms" : all_meta_atoms },
-			template_text=template_text
+			all_meta_atoms=all_meta_atoms,
+			template_text=sub_ebuild_template
 		)
 		sub_ebuild.push()
+
+	ebuild = hub.pkgtools.ebuild.BreezyBuild(
+		hub,
+		artifacts=[artifact],
+		peeves=sorted(peeves),
+		**template_args
+	)
+
+	ebuild.push()
 
 # vim: ts=4 sw=4 noet

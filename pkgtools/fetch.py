@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 
-import os
-import sys
-import hashlib
+import logging
+
 from tornado import httpclient
 from tornado.httpclient import HTTPRequest
-import tornado.template
-import logging
+
 logging.basicConfig(level=logging.DEBUG)
 
 class FetchError(Exception):

@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 
+import os
 import asyncio
 import pop.hub
 
 hub = pop.hub.Hub()
-hub.pop.sub.add(pypath='pkgtools', omit_class=False)
-hub.pop.sub.add(pypath='autogen')
+hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
 hub.pop.sub.add('pop.mods.conf')
 
 CONFIG = {
-	"repo" : {
-		'default' : __file__,
+	"repo": {
+		'default': os.getcwd(),
 		'os': 'AUTOGEN_REPOSITORY',
-		'help' : 'Destination repository path'
+		'help': 'Destination repository path'
 	},
-	"temp" : {
-		"default" : "/var/tmp",
-		'os' : 'AUTOGEN_TEMP',
-		'help' : 'Temporary download path'
+	"temp": {
+		"default": "/var/tmp",
+		'os': 'AUTOGEN_TEMP',
+		'help': 'Temporary download path'
 	}
 }
 
