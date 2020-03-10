@@ -9,7 +9,7 @@ class Tree:
        self.root = root
        self.name = name
 
-def repository_of(hub, p):
+def repository_of(hub, p, name=None):
     start_path = p
     while start_path != "/" and not os.path.exists(os.path.join(start_path, "profiles/repo_name")):
         start_path = os.path.dirname(start_path)
@@ -25,10 +25,10 @@ def repository_of(hub, p):
         logging.warning("Unable to find %s." % repo_name_path)
         return None
 
-    return Tree(root=start_path, name=repo_name)
+    return Tree(root=start_path, name=repo_name if name is None else name)
 
-def set_context(hub, path):
-    hub.CONTEXT = hub._.repository_of(hub.OPTS['repo'])
+def set_context(hub, path, name=None):
+    hub.CONTEXT = hub._.repository_of(path, name=name)
     if hub.CONTEXT is None:
         print("Could not determine what repository I'm in. Exiting.")
         sys.exit(1)

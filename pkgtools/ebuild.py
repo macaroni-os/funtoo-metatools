@@ -8,7 +8,6 @@ from subprocess import getstatusoutput
 
 from tornado import httpclient
 from tornado.httpclient import HTTPRequest
-#import tornado.template
 import jinja2
 import logging
 
@@ -155,7 +154,6 @@ class BreezyBuild:
 		for kwarg in [ 'cat', 'name', 'version', 'revision' ]:
 			if kwarg in kwargs:
 				setattr(self, kwarg, kwargs[kwarg])
-		logging.info("Creating %s/%s/%s" % (self.tree.root, self.cat, self.name))
 		self.template = template
 		self.template_text = template_text
 		if self.template_text is None and self.template is None:
@@ -224,16 +222,6 @@ class BreezyBuild:
 		await self.fetch_all()
 		self.generate_metadata()
 
-	def create_ebuild_tornado(self):
-		if not self.template_text:
-			loader = tornado.template.Loader(self.template_path)
-			template = loader.load(self.template)
-		else:
-			template = tornado.template.Template(self.template_text)
-		with open(self.ebuild_path, "wb") as myf:
-			myf.write(template.generate(**self.template_args))
-		logging.info("Ebuild %s generated." % self.ebuild_path)
-
 	def create_ebuild(self):
 		if not self.template_text:
 			with open(os.path.join(self.template_path, self.template), "r") as tempf:
@@ -242,7 +230,7 @@ class BreezyBuild:
 			template = jinja2.Template(self.template_text)
 		with open(self.ebuild_path, "wb") as myf:
 			myf.write(template.render(**self.template_args).encode("utf-8"))
-		logging.info("Ebuild %s generated." % self.ebuild_path)
+		logging.info("Created: " + os.path.relpath(self.ebuild_path))
 
 	async def generate(self):
 		try:

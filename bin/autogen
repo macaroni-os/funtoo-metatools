@@ -14,15 +14,15 @@ CONFIG = {
 		'os': 'AUTOGEN_REPOSITORY',
 		'help': 'Destination repository path'
 	},
-	"temp": {
-		"default": "/var/tmp",
-		'os': 'AUTOGEN_TEMP',
-		'help': 'Temporary download path'
+	"name": {
+		'default': None,
+		'os': 'AUTOGEN_REPONAME',
+		'help': 'Repository name (to override)'
 	}
 }
 
 if __name__ == "__main__":
 	hub.OPTS = hub.conf.reader.read(CONFIG)
-	asyncio.run(hub.pkgtools.autogen.start())
+	asyncio.run(hub.pkgtools.autogen.start(hub.OPTS['repo'], name=hub.OPTS['name']))
 
 # vim: ts=4 sw=4 noet

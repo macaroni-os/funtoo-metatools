@@ -3,22 +3,18 @@
 import subprocess
 import os
 
-async def start(hub):
+async def start(hub, path=None, name=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
-	print(hub.OPTS['repo'])
-	# TODO: directly use mods/pop/sub.py methods to add subs
-	hub.pkgtools.repository.set_context(hub.OPTS['repo'])
+	hub.pkgtools.repository.set_context(path, name=name)
 	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % hub.OPTS['repo'])
 	files = o.split('\n')
 	for file in files:
-		print(file)
 		subpath = os.path.dirname(file)
 		if subpath.endswith("pkgtools"):
 			continue
-		print(subpath)
 		hub.pop.sub.add(static=subpath, subname="my_catpkg")
 		await hub.my_catpkg.autogen.generate()
 		hub.pop.sub.remove("my_catpkg")
