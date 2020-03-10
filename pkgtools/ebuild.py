@@ -19,15 +19,16 @@ ARTIFACT_TEMP_PATH = "/var/tmp/distfiles"
 async def go(hub):
 	for future in asyncio.as_completed(QUE):
 		builder = await future
-		# TODO: do we really have a CONTEXT.name defined? Don't we need to pass this in somewhere?
 		if hub.CPM_LOGGER:
-			hub.CPM_LOGGER.record(hub.pkgtools.repository.CONTEXT.name, builder.catpkg, is_fixup=True)
+			hub.CPM_LOGGER.record(hub.pkgtools.repository.OUTPUT_CONTEXT.name, builder.catpkg, is_fixup=True)
 
 def __init__(hub):
 	hub.CPM_LOGGER = None
 
+
 class BreezyError(Exception):
 	pass
+
 
 class Artifact:
 
@@ -81,10 +82,11 @@ class Artifact:
 
 	def extract(self):
 		ep = self.extract_path
-		print(ep)
 		os.makedirs(ep, exist_ok=True)
-		# TODO: test for failure
-		getstatusoutput("tar -C %s -xf %s" % (ep, self.final_name))
+		cmd = "tar -C %s -xf %s" % (ep, self.final_name)
+		s, o = getstatusoutput(cmd)
+		if s != 0:
+			raise BreezyError("Command failure: %s" % cmd)
 
 	def cleanup(self):
 		getstatusoutput("rm -rf " + self.extract_path)
@@ -238,8 +240,8 @@ class BreezyBuild:
 				raise BreezyError("Please set 'cat' to the category name of this ebuild.")
 			if self.name is None:
 				raise BreezyError("Please set 'name' to the package name of this ebuild.")
-			self.create_ebuild()
 			await self.get_artifacts()
+			self.create_ebuild()
 		except BreezyError as e:
 			print(e)
 			sys.exit(1)

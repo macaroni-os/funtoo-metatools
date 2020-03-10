@@ -3,15 +3,22 @@
 import os
 import asyncio
 import pop.hub
-
+import logging
+logging.basicConfig(format='> %(message)s', level=logging.INFO)
+logging.info("Funtoo meta-tools autogen")
 hub = pop.hub.Hub()
 hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
 hub.pop.sub.add('pop.mods.conf')
 
 CONFIG = {
-	"repo": {
+	"start-path": {
 		'default': os.getcwd(),
-		'os': 'AUTOGEN_REPOSITORY',
+		'os': 'AUTOGEN_START_PATH',
+		'help': 'Where to start processing'
+	},
+	"out-path": {
+		'default': None,
+		'os': 'AUTOGEN_REPOSITORY_OUTPUT_PATH',
 		'help': 'Destination repository path'
 	},
 	"name": {
@@ -23,6 +30,6 @@ CONFIG = {
 
 if __name__ == "__main__":
 	hub.OPTS = hub.conf.reader.read(CONFIG)
-	asyncio.run(hub.pkgtools.autogen.start(hub.OPTS['repo'], name=hub.OPTS['name']))
+	asyncio.run(hub.pkgtools.autogen.start(hub.OPTS['start-path'], out_path=hub.OPTS['out-path'], name=hub.OPTS['name']))
 
 # vim: ts=4 sw=4 noet

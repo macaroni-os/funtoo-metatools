@@ -8,6 +8,9 @@ def __init__(hub):
 	hub.LOOP = asyncio.get_event_loop()
 	hub.CPU_BOUND_EXECUTOR = ThreadPoolExecutor(max_workers=cpu_count())
 
+def get_threadpool(hub):
+	return ThreadPoolExecutor(max_workers=cpu_count())
+
 def run_async_adapter(corofn, *args):
 	"""
 	Use this method to run an asynchronous worker within a ThreadPoolExecutor.
@@ -33,7 +36,7 @@ def run_async_adapter(corofn, *args):
 	finally:
 		loop.close()
 
-def run_async_tasks(hub, tasks_with_args):
+def run_async_tasks(hub, tasks_with_args, threadpool=None):
 
 	"""
 	This method will take a list, with each item in the list being in the following format::
@@ -49,6 +52,8 @@ def run_async_tasks(hub, tasks_with_args):
 
 	A list of futures will be returned which can be awaited upon to retrieve results.
 	"""
+	if threadpool is None:
+		threadpool = hub.CPU_BOUND_EXECUTOR
 
 	futures = []
 	for ta in tasks_with_args:

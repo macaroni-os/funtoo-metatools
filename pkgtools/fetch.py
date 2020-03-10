@@ -5,13 +5,8 @@ import logging
 from tornado import httpclient
 from tornado.httpclient import HTTPRequest
 
-logging.basicConfig(level=logging.DEBUG)
-
 class FetchError(Exception):
 	pass
-
-def __init__(hub):
-	print("Initialized!")
 
 async def get_url_from_redirect(hub, url):
 	logging.info("Querying %s to get redirect URL..." % url)

@@ -27,8 +27,14 @@ def repository_of(hub, p, name=None):
 
     return Tree(root=start_path, name=repo_name if name is None else name)
 
-def set_context(hub, path, name=None):
+def set_context(hub, path, out_path=None, name=None):
     hub.CONTEXT = hub._.repository_of(path, name=name)
+    if out_path is None or path == out_path:
+        hub.OUTPUT_CONTEXT = hub.CONTEXT
+    else:
+        hub.OUTPUT_CONTEXT = hub._.repository_of(out_path, name=name)
     if hub.CONTEXT is None:
-        print("Could not determine what repository I'm in. Exiting.")
-        sys.exit(1)
+        raise hub.pkgtools.ebuild.BreezyError("Could not determine repo context: %s\n" % path)
+    elif hub.OUTPUT_CONTEXT is None:
+        raise hub.pkgtools.ebuild.BreezyError("Could not determine output repo context: %s\n" % out_path)
+
