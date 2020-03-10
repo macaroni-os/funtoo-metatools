@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+from concurrent.futures.thread import ThreadPoolExecutor
 from multiprocessing import cpu_count
 
 def __init__(hub):

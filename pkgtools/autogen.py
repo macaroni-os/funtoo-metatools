@@ -9,15 +9,11 @@ async def start(hub):
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
 
-	repo_context = hub.pkgtools.repository.repository_of(hub.OPTS['repo'])
-	if repo_context is None:
-		print("Could not determine what respository I'm in. Exiting.")
-		sys.exit(1)
-	futures = []
 	for mod in hub.autogen:
 		if not hasattr(mod, 'generate'):
 			continue
 		generate = getattr(mod, 'generate')
-		await generate(tree=repo_context)
+		hub.pkgtools.repository.set_context(hub.OPTS['repo'])
+		await generate()
 
 # vim: ts=4 sw=4 noet

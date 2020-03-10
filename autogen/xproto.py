@@ -4,9 +4,8 @@ import os
 from glob import glob
 from collections import defaultdict
 import itertools
-import asyncio
 
-async def get_meson_mappings(ebuild):
+async def get_meson_mappings(hub, ebuild):
 
 	"""
 	Returns a list of entries from the meson files -- each entry in the
@@ -20,7 +19,7 @@ async def get_meson_mappings(ebuild):
 	meson_file = os.path.expanduser(artifact.extract_path + "/*/meson.build")
 	meson_file = glob(meson_file)
 	if len(meson_file) != 1 or not os.path.exists(meson_file[0]):
-		raise BreezyError("File not found or too many found: meson.build")
+		raise hub.pkgtools.ebuild.BreezyError("File not found or too many found: meson.build")
 	meson_file = meson_file[0]
 	meta_mappings = defaultdict(set)
 	for master_cpv, pkg, ver in itertools.chain(
@@ -57,7 +56,7 @@ def get_pkgs_from_meson(master_cpv, fn, prefix="pcs"):
 					ver = ls[1].strip().strip("'")
 					yield master_cpv, pkg, ver
 
-async def generate(hub, tree):
+async def generate(hub):
 
 	"""
 	The goal here is to generate the xorg-proto ebuild(s) -- as well as a bunch of "stub" ebuilds.
@@ -81,6 +80,7 @@ async def generate(hub, tree):
 	"""
 
 	ebuild = hub.pkgtools.ebuild.BreezyBuild(
+		hub,
 		cat="x11-base",
 		name="xorg-proto",
 		version="2018.4_p20180627",
@@ -89,24 +89,25 @@ async def generate(hub, tree):
 		GITHUB_USER="freedesktop",
 		GITHUB_TAG="af9b5f43439378efd1e12d11d487a71f42790fec",
 		artifacts = [
-			dict(url="https://www.github.com/{GITHUB_USER}/{GITHUB_REPO}/tarball/{GITHUB_TAG}", final_name="{PN}-{GITHUB_TAG}.tar.gz")
+			dict(url="https://www.github.com/{GITHUB_USER}/{GITHUB_REPO}/tarball/{GITHUB_TAG}", final_name="{name}-{GITHUB_TAG}.tar.gz")
 		]
 	)
-
+	ebuild.push()
+	template_text = "foo"
 	meta_mappings = defaultdict(set)
-	for pv_key, new_set in await get_meson_data(ebuild).items():
+	for pv_key, new_set in (await get_meson_mappings(hub, ebuild)).items():
 		meta_mappings[pv_key] |= new_set
 
 	for pv_key, all_meta_atoms in meta_mappings.items():
 		all_meta_atoms = sorted(list(all_meta_atoms))
-		hub.pkgtools.ebuild.push(
+		sub_ebuild = hub.pkgtools.ebuild.BreezyBuild(
+			hub,
 			name=pv_key[0],
 			cat='x11-proto',
 			version=pv_key[1],
 			template_vars={ "all_meta_atoms" : all_meta_atoms },
 			template_text=template_text
 		)
-
-	hub.pkgtools.ebuild.push(**pkg_data)
+		sub_ebuild.push()
 
 # vim: ts=4 sw=4 noet

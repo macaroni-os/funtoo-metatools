@@ -6,7 +6,6 @@ import pop.hub
 hub = pop.hub.Hub()
 hub.pop.sub.add(pypath='pkgtools', omit_class=False)
 hub.pop.sub.add(pypath='autogen')
-hub.pop.sub.extend('autogen', pypath='another-autogen')
 hub.pop.sub.add('pop.mods.conf')
 
 CONFIG = {

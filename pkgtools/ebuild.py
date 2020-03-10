@@ -8,28 +8,17 @@ from tornado import httpclient
 from tornado.httpclient import HTTPRequest
 import tornado.template
 import logging
+
 logging.basicConfig(level=logging.INFO)
 
 QUE = []
-ARTIFACT_TEMP_PATH="/var/tmp/distfiles"
-
-def push(hub, **kwargs):
-	"""
-		Add an ebuild to the queue for generation.
-	"""
-	setup = None
-	if 'setup' in kwargs:
-		setup = kwargs['setup']
-		del kwargs['setup']
-	builder = BreezyBuild(**kwargs)
-	if setup:
-		setup(hub, builder)
-	QUE.append([lambda: builder.generate(tree)])
+ARTIFACT_TEMP_PATH = "/var/tmp/distfiles"
 
 async def go(hub):
 	for future in asyncio.as_completed(QUE):
-		builder = await(future)
-		hub.CPM_LOGGER.record(tree.name, builder.catpkg, is_fixup=True)
+		builder = await future
+		# TODO: do we really have a CONTEXT.name defined? Don't we need to pass this in somewhere?
+		hub.CPM_LOGGER.record(hub.pkgtools.repository.CONTEXT.name, builder.catpkg, is_fixup=True)
 
 def __init__(hub):
 	pass
@@ -107,11 +96,12 @@ class Artifact:
 			return
 		logging.info("Fetching %s..." % self.url)
 		if self._fd is None:
+			os.makedirs(os.path.dirname(self.temp_name), exist_ok=True)
 			self._fd = open(self.temp_name, "wb")
 		http_client = httpclient.AsyncHTTPClient()
 		try:
 			req = HTTPRequest(url=self.url, streaming_callback=self.on_chunk)
-			await http_client.fetch(req)
+			foo = await http_client.fetch(req)
 		except httpclient.HTTPError as e:
 			raise BreezyError("Fetch Error")
 		http_client.close()
@@ -132,14 +122,17 @@ class BreezyBuild:
 	template_vars = None
 
 	def __init__(self,
+		hub,
 		artifacts: list = None,
 		template: str = None,
 		**kwargs
 	):
+		self.hub = hub
+		self.tree = hub.pkgtools.repository.CONTEXT
 		self.artifacts = []
 		self._pkgdir = None
 		self.template_args = kwargs
-		for kwarg in [ 'cat', 'name', 'version', 'revision' ]
+		for kwarg in [ 'cat', 'name', 'version', 'revision' ]:
 			if kwarg in kwargs:
 				setattr(self, kwarg, kwargs[kwarg])
 		if self.template is None:
@@ -154,14 +147,17 @@ class BreezyBuild:
 		# ourselves so we can do this:
 
 		if artifacts is not None:
-			for artifact in artifacts:
-				for key, val in artifact.items():
-					artifact[key] = val.format(self.template_args)
-				self.artifacts.append(Artifact(**kwargs))
+			for artifact_kwargs in artifacts:
+				for key, val in artifact_kwargs.items():
+					artifact_kwargs[key] = val.format(**self.template_args)
+				self.artifacts.append(Artifact(**artifact_kwargs))
+
+	def push(self):
+		QUE.append([lambda: self.generate()])
 
 	async def fetch_all(self):
 		for artifact in self.artifacts:
-			await af.fetch()
+			await artifact.fetch()
 
 	@property
 	def pkgdir(self):
@@ -201,7 +197,7 @@ class BreezyBuild:
 		os.makedirs(tpath, exist_ok=True)
 		return tpath
 
-	def generate_metadata_for(self):
+	def generate_metadata(self):
 		with open(self.pkgdir + "/Manifest", "w") as mf:
 			for artifact in self.artifacts:
 				mf.write("DIST %s %s BLAKE2B %s SHA512 %s\n" % ( artifact.filename, artifact.size, artifact.blake2b, artifact.sha512 ))
@@ -220,7 +216,7 @@ class BreezyBuild:
 			myf.write(template.generate(**self.template_vars))
 		logging.info("Ebuild %s generated." % self.ebuild_path)
 
-	async def generate(self, tree):
+	async def generate(self):
 		try:
 			if self.cat is None:
 				raise BreezyError("Please set 'cat' to the category name of this ebuild.")
