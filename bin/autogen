@@ -11,14 +11,14 @@ hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
 hub.pop.sub.add('pop.mods.conf')
 
 CONFIG = {
-	"start-path": {
+	"start_path": {
 		'default': os.getcwd(),
 		'os': 'AUTOGEN_START_PATH',
 		'help': 'Where to start processing'
 	},
-	"out-path": {
+	"out_path": {
 		'default': None,
-		'os': 'AUTOGEN_REPOSITORY_OUTPUT_PATH',
+		'os': 'AUTOGEN_OUTPUT_PATH',
 		'help': 'Destination repository path'
 	},
 	"name": {
@@ -30,6 +30,9 @@ CONFIG = {
 
 if __name__ == "__main__":
 	hub.OPTS = hub.conf.reader.read(CONFIG)
-	asyncio.run(hub.pkgtools.autogen.start(hub.OPTS['start-path'], out_path=hub.OPTS['out-path'], name=hub.OPTS['name']))
+	print(hub.OPTS['start_path'])
+	print(hub.OPTS['out_path'])
+	print(hub.OPTS['name'])
+	asyncio.run(hub.pkgtools.autogen.start(hub.OPTS['start_path'], out_path=hub.OPTS['out_path'], name=hub.OPTS['name']))
 
 # vim: ts=4 sw=4 noet

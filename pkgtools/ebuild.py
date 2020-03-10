@@ -139,7 +139,8 @@ class BreezyBuild:
 	template = None
 	version = None
 	revision = 0
-	tree = None
+	source_tree = None
+	output_tree = None
 	template_args = None
 
 	def __init__(self,
@@ -150,10 +151,11 @@ class BreezyBuild:
 		**kwargs
 	):
 		self.hub = hub
-		self.tree = hub.CONTEXT
+		self.source_tree = hub.CONTEXT
+		self.output_tree = hub.OUTPUT_CONTEXT
 		self._pkgdir = None
 		self.template_args = kwargs
-		for kwarg in [ 'cat', 'name', 'version', 'revision' ]:
+		for kwarg in ['cat', 'name', 'version', 'revision']:
 			if kwarg in kwargs:
 				setattr(self, kwarg, kwargs[kwarg])
 		self.template = template
@@ -178,7 +180,14 @@ class BreezyBuild:
 	@property
 	def pkgdir(self):
 		if self._pkgdir is None:
-			self._pkgdir = os.path.join(self.tree.root, self.cat, self.name)
+			self._pkgdir = os.path.join(self.source_tree.root, self.cat, self.name)
+			os.makedirs(self._pkgdir, exist_ok=True)
+		return self._pkgdir
+
+	@property
+	def output_pkgdir(self):
+		if self._pkgdir is None:
+			self._pkgdir = os.path.join(self.output_tree.root, self.cat, self.name)
 			os.makedirs(self._pkgdir, exist_ok=True)
 		return self._pkgdir
 
@@ -192,6 +201,10 @@ class BreezyBuild:
 	@property
 	def ebuild_path(self):
 		return os.path.join(self.pkgdir, self.ebuild_name)
+
+	@property
+	def output_ebuild_path(self):
+		return os.path.join(self.output_pkgdir, self.ebuild_name)
 
 	@property
 	def catpkg(self):
@@ -209,13 +222,13 @@ class BreezyBuild:
 
 	@property
 	def template_path(self):
-		tpath = os.path.join(self.tree.root, self.cat, self.name, "templates")
+		tpath = os.path.join(self.source_tree.root, self.cat, self.name, "templates")
 		return tpath
 
 	def generate_metadata(self):
 		if not len(self.artifacts):
 			return
-		with open(self.pkgdir + "/Manifest", "w") as mf:
+		with open(self.output_pkgdir + "/Manifest", "w") as mf:
 			for artifact in self.artifacts:
 				mf.write("DIST %s %s BLAKE2B %s SHA512 %s\n" % ( artifact.filename, artifact.size, artifact.blake2b, artifact.sha512 ))
 		logging.info("Manifest generated.")
@@ -230,9 +243,9 @@ class BreezyBuild:
 				template = jinja2.Template(tempf.read())
 		else:
 			template = jinja2.Template(self.template_text)
-		with open(self.ebuild_path, "wb") as myf:
+		with open(self.output_ebuild_path, "wb") as myf:
 			myf.write(template.render(**self.template_args).encode("utf-8"))
-		logging.info("Created: " + os.path.relpath(self.ebuild_path))
+		logging.info("Created: " + os.path.relpath(self.output_ebuild_path))
 
 	async def generate(self):
 		try:
