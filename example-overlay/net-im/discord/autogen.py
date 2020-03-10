@@ -11,7 +11,7 @@ async def generate(hub):
 		name="discord",
 		cat="net-im",
 		version=url.split("/")[-1].lstrip("discord-").rstrip(".deb"),
-		artifacts=[{'url': url}]
+		artifacts=[hub.pkgtools.ebuild.Artifact(url=url)]
 	)
 
 	ebuild.push()
