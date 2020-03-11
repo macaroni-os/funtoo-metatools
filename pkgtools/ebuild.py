@@ -16,14 +16,10 @@ logging.basicConfig(level=logging.INFO)
 QUE = []
 ARTIFACT_TEMP_PATH = "/var/tmp/distfiles"
 
+
 async def go(hub):
 	for future in asyncio.as_completed(QUE):
 		builder = await future
-		if hub.CPM_LOGGER:
-			hub.CPM_LOGGER.record(hub.pkgtools.repository.OUTPUT_CONTEXT.name, builder.catpkg, is_fixup=True)
-
-def __init__(hub):
-	hub.CPM_LOGGER = None
 
 
 class BreezyError(Exception):
