@@ -22,7 +22,8 @@ async def start(hub, start_path=None, out_path=None, name=None):
 		logging.info("ADDING SUB: %s" % subpath)
 		hub.pop.sub.add(static=subpath, subname="my_catpkg")
 		await hub.my_catpkg.autogen.generate()
+		# we need to execute all our pending futures before removing the sub:
+		await hub.pkgtools.ebuild.go()
 		hub.pop.sub.remove("my_catpkg")
-	await hub.pkgtools.ebuild.go()
 
 # vim: ts=4 sw=4 noet
