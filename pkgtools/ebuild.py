@@ -31,7 +31,7 @@ class Artifact:
 	def __init__(self, url=None, final_name=None):
 
 		self.url = url
-		self.filename = url.split("/")[-1]
+		self._filename = url.split("/")[-1]
 		self._fd = None
 		self._sha512 = hashlib.sha512()
 		self._blake2b = hashlib.blake2b()
@@ -39,11 +39,18 @@ class Artifact:
 		self._final_name = final_name
 
 	@property
+	def filename(self):
+		if self._final_name is None:
+			return self._filename
+		else:
+			return self._final_name
+
+	@property
 	def src_uri(self):
-		if self.final_name is None:
+		if self._final_name is None:
 			return self.url
 		else:
-			return self.url + " -> " + os.path.basename(self.final_name)
+			return self.url + " -> " + self._final_name
 
 	@property
 	def exists(self):
@@ -51,14 +58,14 @@ class Artifact:
 
 	@property
 	def temp_name(self):
-		return os.path.join(ARTIFACT_TEMP_PATH, "%s.__download__" % self.filename)
+		return os.path.join(ARTIFACT_TEMP_PATH, "%s.__download__" % self._filename)
 
 	@property
 	def final_name(self):
 		if self._final_name:
 			return os.path.join(ARTIFACT_TEMP_PATH, self._final_name)
 		else:
-			return os.path.join(ARTIFACT_TEMP_PATH, "%s" % self.filename)
+			return os.path.join(ARTIFACT_TEMP_PATH, "%s" % self._filename)
 
 	@property
 	def sha512(self):
@@ -74,7 +81,7 @@ class Artifact:
 
 	@property
 	def extract_path(self):
-		return os.path.join(ARTIFACT_TEMP_PATH, "extract", os.path.basename(self.final_name))
+		return os.path.join(ARTIFACT_TEMP_PATH, "extract", self._final_name)
 
 	def extract(self):
 		ep = self.extract_path
@@ -88,6 +95,9 @@ class Artifact:
 		getstatusoutput("rm -rf " + self.extract_path)
 
 	def update_digests(self):
+		self._sha512 = hashlib.sha512()
+		self._blake2b = hashlib.blake2b()
+		self._size = 0
 		logging.info("Calculating digests for %s..." % self.final_name)
 		with open(self.final_name, 'rb') as myf:
 			while True:
@@ -109,7 +119,7 @@ class Artifact:
 	async def fetch(self):
 		if self.exists:
 			self.update_digests()
-			logging.warning("File %s exists (size %s); not fetching again." % ( self.filename, self.size ))
+			logging.warning("File %s exists (size %s); not fetching again." % (self._filename, self.size))
 			return
 		logging.info("Fetching %s..." % self.url)
 		if self._fd is None:
