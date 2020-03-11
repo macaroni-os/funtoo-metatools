@@ -43,7 +43,7 @@ class Artifact:
 		if self.final_name is None:
 			return self.url
 		else:
-			return self.url + " -> " + self.final_name
+			return self.url + " -> " + os.path.basename(self.final_name)
 
 	@property
 	def exists(self):

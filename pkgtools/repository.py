@@ -12,11 +12,12 @@ class Tree:
 
 def repository_of(hub, p, name=None):
     start_path = p
-    while start_path != "/" and not os.path.exists(os.path.join(start_path, "profiles/repo_name")):
+    while start_path != "/" and not os.path.exists(os.path.join(start_path, "profiles/repo_name")) and not os.path.exists(os.path.join(start_path, "metadata/layout.conf")):
         start_path = os.path.dirname(start_path)
     if start_path == "/":
         return None
 
+    repo_name = None
     repo_name_path = os.path.join(start_path, "profiles/repo_name")
     if os.path.exists(repo_name_path):
         with open(repo_name_path, "r") as repof:
@@ -24,7 +25,6 @@ def repository_of(hub, p, name=None):
 
     if repo_name is None:
         logging.warning("Unable to find %s." % repo_name_path)
-        return None
 
     return Tree(root=start_path, name=repo_name if name is None else name)
 

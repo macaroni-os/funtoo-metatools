@@ -2,6 +2,7 @@
 
 import subprocess
 import os
+import logging
 
 async def start(hub, start_path=None, out_path=None, name=None):
 
@@ -12,9 +13,13 @@ async def start(hub, start_path=None, out_path=None, name=None):
 	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % start_path)
 	files = o.split('\n')
 	for file in files:
+		file = file.strip()
+		if not len(file):
+			continue
 		subpath = os.path.dirname(file)
 		if subpath.endswith("pkgtools"):
 			continue
+		logging.info("ADDING SUB: %s" % subpath)
 		hub.pop.sub.add(static=subpath, subname="my_catpkg")
 		await hub.my_catpkg.autogen.generate()
 		hub.pop.sub.remove("my_catpkg")
