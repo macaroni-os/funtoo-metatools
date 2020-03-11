@@ -59,7 +59,7 @@ def run_async_tasks(hub, tasks_with_args, threadpool=None):
 	for ta in tasks_with_args:
 		async_task = ta[0]
 		task_args = ta[1:]
-		future = hub.LOOP.run_in_exector(hub.CPU_BOUND_EXECUTOR, run_async_adapter, async_task, *task_args)
+		future = hub.LOOP.run_in_executor(threadpool, run_async_adapter, async_task, *task_args)
 		futures.append(future)
 	return futures
 
