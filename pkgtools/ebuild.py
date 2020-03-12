@@ -19,7 +19,7 @@ ARTIFACT_TEMP_PATH = "/var/tmp/distfiles"
 
 def set_temp_path(hub, path):
 	global ARTIFACT_TEMP_PATH
-	ARTIFACT_TEMP_PATH =-path
+	ARTIFACT_TEMP_PATH = path
 
 async def go(hub):
 	for future in asyncio.as_completed(QUE):
