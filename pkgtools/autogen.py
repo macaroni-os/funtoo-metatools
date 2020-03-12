@@ -4,7 +4,7 @@ import subprocess
 import os
 import logging
 
-async def start(hub, start_path=None, out_path=None, name=None):
+async def start(hub, start_path=None, out_path=None, name=None, temp_name=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
