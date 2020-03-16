@@ -25,7 +25,6 @@ async def go(hub):
 	for future in asyncio.as_completed(QUE):
 		builder = await future
 
-
 class BreezyError(Exception):
 	pass
 

@@ -21,7 +21,17 @@ async def start(hub, start_path=None, out_path=None, name=None, temp_name=None):
 			continue
 		logging.info("ADDING SUB: %s" % subpath)
 		hub.pop.sub.add(static=subpath, subname="my_catpkg")
-		await hub.my_catpkg.autogen.generate()
+
+		# Attempt to update metadata, but on failure, fall back on our cached metadata:
+
+		try:
+			metadata = hub.my_catpkg.autogen.update_metadata()
+			hub.pkgtools.metadata.write_metadata(subpath, metadata)
+		except hub.pkgtools.ebuild.BreezyError:
+			metadata = hub.pkgtools.metadata.get_metadata(subpath)
+
+		await hub.my_catpkg.autogen.generate(metadata)
+
 		# we need to execute all our pending futures before removing the sub:
 		await hub.pkgtools.ebuild.go()
 		hub.pop.sub.remove("my_catpkg")
