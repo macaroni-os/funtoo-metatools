@@ -25,16 +25,17 @@ CONFIG = {
 		'default': None,
 		'os': 'AUTOGEN_REPONAME',
 		'help': 'Repository name (to override)'
-	}
+	},
 	"temp_path" : {
 		'default' : '/var/tmp/distfiles',
 		'os' : 'AUTOGEN_TEMP',
 		'help' : 'Temporary path for downloading and extracting.'
+	}
 }
 
 if __name__ == "__main__":
 	hub.OPTS = hub.conf.reader.read(CONFIG)
-	hub.pkgtools.ebuild.set_temp_path(hub.OPTS.temp_path)
+	hub.pkgtools.ebuild.set_temp_path(hub.OPTS["temp_path"])
 	asyncio.run(hub.pkgtools.autogen.start(hub.OPTS['start_path'],
 		out_path=hub.OPTS['out_path'],
 		name=hub.OPTS['name']))

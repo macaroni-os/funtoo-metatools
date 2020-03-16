@@ -131,7 +131,7 @@ class Artifact:
 			self._fd = open(self.temp_name, "wb")
 		http_client = httpclient.AsyncHTTPClient()
 		try:
-			req = HTTPRequest(url=self.url, streaming_callback=self.on_chunk)
+			req = HTTPRequest(url=self.url, streaming_callback=self.on_chunk, request_timeout=999999)
 			foo = await http_client.fetch(req)
 		except httpclient.HTTPError as e:
 			raise BreezyError("Fetch Error")
