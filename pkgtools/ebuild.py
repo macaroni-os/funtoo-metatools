@@ -28,68 +28,103 @@ async def go(hub):
 class BreezyError(Exception):
 	pass
 
-
 class Artifact:
 
-	def __init__(self, url=None, final_name=None):
-
+	def __init__(self, url=None, final_name=None, metadata=None):
+		self.metadata = metadata
+		if self.metadata:
+			self.state = "reconstituted"
+		else:
+			self.state = "live"
 		self.url = url
 		self._filename = url.split("/")[-1]
 		self._fd = None
 		self._sha512 = hashlib.sha512()
 		self._blake2b = hashlib.blake2b()
 		self._size = 0
-		self._final_name = final_name
+		self.final_name = final_name
+
+	def as_metadata(self):
+		return {
+			"$type" : "Artifact",
+			"url" : self.url,
+			"final_name" : self.final_name,
+			"hashes" : {
+				"sha512": self.sha512,
+				"blake2b": self.blake2b,
+			},
+			"size" : self.size
+		}
 
 	@property
 	def filename(self):
-		if self._final_name is None:
+		if self.metadata:
+			return self.metadata["final_name"]
+		if self.final_name is None:
 			return self._filename
 		else:
-			return self._final_name
+			return self.final_name
 
 	@property
 	def src_uri(self):
-		if self._final_name is None:
-			return self.url
+		if self.metadata:
+			url = self.metadata["url"]
+			fn = self.metadata["final_name"]
 		else:
-			return self.url + " -> " + self._final_name
+			url = self.url
+			fn = self.final_name
+		if self.final_name is None:
+			return url
+		else:
+			return url + " -> " + fn
 
 	@property
 	def exists(self):
-		return os.path.exists(self.final_name)
+		return os.path.exists(self.final_path)
 
 	@property
-	def temp_name(self):
+	def temp_path(self):
 		return os.path.join(ARTIFACT_TEMP_PATH, "%s.__download__" % self._filename)
 
 	@property
-	def final_name(self):
-		if self._final_name:
-			return os.path.join(ARTIFACT_TEMP_PATH, self._final_name)
+	def final_path(self):
+		if self.metadata:
+			fn = self.metadata["final_name"] if "final_name" in self.metadata else None
 		else:
-			return os.path.join(ARTIFACT_TEMP_PATH, "%s" % self._filename)
+			fn = self.final_name
+		if fn:
+			return os.path.join(ARTIFACT_TEMP_PATH, fn)
+		else:
+			return os.path.join(ARTIFACT_TEMP_PATH, "%s" % fn)
 
 	@property
 	def sha512(self):
+		if self.metadata:
+			return self.metadata["hashes"]["sha512"]
 		return self._sha512.hexdigest()
 
 	@property
 	def blake2b(self):
+		if self.metadata:
+			return self.metadata["hashes"]["sha512"]
 		return self._blake2b.hexdigest()
 
 	@property
 	def size(self):
+		if self.metadata:
+			return self.metadata["size"]
 		return self._size
 
 	@property
 	def extract_path(self):
-		return os.path.join(ARTIFACT_TEMP_PATH, "extract", self._final_name)
+		return os.path.join(ARTIFACT_TEMP_PATH, "extract", self.final_name)
 
 	def extract(self):
+		if not self.exists:
+			self.fetch()
 		ep = self.extract_path
 		os.makedirs(ep, exist_ok=True)
-		cmd = "tar -C %s -xf %s" % (ep, self.final_name)
+		cmd = "tar -C %s -xf %s" % (ep, self.final_path)
 		s, o = getstatusoutput(cmd)
 		if s != 0:
 			raise BreezyError("Command failure: %s" % cmd)
@@ -98,11 +133,13 @@ class Artifact:
 		getstatusoutput("rm -rf " + self.extract_path)
 
 	def update_digests(self):
+		if not self.exists:
+			self.fetch()
 		self._sha512 = hashlib.sha512()
 		self._blake2b = hashlib.blake2b()
 		self._size = 0
 		logging.info("Calculating digests for %s..." % self.final_name)
-		with open(self.final_name, 'rb') as myf:
+		with open(self.final_path, 'rb') as myf:
 			while True:
 				data = myf.read(1280000)
 				if not data:
@@ -127,7 +164,7 @@ class Artifact:
 		logging.info("Fetching %s..." % self.url)
 		if self._fd is None:
 			os.makedirs(ARTIFACT_TEMP_PATH, exist_ok=True)
-			self._fd = open(self.temp_name, "wb")
+			self._fd = open(self.temp_path, "wb")
 		http_client = httpclient.AsyncHTTPClient()
 		try:
 			req = HTTPRequest(url=self.url, streaming_callback=self.on_chunk, request_timeout=999999)
@@ -137,8 +174,8 @@ class Artifact:
 		http_client.close()
 		if self._fd is not None:
 			self._fd.close()
-			os.link(self.temp_name, self.final_name)
-			os.unlink(self.temp_name)
+			os.link(self.temp_path, self.final_path)
+			os.unlink(self.temp_path)
 
 
 class BreezyBuild:
