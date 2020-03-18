@@ -4,7 +4,7 @@ import subprocess
 import os
 import logging
 
-async def start(hub, start_path=None, out_path=None, name=None, temp_name=None):
+async def start(hub, start_path=None, out_path=None, name=None, update=False):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
@@ -22,14 +22,29 @@ async def start(hub, start_path=None, out_path=None, name=None, temp_name=None):
 		logging.info("ADDING SUB: %s" % subpath)
 		hub.pop.sub.add(static=subpath, subname="my_catpkg")
 
-		# Attempt to update metadata, but on failure, fall back on our cached metadata:
+		metadata = None
 
-		try:
-			metadata = hub.my_catpkg.autogen.update_metadata()
-			hub.pkgtools.metadata.write_metadata(subpath, metadata)
-		except hub.pkgtools.ebuild.BreezyError:
-			metadata = hub.pkgtools.metadata.get_metadata(subpath)
+		# If update is False, then we simply attempt to read the cached metadata on disk rather than
+		# updating it:
 
+		if not update:
+			try:
+				metadata = hub.pkgtools.metadata.get_metadata(subpath)
+			except hub.pkgtools.ebuild.BreezyError as e:
+				pass
+
+		# Now, if the previous non-update read of metadata failed, or we are in update mode, we will
+		# attempt to generate/update the metadata on disk:
+
+		if metadata is None:
+			try:
+				metadata = await hub.my_catpkg.autogen.update_metadata()
+				print("GOT METADATA", metadata)
+				await hub.pkgtools.metadata.write_metadata(subpath, metadata)
+			except hub.pkgtools.ebuild.BreezyError:
+				metadata = hub.pkgtools.metadata.get_metadata(subpath)
+
+		# TODO: check digests
 		await hub.my_catpkg.autogen.generate(metadata)
 
 		# we need to execute all our pending futures before removing the sub:

@@ -6,6 +6,7 @@ import hashlib
 import asyncio
 from subprocess import getstatusoutput
 
+from async_property import async_cached_property, AwaitLoader
 from tornado import httpclient
 from tornado.httpclient import HTTPRequest
 import jinja2
@@ -28,52 +29,92 @@ async def go(hub):
 class BreezyError(Exception):
 	pass
 
-class Artifact:
+class Artifact(AwaitLoader):
+
+	"""
+	The AwaitLoader class from the async_property package is an interesting thing and worth talking about.
+
+	It can be really tricky to use @property decorators with async. For example, let's say a class has a property
+	called 'size' but it needs to call an async function. This simply CANNOT BE DONE with regular Python.
+
+	AwaitLoader works around this. If you sub-class AwaitLoader, then instead of creating an object this old way::
+
+	  foo = MyObject()
+
+	You make it a subclass of AwaitLoader and create it this new way:
+
+	  foo = await MyObject()
+
+	As part of this new technique, any async load() method of your class is called upon creation which can be used
+	to make async calls and initialize things for your async properties.
+
+	*Your* methods will need to access your async properties by doing (await self.size)[-1] but code outside your
+	class will not need to await on your async properties.
+
+	This is pretty neat so also complicated so worth talking about.
+	"""
 
 	def __init__(self, url=None, final_name=None, metadata=None):
-		self.metadata = metadata
-		if self.metadata:
+		self._fd = None
+
+		self._hashes = None
+		self._size = 0
+		if metadata:
+			if "final_name" in metadata and metadata["final_name"] is None:
+				del metadata["final_name"]
+			self.metadata = metadata
 			self.state = "reconstituted"
 		else:
+			self.metadata = {}
 			self.state = "live"
-		self.url = url
-		self._filename = url.split("/")[-1]
-		self._fd = None
-		self._sha512 = hashlib.sha512()
-		self._blake2b = hashlib.blake2b()
-		self._size = 0
-		self.final_name = final_name
+		if url is not None:
+			self.metadata["url"] = url
+		if final_name is not None:
+			self.metadata["final_name"] = final_name
+
+	#async def check_digests(self):
+	#	orig_hashes = self.metadata["hashes"]
+	#	await self.fetch()
+	#	if orig_hashes != self.metadata["hashes"]:
+	#		raise BreezyError("Digest mismatch: %s vs %s" % ( orig_hashes, self.metadata["hashes"]))
+
+	async def load(self):
+		if self._hashes is None:
+			self._hashes = await self.update_digests()
+
+	@async_cached_property
+	async def hashes(self):
+		return self._hashes
+
+	@property
+	def url(self):
+		if self.metadata:
+			return self.metadata["url"]
 
 	def as_metadata(self):
 		return {
-			"$type" : "Artifact",
-			"url" : self.url,
-			"final_name" : self.final_name,
-			"hashes" : {
-				"sha512": self.sha512,
-				"blake2b": self.blake2b,
+			"$type": "Artifact",
+			"url": self.metadata['url'],
+			"final_name": self.final_name,
+			"hashes": {
+				"sha512": self.hashes["sha512"],
+				"blake2b": self.hashes["blake2b"],
 			},
-			"size" : self.size
+			"size": self.hashes['size']
 		}
 
 	@property
-	def filename(self):
-		if self.metadata:
-			return self.metadata["final_name"]
-		if self.final_name is None:
-			return self._filename
+	def final_name(self):
+		if "final_name" not in self.metadata:
+			return self.metadata["url"].split("/")[-1]
 		else:
-			return self.final_name
+			return self.metadata["final_name"]
 
 	@property
 	def src_uri(self):
-		if self.metadata:
-			url = self.metadata["url"]
-			fn = self.metadata["final_name"]
-		else:
-			url = self.url
-			fn = self.final_name
-		if self.final_name is None:
+		url = self.metadata["url"]
+		fn = self.metadata["final_name"]
+		if fn is None:
 			return url
 		else:
 			return url + " -> " + fn
@@ -84,36 +125,12 @@ class Artifact:
 
 	@property
 	def temp_path(self):
-		return os.path.join(ARTIFACT_TEMP_PATH, "%s.__download__" % self._filename)
+		return os.path.join(ARTIFACT_TEMP_PATH, "%s.__download__" % self.final_name)
 
 	@property
 	def final_path(self):
-		if self.metadata:
-			fn = self.metadata["final_name"] if "final_name" in self.metadata else None
-		else:
-			fn = self.final_name
-		if fn:
-			return os.path.join(ARTIFACT_TEMP_PATH, fn)
-		else:
-			return os.path.join(ARTIFACT_TEMP_PATH, "%s" % fn)
-
-	@property
-	def sha512(self):
-		if self.metadata:
-			return self.metadata["hashes"]["sha512"]
-		return self._sha512.hexdigest()
-
-	@property
-	def blake2b(self):
-		if self.metadata:
-			return self.metadata["hashes"]["sha512"]
-		return self._blake2b.hexdigest()
-
-	@property
-	def size(self):
-		if self.metadata:
-			return self.metadata["size"]
-		return self._size
+		print(self.metadata)
+		return os.path.join(ARTIFACT_TEMP_PATH, self.final_name)
 
 	@property
 	def extract_path(self):
@@ -132,50 +149,68 @@ class Artifact:
 	def cleanup(self):
 		getstatusoutput("rm -rf " + self.extract_path)
 
-	def update_digests(self):
+	async def update_digests(self):
 		if not self.exists:
-			self.fetch()
-		self._sha512 = hashlib.sha512()
-		self._blake2b = hashlib.blake2b()
-		self._size = 0
+			await self.fetch()
+		_sha512 = hashlib.sha512()
+		_blake2b = hashlib.blake2b()
+		_size = 0
 		logging.info("Calculating digests for %s..." % self.final_name)
 		with open(self.final_path, 'rb') as myf:
 			while True:
 				data = myf.read(1280000)
 				if not data:
 					break
-				self._sha512.update(data)
-				self._blake2b.update(data)
-				self._size += len(data)
-
-	def on_chunk(self, chunk):
-		self._fd.write(chunk)
-		self._sha512.update(chunk)
-		self._blake2b.update(chunk)
-		self._size += len(chunk)
-		sys.stdout.write(".")
-		sys.stdout.flush()
+				_sha512.update(data)
+				_blake2b.update(data)
+				_size += len(data)
+		return {
+			"sha512": _sha512.hexdigest(),
+			"blake2b": _blake2b.hexdigest(),
+			"size": _size
+		}
 
 	async def fetch(self):
+
 		if self.exists:
-			self.update_digests()
-			logging.warning("File %s exists (size %s); not fetching again." % (self._filename, self.size))
+			self._hashes = await self.update_digests()
+			logging.warning("File %s exists (size %s); not fetching again." % (self.final_name, (await self.hashes)["size"]))
 			return
+
+		os.makedirs(ARTIFACT_TEMP_PATH, exist_ok=True)
+		_fd = open(self.temp_path, "wb")
+
+		_sha512 = hashlib.sha512()
+		_blake2b = hashlib.blake2b()
+		_size = 0
+
+		def on_chunk(chunk):
+			_fd.write(chunk)
+			_sha512.update(chunk)
+			_blake2b.update(chunk)
+			_size += len(chunk)
+			sys.stdout.write(".")
+			sys.stdout.flush()
+
 		logging.info("Fetching %s..." % self.url)
-		if self._fd is None:
-			os.makedirs(ARTIFACT_TEMP_PATH, exist_ok=True)
-			self._fd = open(self.temp_path, "wb")
+
 		http_client = httpclient.AsyncHTTPClient()
 		try:
-			req = HTTPRequest(url=self.url, streaming_callback=self.on_chunk, request_timeout=999999)
+			req = HTTPRequest(url=self.url, streaming_callback=on_chunk, request_timeout=999999)
 			foo = await http_client.fetch(req)
 		except httpclient.HTTPError as e:
 			raise BreezyError("Fetch Error")
 		http_client.close()
-		if self._fd is not None:
-			self._fd.close()
-			os.link(self.temp_path, self.final_path)
-			os.unlink(self.temp_path)
+
+		self._hashes = {
+			"sha512": _sha512.hexdigest(),
+			"blake2b": _blake2b.hexdigest(),
+			"size": _size
+		}
+
+		_fd.close()
+		os.link(self.temp_path, self.final_path)
+		os.unlink(self.temp_path)
 
 
 class BreezyBuild:
@@ -276,7 +311,7 @@ class BreezyBuild:
 			return
 		with open(self.output_pkgdir + "/Manifest", "w") as mf:
 			for artifact in self.artifacts:
-				mf.write("DIST %s %s BLAKE2B %s SHA512 %s\n" % ( artifact.filename, artifact.size, artifact.blake2b, artifact.sha512 ))
+				mf.write("DIST %s %s BLAKE2B %s SHA512 %s\n" % ( artifact.final_name, artifact.hashes["size"], artifact.hashes["blake2b"], artifact.hashes["sha512"] ))
 		logging.info("Manifest generated.")
 
 	async def get_artifacts(self):

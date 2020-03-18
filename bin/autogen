@@ -26,10 +26,15 @@ CONFIG = {
 		'os': 'AUTOGEN_REPONAME',
 		'help': 'Repository name (to override)'
 	},
-	"temp_path" : {
-		'default' : '/var/tmp/distfiles',
-		'os' : 'AUTOGEN_TEMP',
-		'help' : 'Temporary path for downloading and extracting.'
+	"temp_path": {
+		'default': '/var/tmp/distfiles',
+		'os': 'AUTOGEN_TEMP',
+		'help': 'Temporary path for downloading and extracting.'
+	},
+	"update": {
+		'default' : False,
+		'action': "store_true",
+		'help': "Also update the cached metadata."
 	}
 }
 
@@ -38,6 +43,7 @@ if __name__ == "__main__":
 	hub.pkgtools.ebuild.set_temp_path(hub.OPTS["temp_path"])
 	asyncio.run(hub.pkgtools.autogen.start(hub.OPTS['start_path'],
 		out_path=hub.OPTS['out_path'],
-		name=hub.OPTS['name']))
+		name=hub.OPTS['name'],
+		update=hub.OPTS['update']))
 
 # vim: ts=4 sw=4 noet
