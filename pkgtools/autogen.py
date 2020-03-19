@@ -37,13 +37,15 @@ async def start(hub, start_path=None, out_path=None, name=None, update=False, ca
 		# Now, if the previous non-update read of metadata failed, or we are in update mode, we will
 		# attempt to generate/update the metadata on disk:
 
-		if metadata is None:
+		if metadata is None and getattr(hub.my_catpkg.autogen, "update_metadata", None) is not None:
 			try:
 				metadata = await hub.my_catpkg.autogen.update_metadata()
 				print("GOT METADATA", metadata)
 				await hub.pkgtools.metadata.write_metadata(subpath, metadata)
 			except hub.pkgtools.ebuild.BreezyError:
 				metadata = hub.pkgtools.metadata.get_metadata(subpath)
+		else:
+			metadata = {}
 
 		# TODO: check digests
 		await hub.my_catpkg.autogen.generate(metadata)

@@ -56,8 +56,7 @@ def get_pkgs_from_meson(master_cpv, fn, prefix="pcs"):
 					ver = ls[1].strip().strip("'")
 					yield master_cpv, pkg, ver
 
-
-async def generate(hub):
+async def generate(hub, metadata):
 
 	"""
 	The goal here is to generate the xorg-proto ebuild(s) -- as well as a bunch of "stub" ebuilds.
@@ -92,7 +91,7 @@ async def generate(hub):
 	cpvr = "{cat}/{name}-{version}-r{revision}".format(**template_args)
 	url = "https://www.github.com/{GITHUB_USER}/{GITHUB_REPO}/tarball/{GITHUB_TAG}".format(**template_args)
 	final_name = "{name}-{GITHUB_TAG}.tar.gz".format(**template_args)
-	artifact = hub.pkgtools.ebuild.Artifact(url=url, final_name=final_name)
+	artifact = hub.pkgtools.ebuild.Artifact(hub, url=url, final_name=final_name)
 
 	sub_ebuild_template = """# Distributed under the terms of the GNU General Public License v2
 EAPI=6
@@ -144,7 +143,7 @@ src_install() { return 0; }
 
 	ebuild = hub.pkgtools.ebuild.BreezyBuild(
 		hub,
-		artifacts=[artifact],
+		artifacts=[artifact.as_metadata()],
 		peeves=sorted(peeves),
 		**template_args
 	)
