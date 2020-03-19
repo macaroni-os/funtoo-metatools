@@ -15,12 +15,16 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 QUE = []
-ARTIFACT_TEMP_PATH = "/var/tmp/distfiles"
 
+def __init__(hub):
+	hub.CACHE_PATH = '/var/tmp/funtoo-metatools'
+	hub.ARTIFACT_TEMP_PATH = '/var/tmp/distfiles'
+
+def set_cache_path(hub, path):
+	hub.CACHE_PATH = path
 
 def set_temp_path(hub, path):
-	global ARTIFACT_TEMP_PATH
-	ARTIFACT_TEMP_PATH = path
+	hub.ARTIFACT_TEMP_PATH = path
 
 async def go(hub):
 	for future in asyncio.as_completed(QUE):
@@ -54,53 +58,25 @@ class Artifact(AwaitLoader):
 	This is pretty neat so also complicated so worth talking about.
 	"""
 
-	def __init__(self, url=None, final_name=None, metadata=None):
+	def __init__(self, hub, **kwargs):
+		self.hub = hub
 		self._fd = None
-
-		self._hashes = None
+		self.hashes = {}
 		self._size = 0
-		if metadata:
-			if "final_name" in metadata and metadata["final_name"] is None:
-				del metadata["final_name"]
-			self.metadata = metadata
-			self.state = "reconstituted"
-		else:
-			self.metadata = {}
-			self.state = "live"
-		if url is not None:
-			self.metadata["url"] = url
-		if final_name is not None:
-			self.metadata["final_name"] = final_name
-
-	#async def check_digests(self):
-	#	orig_hashes = self.metadata["hashes"]
-	#	await self.fetch()
-	#	if orig_hashes != self.metadata["hashes"]:
-	#		raise BreezyError("Digest mismatch: %s vs %s" % ( orig_hashes, self.metadata["hashes"]))
+		self.metadata = kwargs
 
 	async def load(self):
-		if self._hashes is None:
-			self._hashes = await self.update_digests()
-
-	@async_cached_property
-	async def hashes(self):
-		return self._hashes
+		self.hashes = await self.update_digests()
 
 	@property
 	def url(self):
-		if self.metadata:
-			return self.metadata["url"]
+		return self.metadata["url"]
 
 	def as_metadata(self):
 		return {
-			"$type": "Artifact",
 			"url": self.metadata['url'],
 			"final_name": self.final_name,
-			"hashes": {
-				"sha512": self.hashes["sha512"],
-				"blake2b": self.hashes["blake2b"],
-			},
-			"size": self.hashes['size']
+			"hashes": self.hashes
 		}
 
 	@property
@@ -125,16 +101,15 @@ class Artifact(AwaitLoader):
 
 	@property
 	def temp_path(self):
-		return os.path.join(ARTIFACT_TEMP_PATH, "%s.__download__" % self.final_name)
+		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, "%s.__download__" % self.final_name)
 
 	@property
 	def final_path(self):
-		print(self.metadata)
-		return os.path.join(ARTIFACT_TEMP_PATH, self.final_name)
+		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, self.final_name)
 
 	@property
 	def extract_path(self):
-		return os.path.join(ARTIFACT_TEMP_PATH, "extract", self.final_name)
+		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, "extract", self.final_name)
 
 	def extract(self):
 		if not self.exists:
@@ -170,50 +145,49 @@ class Artifact(AwaitLoader):
 			"size": _size
 		}
 
+	def on_chunk(self, chunk):
+		self._fd.write(chunk)
+		self._sha512.update(chunk)
+		self._blake2b.update(chunk)
+		self._size += len(chunk)
+		sys.stdout.write(".")
+		sys.stdout.flush()
+
 	async def fetch(self):
 
 		if self.exists:
-			self._hashes = await self.update_digests()
-			logging.warning("File %s exists (size %s); not fetching again." % (self.final_name, (await self.hashes)["size"]))
+			self.hashes = await self.update_digests()
+			logging.warning("File %s exists (size %s); not fetching again." % (self.final_name, self.hashes["size"]))
 			return
 
-		os.makedirs(ARTIFACT_TEMP_PATH, exist_ok=True)
-		_fd = open(self.temp_path, "wb")
-
-		_sha512 = hashlib.sha512()
-		_blake2b = hashlib.blake2b()
-		_size = 0
-
-		def on_chunk(chunk):
-			_fd.write(chunk)
-			_sha512.update(chunk)
-			_blake2b.update(chunk)
-			_size += len(chunk)
-			sys.stdout.write(".")
-			sys.stdout.flush()
+		os.makedirs(self.hub.ARTIFACT_TEMP_PATH, exist_ok=True)
+		self._fd = open(self.temp_path, "wb")
+		self._sha512 = hashlib.sha512()
+		self._blake2b = hashlib.blake2b()
+		self._size = 0
 
 		logging.info("Fetching %s..." % self.url)
 
 		http_client = httpclient.AsyncHTTPClient()
 		try:
-			req = HTTPRequest(url=self.url, streaming_callback=on_chunk, request_timeout=999999)
+			req = HTTPRequest(url=self.url, streaming_callback=self.on_chunk, request_timeout=999999)
 			foo = await http_client.fetch(req)
 		except httpclient.HTTPError as e:
 			raise BreezyError("Fetch Error")
 		http_client.close()
 
-		self._hashes = {
-			"sha512": _sha512.hexdigest(),
-			"blake2b": _blake2b.hexdigest(),
-			"size": _size
+		self.hashes = {
+			"sha512": self._sha512.hexdigest(),
+			"blake2b": self._blake2b.hexdigest(),
+			"size": self._size
 		}
 
-		_fd.close()
+		self._fd.close()
 		os.link(self.temp_path, self.final_path)
 		os.unlink(self.temp_path)
 
 
-class BreezyBuild:
+class BreezyBuild(AwaitLoader):
 
 	cat = None
 	name = None
@@ -244,11 +218,13 @@ class BreezyBuild:
 		if self.template_text is None and self.template is None:
 			self.template = self.name + ".tmpl"
 
-		if artifacts is None:
-			self.artifacts = []
-		else:
-			self.artifacts = artifacts
-		self.template_args["artifacts"] = self.artifacts
+		self.artifact_dicts = artifacts
+		self.artifacts = []
+
+	async def load(self):
+		for artifact in self.artifact_dicts:
+			self.artifacts.append(await Artifact(self.hub, **artifact))
+		self.template_args["artifacts"] = self.artifact_dicts
 
 	def push(self):
 		task = asyncio.create_task(self.generate())
@@ -306,7 +282,7 @@ class BreezyBuild:
 		tpath = os.path.join(self.source_tree.root, self.cat, self.name, "templates")
 		return tpath
 
-	def generate_metadata(self):
+	def generate_manifest(self):
 		if not len(self.artifacts):
 			return
 		with open(self.output_pkgdir + "/Manifest", "w") as mf:
@@ -316,7 +292,7 @@ class BreezyBuild:
 
 	async def get_artifacts(self):
 		await self.fetch_all()
-		self.generate_metadata()
+		self.generate_manifest()
 
 	def create_ebuild(self):
 		if not self.template_text:

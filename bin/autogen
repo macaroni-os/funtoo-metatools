@@ -35,6 +35,11 @@ CONFIG = {
 		'default' : False,
 		'action': "store_true",
 		'help': "Also update the cached metadata."
+	},
+	"cache_path": {
+		'default' : '/var/cache/funtoo-metatools',
+		'os' : 'AUTOGEN_CACHE_PATH',
+		'help': 'Path for caching metadata.'
 	}
 }
 
@@ -44,6 +49,7 @@ if __name__ == "__main__":
 	asyncio.run(hub.pkgtools.autogen.start(hub.OPTS['start_path'],
 		out_path=hub.OPTS['out_path'],
 		name=hub.OPTS['name'],
-		update=hub.OPTS['update']))
+		update=hub.OPTS['update'],
+		cache_path=hub.OPTS['cache_path']))
 
 # vim: ts=4 sw=4 noet

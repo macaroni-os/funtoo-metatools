@@ -11,13 +11,13 @@ async def update_metadata(hub):
 		"cat": "net-im",
 		"url": url,
 		"version": url.split("/")[-1].lstrip("discord-bin-").rstrip(".deb"),
-		"artifacts": [await hub.pkgtools.ebuild.Artifact(url=url)]
+		"artifacts": [
+			dict(url=url)
+		]
 	}
 
 async def generate(hub, metadata):
-	print(metadata)
-	ebuild = hub.pkgtools.ebuild.BreezyBuild(hub, **metadata)
-	print(ebuild.artifacts[0].state)
+	ebuild = await hub.pkgtools.ebuild.BreezyBuild(hub, **metadata)
 	await ebuild.generate()
 
 # vim: ts=4 sw=4 noet

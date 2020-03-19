@@ -4,12 +4,13 @@ import subprocess
 import os
 import logging
 
-async def start(hub, start_path=None, out_path=None, name=None, update=False):
+async def start(hub, start_path=None, out_path=None, name=None, update=False, cache_path=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
 	hub.pkgtools.repository.set_context(start_path, out_path=out_path, name=name)
+	hub.pkgtools.ebuild.set_cache_path(cache_path)
 	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % start_path)
 	files = o.split('\n')
 	for file in files:
