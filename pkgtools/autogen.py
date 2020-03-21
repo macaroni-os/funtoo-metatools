@@ -4,13 +4,17 @@ import subprocess
 import os
 import logging
 
-async def start(hub, start_path=None, out_path=None, name=None, update=False, cache_path=None):
+
+async def start(hub, start_path=None, out_path=None, name=None, cacher=None, fetcher=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
+
 	hub.pkgtools.repository.set_context(start_path, out_path=out_path, name=name)
-	hub.pkgtools.ebuild.set_cache_path(cache_path)
+	hub.pkgtools.fetch.set_fetcher(fetcher)
+	hub.pkgtools.fetch.set_cacher(cacher)
+
 	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % start_path)
 	files = o.split('\n')
 	for file in files:
@@ -20,35 +24,15 @@ async def start(hub, start_path=None, out_path=None, name=None, update=False, ca
 		subpath = os.path.dirname(file)
 		if subpath.endswith("pkgtools"):
 			continue
-		logging.info("ADDING SUB: %s" % subpath)
 		hub.pop.sub.add(static=subpath, subname="my_catpkg")
 
-		metadata = None
+		# TODO: add system for checking digests
+		# TODO: pass repo_name as well as branch to the generate method below:
 
-		# If update is False, then we simply attempt to read the cached metadata on disk rather than
-		# updating it:
+		pkg_name = file.split("/")[-2]
+		pkg_cat = file.split("/")[-3]
 
-		if not update:
-			try:
-				metadata = hub.pkgtools.metadata.get_metadata(subpath)
-			except hub.pkgtools.ebuild.BreezyError as e:
-				pass
-
-		# Now, if the previous non-update read of metadata failed, or we are in update mode, we will
-		# attempt to generate/update the metadata on disk:
-
-		if metadata is None and getattr(hub.my_catpkg.autogen, "update_metadata", None) is not None:
-			try:
-				metadata = await hub.my_catpkg.autogen.update_metadata()
-				print("GOT METADATA", metadata)
-				await hub.pkgtools.metadata.write_metadata(subpath, metadata)
-			except hub.pkgtools.ebuild.BreezyError:
-				metadata = hub.pkgtools.metadata.get_metadata(subpath)
-		else:
-			metadata = {}
-
-		# TODO: check digests
-		await hub.my_catpkg.autogen.generate(metadata)
+		await hub.my_catpkg.autogen.generate(name=pkg_name, cat=pkg_cat)
 
 		# we need to execute all our pending futures before removing the sub:
 		await hub.pkgtools.ebuild.go()

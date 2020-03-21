@@ -31,15 +31,15 @@ CONFIG = {
 		'os': 'AUTOGEN_TEMP',
 		'help': 'Temporary path for downloading and extracting.'
 	},
-	"update": {
-		'default' : False,
-		'action': "store_true",
-		'help': "Also update the cached metadata."
+	"fetcher": {
+		'default': 'default',
+		'os' : 'AUTOGEN_FETCHER',
+		'help': 'What fetching plugin to use.'
 	},
-	"cache_path": {
-		'default' : '/var/cache/funtoo-metatools',
-		'os' : 'AUTOGEN_CACHE_PATH',
-		'help': 'Path for caching metadata.'
+	"cacher": {
+		'default': None',
+		'os': 'AUTOGEN_CACHER',
+		'help': 'What caching plugin to use.'
 	}
 }
 
@@ -49,7 +49,7 @@ if __name__ == "__main__":
 	asyncio.run(hub.pkgtools.autogen.start(hub.OPTS['start_path'],
 		out_path=hub.OPTS['out_path'],
 		name=hub.OPTS['name'],
-		update=hub.OPTS['update'],
-		cache_path=hub.OPTS['cache_path']))
+		fetcher=hub.OPTS['fetcher'],
+		cacher=hub.OPTS['cacher']))
 
 # vim: ts=4 sw=4 noet

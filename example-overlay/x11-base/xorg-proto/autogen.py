@@ -56,7 +56,7 @@ def get_pkgs_from_meson(master_cpv, fn, prefix="pcs"):
 					ver = ls[1].strip().strip("'")
 					yield master_cpv, pkg, ver
 
-async def generate(hub, metadata):
+async def generate(hub, **pkginfo):
 
 	"""
 	The goal here is to generate the xorg-proto ebuild(s) -- as well as a bunch of "stub" ebuilds.
@@ -80,8 +80,7 @@ async def generate(hub, metadata):
 	"""
 
 	template_args = dict(
-		cat="x11-base",
-		name="xorg-proto",
+		**pkginfo,
 		version="2018.4_p20180627",
 		revision=2,
 		GITHUB_REPO="xorg-xorgproto",

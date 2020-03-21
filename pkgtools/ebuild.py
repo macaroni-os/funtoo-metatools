@@ -6,7 +6,6 @@ import hashlib
 import asyncio
 from subprocess import getstatusoutput
 
-from async_property import async_cached_property, AwaitLoader
 from tornado import httpclient
 from tornado.httpclient import HTTPRequest
 import jinja2
@@ -33,7 +32,7 @@ async def go(hub):
 class BreezyError(Exception):
 	pass
 
-class Artifact(AwaitLoader):
+class Artifact:
 
 	"""
 	The AwaitLoader class from the async_property package is an interesting thing and worth talking about.
@@ -65,7 +64,7 @@ class Artifact(AwaitLoader):
 		self._size = 0
 		self.metadata = kwargs
 
-	async def load(self):
+	async def setup(self):
 		self.hashes = await self.update_digests()
 
 	@property
@@ -187,7 +186,7 @@ class Artifact(AwaitLoader):
 		os.unlink(self.temp_path)
 
 
-class BreezyBuild(AwaitLoader):
+class BreezyBuild:
 
 	cat = None
 	name = None
@@ -221,18 +220,27 @@ class BreezyBuild(AwaitLoader):
 		self.artifact_dicts = artifacts
 		self.artifacts = []
 
-	async def load(self):
+	async def setup(self):
+		"""
+		This method ensures that Artifacts are instantiated (if dictionaries were passed in instead of live
+		Artifact objects) -- and that their setup() method is called, which may actually do fetching, if the
+		local archive is not available for generating digests.
+		"""
 		for artifact in self.artifact_dicts:
-			self.artifacts.append(await Artifact(self.hub, **artifact))
+			if type(artifact) != Artifact:
+				artifact = Artifact(self.hub, **artifact)
+			await artifact.setup()
+			self.artifacts.append(artifact)
 		self.template_args["artifacts"] = self.artifact_dicts
 
 	def push(self):
+		"""
+		Push means "do it soon". Anything pushed will be on a task queue which will get fired off at the end
+		of the autogen run. Tasks will run in parallel so this is a great way to improve performance if generating
+		a lot of catpkgs. Push all the catpkgs you want to generate and they will all get fired off at once.
+		"""
 		task = asyncio.create_task(self.generate())
 		QUE.append(task)
-
-	async def fetch_all(self):
-		for artifact in self.artifacts:
-			await artifact.fetch()
 
 	@property
 	def pkgdir(self):
@@ -290,10 +298,6 @@ class BreezyBuild(AwaitLoader):
 				mf.write("DIST %s %s BLAKE2B %s SHA512 %s\n" % ( artifact.final_name, artifact.hashes["size"], artifact.hashes["blake2b"], artifact.hashes["sha512"] ))
 		logging.info("Manifest generated.")
 
-	async def get_artifacts(self):
-		await self.fetch_all()
-		self.generate_manifest()
-
 	def create_ebuild(self):
 		if not self.template_text:
 			with open(os.path.join(self.template_path, self.template), "r") as tempf:
@@ -305,13 +309,21 @@ class BreezyBuild(AwaitLoader):
 		logging.info("Created: " + os.path.relpath(self.output_ebuild_path))
 
 	async def generate(self):
+		"""
+		This is an async method that does the actual creation of the ebuilds from templates. It also handles
+		initialization of Artifacts (indirectly) and could result in some HTTP fetching. If you call
+		``myebuild.push()``, this is the task that gets pushed onto the task queue to run in parallel.
+		If you don't call push() on your BreezyBuild, then you could choose to call the generate() method
+		directly instead. In that case it will run right away.
+		"""
 		try:
 			if self.cat is None:
 				raise BreezyError("Please set 'cat' to the category name of this ebuild.")
 			if self.name is None:
 				raise BreezyError("Please set 'name' to the package name of this ebuild.")
-			await self.get_artifacts()
+			await self.setup()
 			self.create_ebuild()
+			self.generate_manifest()
 		except BreezyError as e:
 			print(e)
 			sys.exit(1)
