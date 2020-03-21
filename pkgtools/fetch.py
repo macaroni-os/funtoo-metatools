@@ -22,9 +22,9 @@ async def get_url_from_redirect(hub, url):
 	raise FetchError("URL %s doesn't appear to redirect" % url)
 
 async def get_page(hub, url):
-	http_client = httpclient.AsyncHTTPClient()
+	http_client = httpclient.AsyncHTTPClient(max_buffer_size=1024*1024*50)
 	try:
-		req = HTTPRequest(url=url, follow_redirects=False)
+		req = HTTPRequest(url=url, follow_redirects=False, headers={'User-Agent' : 'funtoo-metatools (support@funtoo.org)'})
 		response = await http_client.fetch(req)
 		return response.body.decode()
 	except Exception as e:
