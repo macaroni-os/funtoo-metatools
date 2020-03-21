@@ -7,6 +7,7 @@ import asyncio
 from subprocess import getstatusoutput
 
 from tornado import httpclient
+from tornado import simple_httpclient
 from tornado.httpclient import HTTPRequest
 import jinja2
 import logging
@@ -167,7 +168,8 @@ class Artifact:
 
 		logging.info("Fetching %s..." % self.url)
 
-		http_client = httpclient.AsyncHTTPClient()
+		http_client = simple_httpclient.SimpleAsyncHTTPClient(max_body_size=1024 * 1024 * 1024 * 1024 * 50)
+
 		try:
 			req = HTTPRequest(url=self.url, streaming_callback=self.on_chunk, request_timeout=999999)
 			foo = await http_client.fetch(req)

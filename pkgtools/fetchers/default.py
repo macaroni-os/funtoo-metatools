@@ -7,7 +7,7 @@ from tornado.httpclient import HTTPRequest
 async def get_page(hub, url):
 	http_client = httpclient.AsyncHTTPClient()
 	try:
-		req = HTTPRequest(url=url, follow_redirects=False)
+		req = HTTPRequest(url=url, follow_redirects=False, headers={'User-Agent' : 'funtoo-metatools (support@funtoo.org)'})
 		response = await http_client.fetch(req)
 		return response.body.decode()
 	except Exception as e:
