@@ -9,6 +9,7 @@ logging.info("Funtoo meta-tools autogen")
 hub = pop.hub.Hub()
 hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
 hub.pop.sub.add('pop.mods.conf')
+#hub.pop.sub.load_subdirs(hub.pkgtools.fetchers, recurse=True)
 
 CONFIG = {
 	"start_path": {
@@ -37,7 +38,7 @@ CONFIG = {
 		'help': 'What fetching plugin to use.'
 	},
 	"cacher": {
-		'default': None',
+		'default': 'noop',
 		'os': 'AUTOGEN_CACHER',
 		'help': 'What caching plugin to use.'
 	}

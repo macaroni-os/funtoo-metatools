@@ -37,6 +37,9 @@ def set_fetch_policy(hub, policy):
 
 
 def set_cacher(hub, cacher):
+	if cacher is None:
+		hub.FETCH_CACHE = None
+		return
 	new_fetch = getattr(hub.pkgtools.cachers, cacher, None)
 	if new_fetch is None:
 		logging.error(f"Could not find specified cacher: {cacher}")
@@ -63,7 +66,7 @@ async def fetch_harness(hub, fetch_method, url, max_age=None):
 	"""
 	if hub.FETCH_POLICY in (FetchPolicy.CACHE_ONLY, FetchPolicy.LAZY):
 		try:
-			return await hub.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, url, max_age=max_age)
+			return await hub.FETCH_CACHE.fetch_cache_read(fetch_method.name, url, max_age=max_age)
 		except FetchError:
 			pass
 	if hub.FETCH_POLICY == FetchPolicy.CACHE_ONLY:
@@ -74,19 +77,19 @@ async def fetch_harness(hub, fetch_method, url, max_age=None):
 	try:
 		result = await fetch_method(url)
 		if hub.FETCH_POLICY == FetchPolicy.FETCH_ONLY:
-			await hub.FETCH_CACHE.record_fetch_success(fetch_method.__name__, url)
+			await hub.FETCH_CACHE.record_fetch_success(fetch_method.name, url)
 		else:
-			await hub.FETCH_CACHE.fetch_cache_write(fetch_method.__name__, url, result)
+			await hub.FETCH_CACHE.fetch_cache_write(fetch_method.name, url, result)
 		return result
 	except FetchError as e:
-		await hub.FETCH_CACHE.record_fetch_failure(fetch_method.__name__, url)
+		await hub.FETCH_CACHE.record_fetch_failure(fetch_method.name, url)
 		if hub.FETCH_POLICY != FetchPolicy.BEST_EFFORT:
-			raise FetchError(f"Unable to perform live fetch of {url} using method {fetch_method.__name__}.")
+			raise FetchError(f"Unable to perform live fetch of {url} using method {fetch_method.name}.")
 		else:
 			try:
-				return await hub.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, url, max_age=max_age)
+				return await hub.FETCH_CACHE.fetch_cache_read(fetch_method.name, url, max_age=max_age)
 			except FetchError:
-				raise FetchError(f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.")
+				raise FetchError(f"Unable to retrieve {url} using method {fetch_method.name} either live or from cache as fallback.")
 
 
 async def get_page(hub, url, max_age=None):

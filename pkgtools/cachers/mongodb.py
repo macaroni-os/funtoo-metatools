@@ -5,11 +5,11 @@ import pymongo
 import pymongo.errors
 from pymongo import MongoClient
 
-DB = MongoClient().funtoo_metatools
+DB = MongoClient().funtoo_metatools.fetch_cache
 
 
 def __init__(hub):
-    DB.fetch_cache.create_index([('method_name', pymongo.ASCENDING), ('url', pymongo.ASCENDING)])
+    DB.create_index([('method_name', pymongo.ASCENDING), ('url', pymongo.ASCENDING)])
 
 
 async def record_fetch_success(hub, method_name, url):
@@ -48,6 +48,6 @@ async def metadata_cache_write(hub, repo_name, branch, catpkg, metadata):
     # TODO: for writing out metadata into an easy-to-query format.
     pass
 
-async def metadata_cache_read(hub, repo_name, branch, catpkg)
+async def metadata_cache_read(hub, repo_name, branch, catpkg):
     # TODO: see above.
     pass
