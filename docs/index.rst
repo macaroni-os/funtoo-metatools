@@ -46,7 +46,7 @@ While respectable, they don't really compare to 'real' OOP. In addition, missing
 modern programming constructs such as asynchronous programming, threads, etc.
 Portage's python code uses these behind-the-scenes, but they are not available
 to 'regular' ebuild writers. Wouldn't it be nice if the full power of a modern
-programming language was available to ebuild writers? That's what
+programming language were available to ebuild writers? That's what
 funtoo-metatools is all about -- extending all these technologies to you,
 so you can tap into the goodness of modern programming.
 
@@ -68,7 +68,7 @@ paradigms at scale -- many of which the current Portage code base suffers from.
 Portage is not unique in this regard -- it's been around for a while, and has
 had a ton of functionality bolted on -- and this has resulted in a large,
 monolithic code base with a lot of functionality. And yet, as a code base,
-it is hard to improve and leverage.
+it is hard to improve and adapt.
 
 In fact, many people who have tried to hook into Portage APIs get frustrated
 and create their own code to try to do what they want -- because Portage's code
@@ -91,6 +91,36 @@ Plugins can be used to enhance the core functionality of the tool in a modular
 microservices-style archictecture within the code itself. All this is very
 good for a complex problem like the automation of updates of packages for
 the world's source code.
+
+So, remember -- plugin-oriented programming allows you to do two things. First,
+it allows you to easily *extend* funtoo-metatools. Second, through the magic of
+dynamic plugin registration, it allows you to easily *leverage* the power of
+funtoo-metatools within your own applications. It also provides a really clean
+paradigm for adding functionality to funtoo-metatools over time, avoiding
+complex internal interdependencies that make code harder to maintain and adapt.
+Of course, for day-to-day usage of funtoo-metatools, you are simply *using*
+the framework, and we'll cover that next.
+
+Installation
+============
+
+These instructions asssume you are using Funtoo Linux but should be easy to adapt
+to other distributions.
+
+Funtoo-metatools is easy to install -- simply use ``pip`` to pull it from PyPi::
+
+  $ pip3 install --user funtoo-metatools
+
+If you would like to create an isolated virtual environment for funtoo-metatools,
+you can use virtualenv as follows::
+
+  $ emerge virtualenv
+  $ virtualenv -p python3 venv
+  $ source venv/bin/activate
+  (venv) $ pip install funtoo-metatools
+
+From this point forward, whenever you want to use the virtualenv, simply
+source the activate script to enter your isolated python virtual environment.
 
 Indices and tables
 ==================
