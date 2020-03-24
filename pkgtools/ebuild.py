@@ -35,29 +35,6 @@ class BreezyError(Exception):
 
 class Artifact:
 
-	"""
-	The AwaitLoader class from the async_property package is an interesting thing and worth talking about.
-
-	It can be really tricky to use @property decorators with async. For example, let's say a class has a property
-	called 'size' but it needs to call an async function. This simply CANNOT BE DONE with regular Python.
-
-	AwaitLoader works around this. If you sub-class AwaitLoader, then instead of creating an object this old way::
-
-	  foo = MyObject()
-
-	You make it a subclass of AwaitLoader and create it this new way:
-
-	  foo = await MyObject()
-
-	As part of this new technique, any async load() method of your class is called upon creation which can be used
-	to make async calls and initialize things for your async properties.
-
-	*Your* methods will need to access your async properties by doing (await self.size)[-1] but code outside your
-	class will not need to await on your async properties.
-
-	This is pretty neat so also complicated so worth talking about.
-	"""
-
 	def __init__(self, hub, **kwargs):
 		self.hub = hub
 		self._fd = None
