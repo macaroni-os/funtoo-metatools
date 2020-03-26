@@ -21,7 +21,11 @@ async def start(hub, start_path=None, out_path=None, name=None, temp_name=None):
 			continue
 		logging.info("ADDING SUB: %s" % subpath)
 		hub.pop.sub.add(static=subpath, subname="my_catpkg")
-		await hub.my_catpkg.autogen.generate()
+		try:
+			await hub.my_catpkg.autogen.generate()
+		except FetchError as e:
+			logging.error(f"Fetch error for {subpath}... continuing...")
+			continue
 		# we need to execute all our pending futures before removing the sub:
 		await hub.pkgtools.ebuild.go()
 		hub.pop.sub.remove("my_catpkg")
