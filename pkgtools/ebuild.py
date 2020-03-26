@@ -268,7 +268,6 @@ class BreezyBuild:
 			self.create_ebuild()
 		except BreezyError as e:
 			print(e)
-			sys.exit(1)
 		return self
 
 # vim: ts=4 sw=4 noet
