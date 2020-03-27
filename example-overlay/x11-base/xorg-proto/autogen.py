@@ -142,7 +142,7 @@ src_install() { return 0; }
 
 	ebuild = hub.pkgtools.ebuild.BreezyBuild(
 		hub,
-		artifacts=[artifact.as_metadata()],
+		artifacts=[artifact],
 		peeves=sorted(peeves),
 		**template_args
 	)

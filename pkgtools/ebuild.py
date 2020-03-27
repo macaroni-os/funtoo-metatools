@@ -30,24 +30,41 @@ async def go(hub):
 	for future in asyncio.as_completed(QUE):
 		builder = await future
 
+
 class BreezyError(Exception):
 	pass
 
-class Artifact:
+
+class Fetchable:
 
 	def __init__(self, hub, **kwargs):
 		self.hub = hub
-		self._fd = None
-		self.hashes = {}
-		self._size = 0
 		self.metadata = kwargs
-
-	async def setup(self):
-		self.hashes = await self.update_digests()
 
 	@property
 	def url(self):
 		return self.metadata["url"]
+
+	def as_metadata(self):
+		return {
+			"url": self.metadata['url']
+		}
+
+class Artifact(Fetchable):
+
+	def __init__(self, hub, **kwargs):
+		super().__init__(hub, **kwargs)
+		self.hashes = {}
+		self._size = 0
+
+	async def setup(self):
+		if self.exists:
+			self.hashes = await self.hub.FETCHER.update_digests(self)
+		else:
+			self.hashes = await self.hub.FETCHER.download(self)
+
+	async def fetch(self):
+		await self.setup()
 
 	def as_metadata(self):
 		return {
@@ -74,96 +91,19 @@ class Artifact:
 
 	@property
 	def exists(self):
-		return os.path.exists(self.final_path)
+		result = self.hub.FETCHER.exists(self)
+		print("EXISTS %s" % result)
+		return self.hub.FETCHER.exists(self)
 
-	@property
-	def temp_path(self):
-		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, "%s.__download__" % self.final_name)
-
-	@property
-	def final_path(self):
-		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, self.final_name)
+	def extract(self):
+		return self.hub.FETCHER.extract(self)
 
 	@property
 	def extract_path(self):
-		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, "extract", self.final_name)
-
-	def extract(self):
-		if not self.exists:
-			self.fetch()
-		ep = self.extract_path
-		os.makedirs(ep, exist_ok=True)
-		cmd = "tar -C %s -xf %s" % (ep, self.final_path)
-		s, o = getstatusoutput(cmd)
-		if s != 0:
-			raise BreezyError("Command failure: %s" % cmd)
+		return self.hub.FETCHER.get_extract_path(self)
 
 	def cleanup(self):
-		getstatusoutput("rm -rf " + self.extract_path)
-
-	async def update_digests(self):
-		if not self.exists:
-			await self.fetch()
-		_sha512 = hashlib.sha512()
-		_blake2b = hashlib.blake2b()
-		_size = 0
-		logging.info("Calculating digests for %s..." % self.final_name)
-		with open(self.final_path, 'rb') as myf:
-			while True:
-				data = myf.read(1280000)
-				if not data:
-					break
-				_sha512.update(data)
-				_blake2b.update(data)
-				_size += len(data)
-		return {
-			"sha512": _sha512.hexdigest(),
-			"blake2b": _blake2b.hexdigest(),
-			"size": _size
-		}
-
-	def on_chunk(self, chunk):
-		self._fd.write(chunk)
-		self._sha512.update(chunk)
-		self._blake2b.update(chunk)
-		self._size += len(chunk)
-		sys.stdout.write(".")
-		sys.stdout.flush()
-
-	async def fetch(self):
-
-		if self.exists:
-			self.hashes = await self.update_digests()
-			logging.warning("File %s exists (size %s); not fetching again." % (self.final_name, self.hashes["size"]))
-			return
-
-		os.makedirs(self.hub.ARTIFACT_TEMP_PATH, exist_ok=True)
-		self._fd = open(self.temp_path, "wb")
-		self._sha512 = hashlib.sha512()
-		self._blake2b = hashlib.blake2b()
-		self._size = 0
-
-		logging.info("Fetching %s..." % self.url)
-
-		http_client = simple_httpclient.SimpleAsyncHTTPClient(max_body_size=1024 * 1024 * 1024 * 1024 * 50)
-
-		try:
-			req = HTTPRequest(url=self.url, streaming_callback=self.on_chunk, request_timeout=999999)
-			foo = await http_client.fetch(req)
-		except httpclient.HTTPError as e:
-			raise BreezyError("Fetch Error")
-		http_client.close()
-
-		self.hashes = {
-			"sha512": self._sha512.hexdigest(),
-			"blake2b": self._blake2b.hexdigest(),
-			"size": self._size
-		}
-
-		self._fd.close()
-		os.link(self.temp_path, self.final_path)
-		os.unlink(self.temp_path)
-
+		self.hub.FETCHER.cleanup(self)
 
 class BreezyBuild:
 
@@ -196,7 +136,10 @@ class BreezyBuild:
 		if self.template_text is None and self.template is None:
 			self.template = self.name + ".tmpl"
 
-		self.artifact_dicts = artifacts
+		if artifacts is None:
+			self.artifact_dicts = []
+		else:
+			self.artifact_dicts = artifacts
 		self.artifacts = []
 
 	async def setup(self):
@@ -274,7 +217,7 @@ class BreezyBuild:
 			return
 		with open(self.output_pkgdir + "/Manifest", "w") as mf:
 			for artifact in self.artifacts:
-				mf.write("DIST %s %s BLAKE2B %s SHA512 %s\n" % ( artifact.final_name, artifact.hashes["size"], artifact.hashes["blake2b"], artifact.hashes["sha512"] ))
+				mf.write("DIST %s %s BLAKE2B %s SHA512 %s\n" % (artifact.final_name, artifact.hashes["size"], artifact.hashes["blake2b"], artifact.hashes["sha512"] ))
 		logging.info("Manifest generated.")
 
 	def create_ebuild(self):

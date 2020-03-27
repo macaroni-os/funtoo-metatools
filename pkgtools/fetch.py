@@ -14,13 +14,24 @@ class FetchPolicy(Enum):
 # TODO: in LAZY mode, max_age should cause live refreshing of data if it is stale.
 # TODO: in BEST_EFFORT mode, do we want max_age to be respected so we don't keep refetching?
 
+
 def __init__(hub):
 	hub.FETCHER = hub.pkgtools.fetchers.default
 	hub.FETCH_CACHE = None
 	hub.FETCH_POLICY = FetchPolicy.BEST_EFFORT
+	hub.FETCH_ATTEMPTS = 3
+
 
 class FetchError(Exception):
-	pass
+	"""
+	When this exception is raised, we can set retry to True if the failure is something that could conceivably be
+	retried, such as a network failure. However, if we are reading from a cache, then it's just going to fail again,
+	and thus retry should have the default value of False.
+	"""
+
+	def __init__(self, msg, retry=False):
+		self.msg = msg
+		self.retry = retry
 
 def set_fetcher(hub, fetcher):
 	new_fetch = getattr(hub.pkgtools.fetchers, fetcher, None)
@@ -47,7 +58,7 @@ def set_cacher(hub, cacher):
 		hub.FETCH_CACHE = new_fetch
 
 
-async def fetch_harness(hub, fetch_method, url, max_age=None):
+async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
 
 	"""
 	This method is used to execute any fetch-related method, and will handle all the logic of reading from and
@@ -63,45 +74,89 @@ async def fetch_harness(hub, fetch_method, url, max_age=None):
 	the live network call -- except in the case of FetchPolicy.BEST_EFFORT, which will 'fall back' to the cache
 	if the live fetch fails (and is thus more resilient).
 	"""
-	if hub.FETCH_POLICY in (FetchPolicy.CACHE_ONLY, FetchPolicy.LAZY):
+	print(hub.FETCH_POLICY)
+	print(fetch_method, fetchable)
+	attempts = 0
+	while attempts < hub.FETCH_ATTEMPTS:
+		attempts += 1
 		try:
-			return await hub.FETCH_CACHE.fetch_cache_read(fetch_method.name, url, max_age=max_age)
-		except FetchError:
-			pass
-	if hub.FETCH_POLICY == FetchPolicy.CACHE_ONLY:
-		raise FetchError("Requested data not in fetch cache.")
+			if hub.FETCH_POLICY in (FetchPolicy.CACHE_ONLY, FetchPolicy.LAZY):
+				try:
+					return await hub.FETCH_CACHE.fetch_cache_read(fetch_method.name, fetchable, max_age=max_age)
+				except FetchError:
+					pass
+			if hub.FETCH_POLICY == FetchPolicy.CACHE_ONLY:
+				raise FetchError("Requested data not in fetch cache.")
 
-	# At this point, we aren't using a fetch policy of 'cache only.' That's done.
-
-	try:
-		result = await fetch_method(url)
-		if hub.FETCH_POLICY == FetchPolicy.FETCH_ONLY:
-			await hub.FETCH_CACHE.record_fetch_success(fetch_method.name, url)
-		else:
-			await hub.FETCH_CACHE.fetch_cache_write(fetch_method.name, url, result)
-		return result
-	except FetchError as e:
-		await hub.FETCH_CACHE.record_fetch_failure(fetch_method.name, url)
-		if hub.FETCH_POLICY != FetchPolicy.BEST_EFFORT:
-			raise FetchError(f"Unable to perform live fetch of {url} using method {fetch_method.name}.")
-		else:
+			# At this point, we aren't using a fetch policy of 'cache only.' That's done.
 			try:
-				return await hub.FETCH_CACHE.fetch_cache_read(fetch_method.name, url, max_age=max_age)
-			except FetchError:
-				raise FetchError(f"Unable to retrieve {url} using method {fetch_method.name} either live or from cache as fallback.")
+				print("GONNA TRY LIVE FETCH")
+				result = await fetch_method(fetchable)
+				if hub.FETCH_POLICY == FetchPolicy.FETCH_ONLY:
+					await hub.FETCH_CACHE.record_fetch_success(fetch_method.name, fetchable)
+				else:
+					print("FETCH_CACHE_WRITE")
+					await hub.FETCH_CACHE.fetch_cache_write(fetch_method.name, fetchable, result)
+				return result
+			except FetchError as e:
+				await hub.FETCH_CACHE.record_fetch_failure(fetch_method.name, fetchable)
+		except FetchError as e:
+			if e.retry:
+				logging.error(f"Fetch method {fetch_method.name} failed with URL {fetchable.url}; retrying...")
+				continue
+			else:
+				raise e
+
+	# If we've gotten here, we've performed all of our attempts to do live fetching.
+
+	if hub.FETCH_POLICY != FetchPolicy.BEST_EFFORT:
+		raise FetchError(f"Unable to perform live fetch of {fetchable.url} using method {fetch_method.name}.")
+	else:
+		try:
+			return await hub.FETCH_CACHE.fetch_cache_read(fetch_method.name, fetchable, max_age=max_age)
+		except FetchError:
+			raise FetchError(f"Unable to retrieve {fetchable.url} using method {fetch_method.name} either live or from cache as fallback.")
 
 
-async def get_page(hub, url, max_age=None):
+async def get_page(hub, fetchable, max_age=None):
 	method = getattr(hub.FETCHER, "get_page", None)
 	if method is None:
 		raise FetchError("Method get_page not implemented for fetcher.")
-	return await fetch_harness(hub, method, url, max_age=max_age)
+	return await fetch_harness(hub, method, fetchable, max_age=max_age)
 
 
-async def get_url_from_redirect(hub, url, max_age=None):
+async def get_url_from_redirect(hub, fetchable, max_age=None):
+	print("IN FETCH METHOD", fetchable)
 	method = getattr(hub.FETCHER, "get_url_from_redirect", None)
 	if method is None:
 		raise FetchError("Method get_url_from_redirect not implemented for fetcher.")
-	return await fetch_harness(hub, method, url, max_age=max_age)
+	return await fetch_harness(hub, method, fetchable, max_age=max_age)
+
+
+async def exists(self, artifact):
+	return self.FETCHER.exists(artifact)
+
+
+async def download(hub, artifact):
+	method = getattr(hub.FETCHER, "artifact", None)
+	if method is None:
+		raise FetchError("Method download not implemented for fetcher.")
+	return await fetch_harness(hub, method, artifact)
+
+
+async def update_digests(hub, artifact, check=True):
+	db_result = hub.FETCH_CACHE.fetch_cache_read("artifact", artifact)
+	if db_result is None:
+		raise FetchError(f"We couldn't find {artifact.url} in the fetch cache when verify digests. This shouldn't happen.")
+	# This will attempt to update artifact.hashes to contain the actual digests of the file on disk:
+	hub.FETCHER.update_digests(artifact)
+	if check:
+		# We will now check to see if the digests/size of the file on disk matches those when the file was originally downloaded by us:
+		if db_result['metadata']['sha512'] != artifact.hashes['sha512']:
+			raise FetchError(f"Digests of {artifact.final_name} do not match digest when it was originally downloaded. Current digest: {artifact.hashes['sha512']} Original digest: {db_result['metadata']['sha512']}")
+		if db_result['metadata']['blake2b'] != artifact.hashes['blake2b']:
+			raise FetchError(f"Digests of {artifact.final_name} do not match digest when it was originally downloaded. Current digest: {artifact.hashes['blake2b']} Original digest: {db_result['metadata']['blake2b']}")
+		if db_result['metadata']['size'] != artifact.hashes['size']:
+			raise FetchError(f"Filesize of {artifact.final_name} do not match filesize when it was originally downloaded. Current size: {artifact.hashes['size']} Original size: {db_result['metadata']['size']}")
 
 # vim: ts=4 sw=4 noet
