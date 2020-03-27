@@ -5,7 +5,7 @@ import pymongo
 import pymongo.errors
 from pymongo import MongoClient
 
-DB = MongoClient().funtoo_metatools.fetch_cache
+
 
 """
 
@@ -19,8 +19,13 @@ of the downloaded artifact -- its message digests and size at the time the downl
 
 """
 
+
 def __init__(hub):
-    DB.create_index([('method_name', pymongo.ASCENDING), ('url', pymongo.ASCENDING)])
+    mc = MongoClient()
+    db_name = "metatools"
+    hub.MONGO_DB = getattr(mc, db_name)
+    hub.MONGO_FC = hub.MONGO_DB.fetch_cache
+    hub.MONGO_FC.create_index([('method_name', pymongo.ASCENDING), ('url', pymongo.ASCENDING)])
 
 
 async def record_fetch_success(hub, method_name, fetchable):
@@ -31,7 +36,7 @@ async def record_fetch_success(hub, method_name, fetchable):
     else:
         url = fetchable.url
         metadata = fetchable.as_metadata()
-    DB.update_one({'method_name': method_name, 'url': url},
+    hub.MONGO_FC.update_one({'method_name': method_name, 'url': url},
                   {'$set': {'last_attempt': datetime.utcnow(), 'failures': 0, 'metadata': metadata}},
                   upsert=True)
 
@@ -44,7 +49,7 @@ async def fetch_cache_write(hub, method_name, fetchable, result):
     else:
         url = fetchable.url
         metadata = fetchable.as_metadata()
-    DB.update_one({'method_name': method_name, 'url': url},
+    hub.MONGO_FC.update_one({'method_name': method_name, 'url': url},
                   {'$set': {
                       'last_attempt': datetime.utcnow(),
                       'fetched_on': datetime.utcnow(),
@@ -61,7 +66,7 @@ async def fetch_cache_read(hub, method_name, fetchable, max_age=None):
         url = fetchable
     else:
         url = fetchable.url
-    result = DB.find_one({'method_name': method_name, 'url': url})
+    result = hub.MONGO_FC.find_one({'method_name': method_name, 'url': url})
     if result is None or 'fetched_on' not in result:
         return None
     elif max_age is not None and datetime.utcnow() - result['fetched_on'] > max_age:
@@ -76,6 +81,6 @@ async def record_fetch_failure(hub, method_name, fetchable):
         url = fetchable
     else:
         url = fetchable.url
-    DB.update_one({'method_name': method_name, 'url': fetchable},
+    hub.MONGO_FC.update_one({'method_name': method_name, 'url': fetchable},
                   {'$set': {'last_attempt': datetime.utcnow()},
                    '$inc': {'failures': 1}}, upsert=True)

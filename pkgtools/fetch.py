@@ -47,7 +47,7 @@ def set_fetch_policy(hub, policy):
 	hub.FETCH_POLICY = policy
 
 
-def set_cacher(hub, cacher):
+def set_cacher(hub, cacher, **attrs):
 	if cacher is None:
 		hub.FETCH_CACHE = None
 		return
