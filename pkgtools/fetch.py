@@ -17,7 +17,7 @@ class FetchPolicy(Enum):
 
 def __init__(hub):
 	hub.FETCHER = hub.pkgtools.fetchers.default
-	hub.FETCH_CACHE = None
+	hub.FETCH_CACHE = hub.pkgtools.cachers.noop
 	hub.FETCH_POLICY = FetchPolicy.BEST_EFFORT
 	hub.FETCH_ATTEMPTS = 3
 
