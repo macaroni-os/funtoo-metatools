@@ -74,11 +74,11 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
 	the live network call -- except in the case of FetchPolicy.BEST_EFFORT, which will 'fall back' to the cache
 	if the live fetch fails (and is thus more resilient).
 	"""
-	print(hub.FETCH_POLICY)
-	print(fetch_method, fetchable)
+	url = fetchable if type(fetchable) == str else fetchable.url
 	attempts = 0
 	while attempts < hub.FETCH_ATTEMPTS:
 		attempts += 1
+		logging.info(f"Fetching {url}, attempt {attempts}...")
 		try:
 			if hub.FETCH_POLICY in (FetchPolicy.CACHE_ONLY, FetchPolicy.LAZY):
 				try:
@@ -90,19 +90,17 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
 
 			# At this point, we aren't using a fetch policy of 'cache only.' That's done.
 			try:
-				print("GONNA TRY LIVE FETCH")
 				result = await fetch_method(fetchable)
 				if hub.FETCH_POLICY == FetchPolicy.FETCH_ONLY:
 					await hub.FETCH_CACHE.record_fetch_success(fetch_method.name, fetchable)
 				else:
-					print("FETCH_CACHE_WRITE")
 					await hub.FETCH_CACHE.fetch_cache_write(fetch_method.name, fetchable, result)
 				return result
 			except FetchError as e:
 				await hub.FETCH_CACHE.record_fetch_failure(fetch_method.name, fetchable)
 		except FetchError as e:
 			if e.retry:
-				logging.error(f"Fetch method {fetch_method.name} failed with URL {fetchable.url}; retrying...")
+				logging.error(f"Fetch method {fetch_method.name} failed with URL {url}; retrying...")
 				continue
 			else:
 				raise e
@@ -110,12 +108,13 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
 	# If we've gotten here, we've performed all of our attempts to do live fetching.
 
 	if hub.FETCH_POLICY != FetchPolicy.BEST_EFFORT:
-		raise FetchError(f"Unable to perform live fetch of {fetchable.url} using method {fetch_method.name}.")
+		raise FetchError(f"Unable to perform live fetch of {url} using method {fetch_method.name}.")
 	else:
-		try:
-			return await hub.FETCH_CACHE.fetch_cache_read(fetch_method.name, fetchable, max_age=max_age)
-		except FetchError:
-			raise FetchError(f"Unable to retrieve {fetchable.url} using method {fetch_method.name} either live or from cache as fallback.")
+		result = await hub.FETCH_CACHE.fetch_cache_read(fetch_method.name, fetchable, max_age=max_age)
+		if result is not None:
+			return result
+		else:
+			raise FetchError(f"Unable to retrieve {url} using method {fetch_method.name} either live or from cache as fallback.")
 
 
 async def get_page(hub, fetchable, max_age=None):
@@ -126,7 +125,6 @@ async def get_page(hub, fetchable, max_age=None):
 
 
 async def get_url_from_redirect(hub, fetchable, max_age=None):
-	print("IN FETCH METHOD", fetchable)
 	method = getattr(hub.FETCHER, "get_url_from_redirect", None)
 	if method is None:
 		raise FetchError("Method get_url_from_redirect not implemented for fetcher.")

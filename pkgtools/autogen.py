@@ -31,9 +31,14 @@ async def start(hub, start_path=None, out_path=None, name=None, cacher=None, fet
 
 		pkg_name = file.split("/")[-2]
 		pkg_cat = file.split("/")[-3]
-
-		await hub.my_catpkg.autogen.generate(name=pkg_name, cat=pkg_cat)
-
+		try:
+			await hub.my_catpkg.autogen.generate(name=pkg_name, cat=pkg_cat)
+		except hub.pkgtools.fetch.FetchError as fe:
+			logging.error(fe.msg)
+			continue
+		except hub.pkgtools.ebuild.BreezyError as be:
+			logging.error(repr(be))
+			continue
 		# we need to execute all our pending futures before removing the sub:
 		await hub.pkgtools.ebuild.go()
 		hub.pop.sub.remove("my_catpkg")

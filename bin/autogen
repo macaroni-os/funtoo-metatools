@@ -5,7 +5,7 @@ import asyncio
 import pop.hub
 import logging
 logging.basicConfig(format='> %(message)s', level=logging.INFO)
-logging.info("Funtoo meta-tools autogen")
+logging.info("Funtoo metatools: autogen!")
 hub = pop.hub.Hub()
 hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
 hub.pop.sub.add('pop.mods.conf')
