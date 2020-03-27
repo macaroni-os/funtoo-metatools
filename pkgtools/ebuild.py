@@ -17,11 +17,7 @@ logging.basicConfig(level=logging.INFO)
 QUE = []
 
 def __init__(hub):
-	hub.CACHE_PATH = '/var/tmp/funtoo-metatools'
 	hub.ARTIFACT_TEMP_PATH = '/var/tmp/distfiles'
-
-def set_cache_path(hub, path):
-	hub.CACHE_PATH = path
 
 def set_temp_path(hub, path):
 	hub.ARTIFACT_TEMP_PATH = path
@@ -51,6 +47,7 @@ class Fetchable:
 		return {
 			"url": self.metadata['url']
 		}
+
 
 class Artifact(Fetchable):
 
@@ -105,6 +102,7 @@ class Artifact(Fetchable):
 
 	def cleanup(self):
 		self.hub.FETCHER.cleanup(self)
+
 
 class BreezyBuild:
 
