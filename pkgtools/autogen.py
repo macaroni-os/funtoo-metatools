@@ -3,13 +3,22 @@
 import subprocess
 import os
 import logging
+import traceback
 
-async def start(hub, start_path=None, out_path=None, name=None, temp_name=None):
+
+async def start(hub, start_path=None, out_path=None, name=None, cacher=None, fetcher=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
+
 	hub.pkgtools.repository.set_context(start_path, out_path=out_path, name=name)
+
+	if fetcher:
+		hub.pkgtools.fetch.set_fetcher(fetcher)
+	if cacher:
+		hub.pkgtools.fetch.set_cacher(cacher)
+
 	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % start_path)
 	files = o.split('\n')
 	for file in files:
@@ -19,15 +28,25 @@ async def start(hub, start_path=None, out_path=None, name=None, temp_name=None):
 		subpath = os.path.dirname(file)
 		if subpath.endswith("pkgtools"):
 			continue
-		logging.info("ADDING SUB: %s" % subpath)
 		hub.pop.sub.add(static=subpath, subname="my_catpkg")
+
+		# TODO: pass repo_name as well as branch to the generate method below:
+
+		pkg_name = file.split("/")[-2]
+		pkg_cat = file.split("/")[-3]
 		try:
-			await hub.my_catpkg.autogen.generate()
-		except FetchError as e:
-			logging.error(f"Fetch error for {subpath}... continuing...")
+			await hub.my_catpkg.autogen.generate(name=pkg_name, cat=pkg_cat)
+		except hub.pkgtools.fetch.FetchError as fe:
+			logging.error(fe.msg)
 			continue
-		# we need to execute all our pending futures before removing the sub:
-		await hub.pkgtools.ebuild.go()
+		except hub.pkgtools.ebuild.BreezyError as be:
+			logging.error(be.msg)
+			continue
+		except Exception as e:
+			logging.error("Encountered problem in autogen script: \n\n" + traceback.format_exc())
+			continue
+		# we need to wait for all our pending futures before removing the sub:
+		await hub.pkgtools.ebuild.parallelize_pending_tasks()
 		hub.pop.sub.remove("my_catpkg")
 
 # vim: ts=4 sw=4 noet
