@@ -26,7 +26,6 @@ async def start(hub, start_path=None, out_path=None, name=None, cacher=None, fet
 			continue
 		hub.pop.sub.add(static=subpath, subname="my_catpkg")
 
-		# TODO: add system for checking digests
 		# TODO: pass repo_name as well as branch to the generate method below:
 
 		pkg_name = file.split("/")[-2]
@@ -37,10 +36,10 @@ async def start(hub, start_path=None, out_path=None, name=None, cacher=None, fet
 			logging.error(fe.msg)
 			continue
 		except hub.pkgtools.ebuild.BreezyError as be:
-			logging.error(repr(be))
+			logging.error(be.msg)
 			continue
-		# we need to execute all our pending futures before removing the sub:
-		await hub.pkgtools.ebuild.go()
+		# we need to wait for all our pending futures before removing the sub:
+		await hub.pkgtools.ebuild.parallelize_pending_tasks()
 		hub.pop.sub.remove("my_catpkg")
 
 # vim: ts=4 sw=4 noet

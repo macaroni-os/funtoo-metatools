@@ -3,7 +3,6 @@
 
 async def generate(hub, **pkginfo):
 	url = await hub.pkgtools.fetch.get_url_from_redirect("https://discordapp.com/aaaapi/download?platform=linux&format=deb")
-	print("URL IS", url)
 	hub.pkgtools.ebuild.BreezyBuild(hub,
 		**pkginfo,
 		url=url,

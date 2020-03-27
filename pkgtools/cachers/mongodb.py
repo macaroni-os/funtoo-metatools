@@ -44,7 +44,6 @@ async def fetch_cache_write(hub, method_name, fetchable, result):
     else:
         url = fetchable.url
         metadata = fetchable.as_metadata()
-    print("TRYING TO UPDATE CACHE")
     DB.update_one({'method_name': method_name, 'url': url},
                   {'$set': {
                       'last_attempt': datetime.utcnow(),

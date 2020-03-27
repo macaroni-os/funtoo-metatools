@@ -82,7 +82,6 @@ def get_extract_path(hub, artifact):
 
 def exists(hub, artifact):
 	final_path = _get_final_path(hub, artifact)
-	print("CHECKING TO SEE IF THIS EXISTS", final_path)
 	return os.path.exists(final_path)
 
 

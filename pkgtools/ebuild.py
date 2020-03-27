@@ -26,13 +26,15 @@ def set_cache_path(hub, path):
 def set_temp_path(hub, path):
 	hub.ARTIFACT_TEMP_PATH = path
 
-async def go(hub):
+async def parallelize_pending_tasks(hub):
 	for future in asyncio.as_completed(QUE):
 		builder = await future
 
 
 class BreezyError(Exception):
-	pass
+
+	def __init__(self, msg):
+		self.msg = msg
 
 
 class Fetchable:
@@ -92,7 +94,6 @@ class Artifact(Fetchable):
 	@property
 	def exists(self):
 		result = self.hub.FETCHER.exists(self)
-		print("EXISTS %s" % result)
 		return self.hub.FETCHER.exists(self)
 
 	def extract(self):
@@ -247,8 +248,7 @@ class BreezyBuild:
 			self.create_ebuild()
 			self.generate_manifest()
 		except BreezyError as e:
-			print(e)
-			sys.exit(1)
+			logging.error(e.msg)
 		return self
 
 # vim: ts=4 sw=4 noet

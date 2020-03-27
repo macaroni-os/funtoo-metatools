@@ -33,6 +33,7 @@ class FetchError(Exception):
 		self.msg = msg
 		self.retry = retry
 
+
 def set_fetcher(hub, fetcher):
 	new_fetch = getattr(hub.pkgtools.fetchers, fetcher, None)
 	if new_fetch is None:
