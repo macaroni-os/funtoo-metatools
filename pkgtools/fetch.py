@@ -97,7 +97,7 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
 					await hub.FETCH_CACHE.fetch_cache_write(fetch_method.name, fetchable, result)
 				return result
 			except FetchError as e:
-				await hub.FETCH_CACHE.record_fetch_failure(fetch_method.name, fetchable)
+				logging.error(f"Fetch failure: {e.msg}")
 		except FetchError as e:
 			if e.retry:
 				logging.error(f"Fetch method {fetch_method.name} failed with URL {url}; retrying...")
@@ -114,6 +114,7 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
 		if result is not None:
 			return result
 		else:
+			await hub.FETCH_CACHE.record_fetch_failure(fetch_method.name, fetchable)
 			raise FetchError(f"Unable to retrieve {url} using method {fetch_method.name} either live or from cache as fallback.")
 
 

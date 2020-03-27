@@ -63,7 +63,7 @@ async def fetch_cache_read(hub, method_name, fetchable, max_age=None):
     else:
         url = fetchable.url
     result = DB.find_one({'method_name': method_name, 'url': url})
-    if 'fetched_on' not in result:
+    if result is None or 'fetched_on' not in result:
         return None
     elif max_age is not None and datetime.utcnow() - result['fetched_on'] > max_age:
         return None
@@ -79,4 +79,4 @@ async def record_fetch_failure(hub, method_name, fetchable):
         url = fetchable.url
     DB.update_one({'method_name': method_name, 'url': fetchable},
                   {'$set': {'last_attempt': datetime.utcnow()},
-                   '$inc': {'failures': 1}})
+                   '$inc': {'failures': 1}}, upsert=True)
