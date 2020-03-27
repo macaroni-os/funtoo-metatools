@@ -12,8 +12,11 @@ async def start(hub, start_path=None, out_path=None, name=None, cacher=None, fet
 	"""
 
 	hub.pkgtools.repository.set_context(start_path, out_path=out_path, name=name)
-	hub.pkgtools.fetch.set_fetcher(fetcher)
-	hub.pkgtools.fetch.set_cacher(cacher)
+
+	if fetcher:
+		hub.pkgtools.fetch.set_fetcher(fetcher)
+	if cacher:
+		hub.pkgtools.fetch.set_cacher(cacher)
 
 	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % start_path)
 	files = o.split('\n')
