@@ -3,6 +3,7 @@
 import subprocess
 import os
 import logging
+import traceback
 
 
 async def start(hub, start_path=None, out_path=None, name=None, cacher=None, fetcher=None):
@@ -40,6 +41,9 @@ async def start(hub, start_path=None, out_path=None, name=None, cacher=None, fet
 			continue
 		except hub.pkgtools.ebuild.BreezyError as be:
 			logging.error(be.msg)
+			continue
+		except Exception as e:
+			logging.error("Encountered problem in autogen script: \n\n" + traceback.format_exc())
 			continue
 		# we need to wait for all our pending futures before removing the sub:
 		await hub.pkgtools.ebuild.parallelize_pending_tasks()
