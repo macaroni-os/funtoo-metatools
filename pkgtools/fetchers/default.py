@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import socket
 from subprocess import getstatusoutput
 
 from tornado import httpclient
@@ -112,6 +113,8 @@ async def download(hub, artifact):
 		foo = await http_client.fetch(req)
 	except httpclient.HTTPError as e:
 		raise hub.pkgtools.fetch.FetchError("Fetch Error")
+	except socket.gaierror as ge:
+		raise hub.pkgtools.fetch.FetchError("Name resolution error")
 	http_client.close()
 	fd.close()
 	os.link(temp_path, final_path)
