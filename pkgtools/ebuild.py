@@ -146,13 +146,23 @@ class BreezyBuild:
 		This method ensures that Artifacts are instantiated (if dictionaries were passed in instead of live
 		Artifact objects) -- and that their setup() method is called, which may actually do fetching, if the
 		local archive is not available for generating digests.
+
+		Note that this now parallelizes all downloads.
 		"""
+
+		futures = []
+
+		async def lil_coroutine(a):
+			await a.setup()
+			return a
+
 		for artifact in self.artifact_dicts:
 			if type(artifact) != Artifact:
 				artifact = Artifact(self.hub, **artifact)
-			await artifact.setup()
-			self.artifacts.append(artifact)
-		self.template_args["artifacts"] = self.artifact_dicts
+			futures.append(lil_coroutine(artifact))
+
+		self.artifacts = await asyncio.gather(*futures)
+		self.template_args["artifacts"] = self.artifacts
 
 	def push(self):
 		"""
@@ -210,6 +220,8 @@ class BreezyBuild:
 	def template_path(self):
 		tpath = os.path.join(self.source_tree.root, self.cat, self.name, "templates")
 		return tpath
+
+	# TODO: we should really generate one Manifest per catpkg -- this does one per ebuild:
 
 	def generate_manifest(self):
 		if not len(self.artifacts):
