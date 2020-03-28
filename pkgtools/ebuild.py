@@ -82,7 +82,7 @@ class Artifact(Fetchable):
 	@property
 	def src_uri(self):
 		url = self.metadata["url"]
-		fn = self.metadata["final_name"]
+		fn = self.final_name
 		if fn is None:
 			return url
 		else:
