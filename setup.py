@@ -20,4 +20,7 @@ setuptools.setup(
         "Operating System :: POSIX :: Linux",
     ],
     python_requires='>=3.7',
+    install_requires=[
+        'pop>=12'
+    ]
 )
