@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import os
 
 CONFIG = {
@@ -35,9 +33,13 @@ CONFIG = {
     }
 }
 
-def __init__(hub):
-    hub.pop.sub.add('pop.mods.conf')
-    hub.OPTS = hub.conf.reader.read(CONFIG)
-    hub.pop.sub.load_subdirs(hub.pkgtools, recurse=True)
+CLI_CONFIG = {
+    "start_path": {},
+    "out_path": {},
+    "temp_path": {},
+    "fetcher": {},
+    "cacher": {}
+}
 
+DYNE = {'pkgtools': ['pkgtools']}
 

@@ -1,1 +1,0 @@
-DYNE = { 'pkgtools' : [ 'pkgtools' ] }

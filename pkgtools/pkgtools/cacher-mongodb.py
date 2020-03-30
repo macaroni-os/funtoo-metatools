@@ -21,7 +21,8 @@ of the downloaded artifact -- its message digests and size at the time the downl
 __virtualname__ = "FETCH_CACHE"
 
 def __virtual__(hub):
-    return hub.OPTS['cacher'] == "mongodb"
+    return True
+    return hub.OPT.pkgtools['cacher'] == "mongodb"
 
 def __init__(hub):
     mc = MongoClient()

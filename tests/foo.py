@@ -12,12 +12,12 @@ hub = pop.hub.Hub()
 hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
 
 def autogen_setup():
-	hub.pkgtools.ebuild.set_temp_path(hub.OPTS["temp_path"])
-	asyncio.run(hub.pkgtools.autogen.start(hub.OPTS['start_path'],
-		out_path=hub.OPTS['out_path'],
-		name=hub.OPTS['name'],
-		fetcher=hub.OPTS['fetcher'],
-		cacher=hub.OPTS['cacher']))
+	hub.pkgtools.ebuild.set_temp_path(hub.OPT.pkgtools["temp_path"])
+	asyncio.run(hub.pkgtools.autogen.start(hub.OPT.pkgtools['start_path'],
+		out_path=hub.OPT.pkgtools['out_path'],
+		name=hub.OPT.pkgtools['name'],
+		fetcher=hub.OPT.pkgtools['fetcher'],
+		cacher=hub.OPT.pkgtools['cacher']))
 
 async def autogen(root, src_offset=None):
 	if src_offset is None:

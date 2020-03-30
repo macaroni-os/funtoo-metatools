@@ -13,10 +13,10 @@ async def start(hub, start_path=None, out_path=None):
 	"""
 
 	hub.pkgtools.repository.set_context(
-		start_path if start_path is not None else hub.OPTS['start_path'],
-		out_path=out_path if out_path is not None else hub.OPTS['out_path'], name=hub.OPTS['name'])
+		start_path if start_path is not None else hub.OPT.pkgtools.start_path,
+		out_path=out_path if out_path is not None else hub.OPT.pkgtools.out_path, name=hub.OPT.pkgtools.name)
 
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % hub.OPTS['start_path'])
+	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % hub.OPT.pkgtools['start_path'])
 	files = o.split('\n')
 	for file in files:
 		file = file.strip()

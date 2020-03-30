@@ -5,11 +5,14 @@ import pop.hub
 import logging
 
 hub_logger = logging.getLogger("pop.hub")
-hub_logger.setLevel(logging.WARNING)
+hub_logger.setLevel(logging.DEBUG)
 hub = pop.hub.Hub()
+
 hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
+hub.pkgtools.cli.parse_args()
 
 if __name__ == "__main__":
+
 	asyncio.run(hub.pkgtools.autogen.start())
 
 # vim: ts=4 sw=4 noet
