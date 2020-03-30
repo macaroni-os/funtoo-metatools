@@ -17,10 +17,7 @@ logging.basicConfig(level=logging.INFO)
 QUE = []
 
 def __init__(hub):
-	hub.ARTIFACT_TEMP_PATH = '/var/tmp/distfiles'
-
-def set_temp_path(hub, path):
-	hub.ARTIFACT_TEMP_PATH = path
+	hub.ARTIFACT_TEMP_PATH = os.path.join(hub.OPT.pkgtools.temp_path, 'distfiles')
 
 async def parallelize_pending_tasks(hub):
 	for future in asyncio.as_completed(QUE):
