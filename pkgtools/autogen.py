@@ -6,13 +6,15 @@ import logging
 import traceback
 
 
-async def start(hub):
+async def start(hub, start_path=None, out_path=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
 
-	hub.pkgtools.repository.set_context(hub.OPTS['start_path'], out_path=hub.OPTS['out_path'], name=hub.OPTS['name'])
+	hub.pkgtools.repository.set_context(
+		start_path if start_path is not None else hub.OPTS['start_path'],
+		out_path=out_path if out_path is not None else hub.OPTS['out_path'], name=hub.OPTS['name'])
 
 	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % hub.OPTS['start_path'])
 	files = o.split('\n')
