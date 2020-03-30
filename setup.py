@@ -4,8 +4,8 @@ with open("README.rst", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="funtoo-metatools", # Replace with your own username
-    version="0.1",
+    name="funtoo-metatools",
+    version="0.2",
     author="Daniel Robbins",
     author_email="drobbins@funtoo.org",
     description="Funtoo framework for auto-creation of ebuilds.",

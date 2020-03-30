@@ -16,8 +16,6 @@ class FetchPolicy(Enum):
 
 
 def __init__(hub):
-	hub.FETCHER = hub.pkgtools.fetchers.default
-	hub.FETCH_CACHE = hub.pkgtools.cachers.noop
 	hub.FETCH_POLICY = FetchPolicy.BEST_EFFORT
 	hub.FETCH_ATTEMPTS = 3
 
@@ -35,29 +33,8 @@ class FetchError(Exception):
 		self.retry = retry
 
 
-def set_fetcher(hub, fetcher):
-	new_fetch = getattr(hub.pkgtools.fetchers, fetcher, None)
-	if new_fetch is None:
-		logging.error(f"Could not find specified fetcher: {fetcher}")
-		sys.exit(1)
-	else:
-		hub.FETCHER = new_fetch
-
-
 def set_fetch_policy(hub, policy):
 	hub.FETCH_POLICY = policy
-
-
-def set_cacher(hub, cacher, **attrs):
-	if cacher is None:
-		hub.FETCH_CACHE = None
-		return
-	new_fetch = getattr(hub.pkgtools.cachers, cacher, None)
-	if new_fetch is None:
-		logging.error(f"Could not find specified cacher: {cacher}")
-		sys.exit(1)
-	else:
-		hub.FETCH_CACHE = new_fetch
 
 
 async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
@@ -84,7 +61,7 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
 		try:
 			if hub.FETCH_POLICY in (FetchPolicy.CACHE_ONLY, FetchPolicy.LAZY):
 				try:
-					return await hub.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
+					return await hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
 				except FetchError:
 					pass
 			if hub.FETCH_POLICY == FetchPolicy.CACHE_ONLY:
@@ -94,9 +71,9 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
 			try:
 				result = await fetch_method(fetchable)
 				if hub.FETCH_POLICY == FetchPolicy.FETCH_ONLY:
-					await hub.FETCH_CACHE.record_fetch_success(fetch_method.__name__, fetchable)
+					await hub.pkgtools.FETCH_CACHE.record_fetch_success(fetch_method.__name__, fetchable)
 				else:
-					await hub.FETCH_CACHE.fetch_cache_write(fetch_method.__name__, fetchable, result)
+					await hub.pkgtools.FETCH_CACHE.fetch_cache_write(fetch_method.__name__, fetchable, result)
 				return result
 			except FetchError as e:
 				logging.error(f"Fetch failure: {e.msg}")
@@ -112,45 +89,45 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
 	if hub.FETCH_POLICY != FetchPolicy.BEST_EFFORT:
 		raise FetchError(f"Unable to perform live fetch of {url} using method {fetch_method.__name__}.")
 	else:
-		result = await hub.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
+		result = await hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
 		if result is not None:
 			return result
 		else:
-			await hub.FETCH_CACHE.record_fetch_failure(fetch_method.__name__, fetchable)
+			await hub.pkgtools.FETCH_CACHE.record_fetch_failure(fetch_method.__name__, fetchable)
 			raise FetchError(f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.")
 
 
 async def get_page(hub, fetchable, max_age=None):
-	method = getattr(hub.FETCHER, "get_page", None)
+	method = getattr(hub.pkgtools.FETCHER, "get_page", None)
 	if method is None:
 		raise FetchError("Method get_page not implemented for fetcher.")
 	return await fetch_harness(hub, method, fetchable, max_age=max_age)
 
 
 async def get_url_from_redirect(hub, fetchable, max_age=None):
-	method = getattr(hub.FETCHER, "get_url_from_redirect", None)
+	method = getattr(hub.pkgtools.FETCHER, "get_url_from_redirect", None)
 	if method is None:
 		raise FetchError("Method get_url_from_redirect not implemented for fetcher.")
 	return await fetch_harness(hub, method, fetchable, max_age=max_age)
 
 
-async def exists(self, artifact):
-	return self.FETCHER.exists(artifact)
+async def exists(hub, artifact):
+	return hub.pkgtools.FETCHER.exists(artifact)
 
 
 async def download(hub, artifact):
-	method = getattr(hub.FETCHER, "artifact", None)
+	method = getattr(hub.pkgtools.FETCHER, "artifact", None)
 	if method is None:
 		raise FetchError("Method download not implemented for fetcher.")
 	return await fetch_harness(hub, method, artifact)
 
 
 async def update_digests(hub, artifact, check=True):
-	db_result = hub.FETCH_CACHE.fetch_cache_read("artifact", artifact)
+	db_result = hub.pkgtools.FETCH_CACHE.fetch_cache_read("artifact", artifact)
 	if db_result is None:
 		raise FetchError(f"We couldn't find {artifact.url} in the fetch cache when verify digests. This shouldn't happen.")
 	# This will attempt to update artifact.hashes to contain the actual digests of the file on disk:
-	hub.FETCHER.update_digests(artifact)
+	hub.pkgtools.FETCHER.update_digests(artifact)
 	if check:
 		# We will now check to see if the digests/size of the file on disk matches those when the file was originally downloaded by us:
 		if db_result['metadata']['sha512'] != artifact.hashes['sha512']:

@@ -1,56 +1,15 @@
 #!/usr/bin/env python3
 
-import os
 import asyncio
 import pop.hub
 import logging
-logging.basicConfig(format='> %(message)s', level=logging.INFO)
-logging.info("Funtoo metatools: autogen!")
+
+hub_logger = logging.getLogger("pop.hub")
+hub_logger.setLevel(logging.WARNING)
 hub = pop.hub.Hub()
 hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
-hub.pop.sub.add('pop.mods.conf')
-#hub.pop.sub.load_subdirs(hub.pkgtools.fetchers, recurse=True)
-
-CONFIG = {
-	"start_path": {
-		'default': os.getcwd(),
-		'os': 'AUTOGEN_START_PATH',
-		'help': 'Where to start processing'
-	},
-	"out_path": {
-		'default': None,
-		'os': 'AUTOGEN_OUTPUT_PATH',
-		'help': 'Destination repository path'
-	},
-	"name": {
-		'default': None,
-		'os': 'AUTOGEN_REPONAME',
-		'help': 'Repository name (to override)'
-	},
-	"temp_path": {
-		'default': '/var/tmp/distfiles',
-		'os': 'AUTOGEN_TEMP',
-		'help': 'Temporary path for downloading and extracting.'
-	},
-	"fetcher": {
-		'default': 'default',
-		'os' : 'AUTOGEN_FETCHER',
-		'help': 'What fetching plugin to use.'
-	},
-	"cacher": {
-		'default': 'noop',
-		'os': 'AUTOGEN_CACHER',
-		'help': 'What caching plugin to use.'
-	}
-}
 
 if __name__ == "__main__":
-	hub.OPTS = hub.conf.reader.read(CONFIG)
-	hub.pkgtools.ebuild.set_temp_path(hub.OPTS["temp_path"])
-	asyncio.run(hub.pkgtools.autogen.start(hub.OPTS['start_path'],
-		out_path=hub.OPTS['out_path'],
-		name=hub.OPTS['name'],
-		fetcher=hub.OPTS['fetcher'],
-		cacher=hub.OPTS['cacher']))
+	asyncio.run(hub.pkgtools.autogen.start())
 
 # vim: ts=4 sw=4 noet

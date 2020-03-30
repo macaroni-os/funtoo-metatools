@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
 
+__virtualname__ = "FETCH_CACHE"
+
+
+def __virtual__(hub):
+    return hub.OPTS['cacher'] == "noop"
+
+
 def __init__(hub):
     pass
 

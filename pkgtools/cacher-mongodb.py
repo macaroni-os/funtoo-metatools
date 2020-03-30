@@ -6,7 +6,6 @@ import pymongo.errors
 from pymongo import MongoClient
 
 
-
 """
 
 We use MongoDB to cache HTTP requests for standard REST and other live data. We also use it to record stats for
@@ -19,6 +18,10 @@ of the downloaded artifact -- its message digests and size at the time the downl
 
 """
 
+__virtualname__ = "FETCH_CACHE"
+
+def __virtual__(hub):
+    return hub.OPTS['cacher'] == "mongodb"
 
 def __init__(hub):
     mc = MongoClient()

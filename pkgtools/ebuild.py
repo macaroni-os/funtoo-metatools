@@ -58,9 +58,9 @@ class Artifact(Fetchable):
 
 	async def setup(self):
 		if self.exists:
-			self.hashes = await self.hub.FETCHER.update_digests(self)
+			self.hashes = await self.hub.pkgtools.FETCHER.update_digests(self)
 		else:
-			self.hashes = await self.hub.FETCHER.download(self)
+			self.hashes = await self.hub.pkgtools.FETCHER.download(self)
 
 	async def fetch(self):
 		await self.setup()
@@ -90,18 +90,17 @@ class Artifact(Fetchable):
 
 	@property
 	def exists(self):
-		result = self.hub.FETCHER.exists(self)
-		return self.hub.FETCHER.exists(self)
+		return self.hub.pkgtools.FETCHER.exists(self)
 
 	def extract(self):
-		return self.hub.FETCHER.extract(self)
+		return self.hub.pkgtools.FETCHER.extract(self)
 
 	@property
 	def extract_path(self):
-		return self.hub.FETCHER.get_extract_path(self)
+		return self.hub.pkgtools.FETCHER.get_extract_path(self)
 
 	def cleanup(self):
-		self.hub.FETCHER.cleanup(self)
+		self.hub.pkgtools.FETCHER.cleanup(self)
 
 
 class BreezyBuild:
