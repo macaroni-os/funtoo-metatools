@@ -17,7 +17,7 @@ CONFIG = {
         'help': 'Repository name (to override)'
     },
     "temp_path": {
-        'default': '/var/tmp/distfiles',
+        'default': '/var/tmp/autogen',
         'os': 'AUTOGEN_TEMP',
         'help': 'Temporary path for downloading and extracting.'
     },

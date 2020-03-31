@@ -24,6 +24,7 @@ setuptools.setup(
         'pop>=12',
         'Jinja2',
         'aiohttp',
+        'aiodns',
         'tornado>=5'
     ]
 )
