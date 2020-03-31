@@ -8,9 +8,14 @@ import logging
 logging.basicConfig(level=logging.INFO)
 
 QUE = []
+HUB = None
+
 
 def __init__(hub):
+	global HUB
+	HUB = hub
 	hub.ARTIFACT_TEMP_PATH = os.path.join(hub.OPT.pkgtools.temp_path, 'distfiles')
+
 
 async def parallelize_pending_tasks(hub):
 	for future in asyncio.as_completed(QUE):
@@ -25,8 +30,9 @@ class BreezyError(Exception):
 
 class Fetchable:
 
-	def __init__(self, hub, **kwargs):
-		self.hub = hub
+	def __init__(self, **kwargs):
+		global HUB
+		self.hub = HUB
 		self.metadata = kwargs
 
 	@property
@@ -41,8 +47,8 @@ class Fetchable:
 
 class Artifact(Fetchable):
 
-	def __init__(self, hub, **kwargs):
-		super().__init__(hub, **kwargs)
+	def __init__(self, **kwargs):
+		super().__init__(**kwargs)
 		self.hashes = {}
 		self._size = 0
 
@@ -105,15 +111,15 @@ class BreezyBuild:
 	template_args = None
 
 	def __init__(self,
-		hub,
 		artifacts: list = None,
 		template: str = None,
 		template_text: str = None,
 		**kwargs
 	):
-		self.hub = hub
-		self.source_tree = hub.CONTEXT
-		self.output_tree = hub.OUTPUT_CONTEXT
+		global HUB
+		self.hub = HUB
+		self.source_tree = self.hub.CONTEXT
+		self.output_tree = self.hub.OUTPUT_CONTEXT
 		self._pkgdir = None
 		self.template_args = kwargs
 		for kwarg in ['cat', 'name', 'version', 'revision']:
@@ -147,7 +153,7 @@ class BreezyBuild:
 
 		for artifact in self.artifact_dicts:
 			if type(artifact) != Artifact:
-				artifact = Artifact(self.hub, **artifact)
+				artifact = Artifact(**artifact)
 			futures.append(lil_coroutine(artifact))
 
 		self.artifacts = await asyncio.gather(*futures)
