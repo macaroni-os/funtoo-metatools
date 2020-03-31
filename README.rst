@@ -23,13 +23,16 @@ To test out Funtoo Meta-Tools, perform the following steps::
 
   $ emerge pip
   $ pip3 install --user pop
-  $ emerge www-servers/tornado
+  $ emerge www-servers/tornado aiohttp
   $ emerge jinja
 
-Now, set PYTHONPATH to point to the parent directory of the tools. Assuming that
+Now, set PYTHONPATH to point to the directory of the tools. Assuming that
 ``funtoo-metatools`` is in ``~development/``, perform the following::
 
-  $ export PYTHONPATH=~/development
+  $ export PYTHONPATH=~/development/funtoo-metatools
+
+It is also highly recommended to add ``~/development/funtoo-metatools/bin`` to your
+path so that ``autogen`` is found.
 
 Examples
 ********
@@ -55,7 +58,7 @@ Performing Auto-Generation
 To actually use these tools to auto-generate ebuilds, you can simply change directories
 into the ``example-overlay`` directory and run the ``autogen`` command::
 
-  $ ../bin/autogen
+  $ autogen
 
 When ``autogen`` runs, it will attempt to auto-detect the root of the overlay you are
 currently in (a lot like how git will attempt to determine what git repo it is in.)

@@ -1,14 +1,7 @@
 #!/usr/bin/env python3
 
 import os
-import sys
-import hashlib
 import asyncio
-from subprocess import getstatusoutput
-
-from tornado import httpclient
-from tornado import simple_httpclient
-from tornado.httpclient import HTTPRequest
 import jinja2
 import logging
 

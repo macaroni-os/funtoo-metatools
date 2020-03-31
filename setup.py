@@ -21,6 +21,9 @@ setuptools.setup(
     ],
     python_requires='>=3.7',
     install_requires=[
-        'pop>=12'
+        'pop>=12',
+        'Jinja2',
+        'aiohttp',
+        'tornado>=5'
     ]
 )
