@@ -16,5 +16,7 @@ if __name__ == "__main__":
 # TODO: generate Manifest once per catpkg, allowing support for multiple ebuilds per catpkg.
 # TODO: add after-action report (listing any failures.)
 # TODO: add mass-autogen YAML support.
+# TODO: add 'facts' database concept to allow more resiliency on failures (fall back to cached facts from last
+#       successful run)
 
 # vim: ts=4 sw=4 noet
