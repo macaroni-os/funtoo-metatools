@@ -24,8 +24,10 @@ of the downloaded artifact -- its message digests and size at the time the downl
 
 __virtualname__ = "FETCH_CACHE"
 
+
 def __virtual__(hub):
     return hub.OPT.pkgtools['cacher'] == "mongodb"
+
 
 def __init__(hub):
     mc = MongoClient()
@@ -36,7 +38,7 @@ def __init__(hub):
     hub.MONGO_FC.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {'$exists': True}})
 
 
-async def fetch_cache_write(hub, method_name, fetchable, result):
+async def fetch_cache_write(hub, method_name, fetchable, body):
     """
     This method is called when we have successfully fetched something. In the case of a network resource such as
     a Web page, we will record the result of our fetching in the 'result' field so it is cached for later. In the
@@ -56,7 +58,7 @@ async def fetch_cache_write(hub, method_name, fetchable, result):
                       'last_attempt': now,
                       'fetched_on': now,
                       'metadata': metadata,
-                      'result': result}
+                      'body': body}
                   },
                   upsert=True)
 
@@ -80,13 +82,13 @@ async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_in
         return None
     elif refresh_interval is not None:
         if datetime.utcnow() - result['fetched_on'] <= refresh_interval:
-            return result
+            return result['body']  if 'body' in result else None
         else:
             return None
     elif max_age is not None and datetime.utcnow() - result['fetched_on'] > max_age:
         return None
     else:
-        return result
+        return result['body'] if 'body' in result else None
 
 
 async def record_fetch_failure(hub, method_name, fetchable, failure_reason):

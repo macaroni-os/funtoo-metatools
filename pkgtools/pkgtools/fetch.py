@@ -49,16 +49,18 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 	fail_reason = None
 	while attempts < hub.FETCH_ATTEMPTS:
 		attempts += 1
-		logging.info(f"Fetching {url}, attempt {attempts}...")
+
 		try:
 			if refresh_interval is not None:
 				# Let's see if we should use an 'older' resource that we don't want to refresh as often.
 
 				# This call will return our cached resource if it's available and refresh_interval hasn't yet expired, i.e.
 				# it is not yet 'stale'.
-				result = hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, refresh_interval=refresh_interval)
+				result = await hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, refresh_interval=refresh_interval)
 				if result is not None:
+					logging.info(f"Retrieved cached result for {url}")
 					return result
+			logging.info(f"Fetching {url}, attempt {attempts}...")
 			result = await fetch_method(fetchable)
 			await hub.pkgtools.FETCH_CACHE.fetch_cache_write(fetch_method.__name__, fetchable, result)
 			return result
