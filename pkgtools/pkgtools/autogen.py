@@ -32,7 +32,7 @@ async def start(hub, start_path=None, out_path=None):
 		pkg_name = file.split("/")[-2]
 		pkg_cat = file.split("/")[-3]
 		try:
-			await hub.my_catpkg.autogen.generate(name=pkg_name, cat=pkg_cat)
+			await hub.my_catpkg.autogen.generate(name=pkg_name, cat=pkg_cat, path=subpath)
 		except hub.pkgtools.fetch.FetchError as fe:
 			logging.error(fe.msg)
 			continue

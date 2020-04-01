@@ -103,6 +103,7 @@ class BreezyBuild:
 
 	cat = None
 	name = None
+	path = None
 	template = None
 	version = None
 	revision = 0
@@ -114,6 +115,7 @@ class BreezyBuild:
 		artifacts: list = None,
 		template: str = None,
 		template_text: str = None,
+		template_path: str = None,
 		**kwargs
 	):
 		global HUB
@@ -122,11 +124,12 @@ class BreezyBuild:
 		self.output_tree = self.hub.OUTPUT_CONTEXT
 		self._pkgdir = None
 		self.template_args = kwargs
-		for kwarg in ['cat', 'name', 'version', 'revision']:
+		for kwarg in ['cat', 'name', 'version', 'revision', 'path']:
 			if kwarg in kwargs:
 				setattr(self, kwarg, kwargs[kwarg])
 		self.template = template
 		self.template_text = template_text
+		self._template_path = template_path
 		if self.template_text is None and self.template is None:
 			self.template = self.name + ".tmpl"
 
@@ -213,6 +216,8 @@ class BreezyBuild:
 
 	@property
 	def template_path(self):
+		if self._template_path:
+			return self._template_path
 		tpath = os.path.join(self.source_tree.root, self.cat, self.name, "templates")
 		return tpath
 
