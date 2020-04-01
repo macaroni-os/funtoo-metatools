@@ -33,22 +33,16 @@ def __init__(hub):
     hub.MONGO_DB = getattr(mc, db_name)
     hub.MONGO_FC = hub.MONGO_DB.fetch_cache
     hub.MONGO_FC.create_index([('method_name', pymongo.ASCENDING), ('url', pymongo.ASCENDING)])
-
-
-async def record_fetch_success(hub, method_name, fetchable):
-    # Fetchable can be a simple string (URL) or an Artifact. They are a bit different:
-    if type(fetchable) == str:
-        url = fetchable
-        metadata = None
-    else:
-        url = fetchable.url
-        metadata = fetchable.as_metadata()
-    hub.MONGO_FC.update_one({'method_name': method_name, 'url': url},
-                  {'$set': {'last_attempt': datetime.utcnow(), 'failures': 0, 'metadata': metadata}},
-                  upsert=True)
+    hub.MONGO_FC.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {'$exists': True}})
 
 
 async def fetch_cache_write(hub, method_name, fetchable, result):
+    """
+    This method is called when we have successfully fetched something. In the case of a network resource such as
+    a Web page, we will record the result of our fetching in the 'result' field so it is cached for later. In the
+    case that we're recording that we successfully downloaded an Artifact (tarball), we don't store the tarball
+    in MongoDB but we do store its metadata (hashes and filesize.)
+    """
     # Fetchable can be a simple string (URL) or an Artifact. They are a bit different:
     if type(fetchable) == str:
         url = fetchable
@@ -56,11 +50,11 @@ async def fetch_cache_write(hub, method_name, fetchable, result):
     else:
         url = fetchable.url
         metadata = fetchable.as_metadata()
+    now = datetime.utcnow()
     hub.MONGO_FC.update_one({'method_name': method_name, 'url': url},
                   {'$set': {
-                      'last_attempt': datetime.utcnow(),
-                      'fetched_on': datetime.utcnow(),
-                      'failures': 0,
+                      'last_attempt': now,
+                      'fetched_on': now,
                       'metadata': metadata,
                       'result': result}
                   },
@@ -68,6 +62,14 @@ async def fetch_cache_write(hub, method_name, fetchable, result):
 
 
 async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_interval=None):
+    """
+    Attempt to see if the network resource or Artifact is in our fetch cache. We will return the entire MongoDB
+    document. In the case of a network resource, this includes the cached value in the 'result' field. In the
+    case of an Artifact, the 'metadata' field will include its hashes and filesize.
+
+    ``max_age`` and ``refresh_interval`` parameters are used to set criteria for what is acceptable for the
+    caller. If criteria don't match, None is returned instead of the MongoDB document.
+    """
     # Fetchable can be a simple string (URL) or an Artifact. They are a bit different:
     if type(fetchable) == str:
         url = fetchable
@@ -87,12 +89,19 @@ async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_in
         return result
 
 
-async def record_fetch_failure(hub, method_name, fetchable):
+async def record_fetch_failure(hub, method_name, fetchable, failure_reason):
+    """
+    It is important to document when fetches fail, and that is what this method is for.
+    """
     # Fetchable can be a simple string (URL) or an Artifact. They are a bit different:
     if type(fetchable) == str:
         url = fetchable
     else:
         url = fetchable.url
-    hub.MONGO_FC.update_one({'method_name': method_name, 'url': fetchable},
-                  {'$set': {'last_attempt': datetime.utcnow()},
-                   '$inc': {'failures': 1}}, upsert=True)
+    now = datetime.utcnow()
+    hub.MONGO_FC.update_one({'method_name': method_name, 'url': url},
+                  {'$set': {'last_attempt': now, 'last_failure_on': now},
+                   '$push': {'failures': {
+                       'attempted_on': now,
+                       'failure_reason': failure_reason
+                   }}}, upsert=True)

@@ -11,10 +11,6 @@ def __init__(hub):
     pass
 
 
-async def record_fetch_success(hub, method_name, url):
-    pass
-
-
 async def fetch_cache_write(hub, method_name, url, result):
     pass
 

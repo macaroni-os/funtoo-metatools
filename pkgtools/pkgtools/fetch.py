@@ -46,6 +46,7 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 
 	url = fetchable if type(fetchable) == str else fetchable.url
 	attempts = 0
+	fail_reason = None
 	while attempts < hub.FETCH_ATTEMPTS:
 		attempts += 1
 		logging.info(f"Fetching {url}, attempt {attempts}...")
@@ -63,6 +64,7 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 			return result
 		except FetchError as e:
 			if e.retry:
+				fail_reason = e.msg
 				logging.error(f"Fetch method {fetch_method.__name__} failed with URL {url}; retrying...")
 				continue
 			else:
@@ -74,7 +76,7 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 	if result is not None:
 		return result
 	else:
-		await hub.pkgtools.FETCH_CACHE.record_fetch_failure(fetch_method.__name__, fetchable)
+		await hub.pkgtools.FETCH_CACHE.record_fetch_failure(fetch_method.__name__, fetchable, fail_reason=fail_reason)
 		raise FetchError(f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.")
 
 
