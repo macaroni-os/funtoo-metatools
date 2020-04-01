@@ -19,7 +19,7 @@ async def fetch_cache_write(hub, method_name, url, result):
     pass
 
 
-async def fetch_cache_read(hub, method_name, url, max_age=None):
+async def fetch_cache_read(hub, method_name, url, max_age=None, refresh_interval=None):
     pass
 
 

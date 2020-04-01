@@ -5,18 +5,7 @@ import sys
 from enum import Enum
 
 
-class FetchPolicy(Enum):
-	CACHE_ONLY = "cache"		# ONLY attempt to use the fetch cache to retrieve results. Don't do any network.
-	FETCH_ONLY = "fetch"		# ONLY do live network requests, and DO NOT use the fetch cache.
-	BEST_EFFORT = "best"		# Attempt to update cache with live fetch, fall back to cache on failure.
-	LAZY = "lazy"				# Use cached data if available and not stale, and only do live fetch if cached data is not available or stale.
-
-# TODO: in LAZY mode, max_age should cause live refreshing of data if it is stale.
-# TODO: in BEST_EFFORT mode, do we want max_age to be respected so we don't keep refetching?
-
-
 def __init__(hub):
-	hub.FETCH_POLICY = FetchPolicy.BEST_EFFORT
 	hub.FETCH_ATTEMPTS = 3
 
 
@@ -33,11 +22,7 @@ class FetchError(Exception):
 		self.retry = retry
 
 
-def set_fetch_policy(hub, policy):
-	hub.FETCH_POLICY = policy
-
-
-async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
+async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_interval=None):
 
 	"""
 	This method is used to execute any fetch-related method, and will handle all the logic of reading from and
@@ -47,36 +32,36 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
 	if successful, or raise FetchError on failure.
 
 	The parameter ``url`` is of course the URL to fetch, and ``max_age`` is a timedelta which is passed to the
-	``cache_read()`` method to specify a maximum age of the cached resource.
+	``cache_read()`` method to specify a maximum age of the cached resource, used when using a CACHE_ONLY or
+	LAZY fetch policy. ``refresh_interval`` is a timedelta which specifies the minimum interval before updating
+	the cached resource and is only active if using BEST_EFFORT. This is useful for packages (like the infamous vim)
+	that may get updated too frequently otherwise. Pass ``refresh_interval=timedelta(days=7)`` to only allow for
+	updates to the cached metadata every 7 days. Default is None which means to refresh at will (no restrictions
+	to frequency.)
 
 	This function will raise FetchError if the result is unable to be retrieved, either from the cache or from
 	the live network call -- except in the case of FetchPolicy.BEST_EFFORT, which will 'fall back' to the cache
 	if the live fetch fails (and is thus more resilient).
 	"""
+
 	url = fetchable if type(fetchable) == str else fetchable.url
 	attempts = 0
 	while attempts < hub.FETCH_ATTEMPTS:
 		attempts += 1
 		logging.info(f"Fetching {url}, attempt {attempts}...")
 		try:
-			if hub.FETCH_POLICY in (FetchPolicy.CACHE_ONLY, FetchPolicy.LAZY):
+			if refresh_interval is not None:
+				# Let's see if we should use an 'older' resource that we don't want to refresh as often:
 				try:
-					return await hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
+					# This call will return our cached resource if it's available and refresh_interval hasn't yet expired, i.e.
+					# it is not yet 'stale'. Otherwise, it will throw a FetchError which tells us -- ok, we gotta fetch it
+					# again.
+					return hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, refresh_interval=refresh_interval)
 				except FetchError:
 					pass
-			if hub.FETCH_POLICY == FetchPolicy.CACHE_ONLY:
-				raise FetchError("Requested data not in fetch cache.")
-
-			# At this point, we aren't using a fetch policy of 'cache only.' That's done.
-			try:
-				result = await fetch_method(fetchable)
-				if hub.FETCH_POLICY == FetchPolicy.FETCH_ONLY:
-					await hub.pkgtools.FETCH_CACHE.record_fetch_success(fetch_method.__name__, fetchable)
-				else:
-					await hub.pkgtools.FETCH_CACHE.fetch_cache_write(fetch_method.__name__, fetchable, result)
-				return result
-			except FetchError as e:
-				logging.error(f"Fetch failure: {e.msg}")
+			result = await fetch_method(fetchable)
+			await hub.pkgtools.FETCH_CACHE.fetch_cache_write(fetch_method.__name__, fetchable, result)
+			return result
 		except FetchError as e:
 			if e.retry:
 				logging.error(f"Fetch method {fetch_method.__name__} failed with URL {url}; retrying...")
@@ -86,29 +71,26 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None):
 
 	# If we've gotten here, we've performed all of our attempts to do live fetching.
 
-	if hub.FETCH_POLICY != FetchPolicy.BEST_EFFORT:
-		raise FetchError(f"Unable to perform live fetch of {url} using method {fetch_method.__name__}.")
+	result = await hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
+	if result is not None:
+		return result
 	else:
-		result = await hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
-		if result is not None:
-			return result
-		else:
-			await hub.pkgtools.FETCH_CACHE.record_fetch_failure(fetch_method.__name__, fetchable)
-			raise FetchError(f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.")
+		await hub.pkgtools.FETCH_CACHE.record_fetch_failure(fetch_method.__name__, fetchable)
+		raise FetchError(f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.")
 
 
-async def get_page(hub, fetchable, max_age=None):
+async def get_page(hub, fetchable, max_age=None, refresh_interval=None):
 	method = getattr(hub.pkgtools.FETCHER, "get_page", None)
 	if method is None:
 		raise FetchError("Method get_page not implemented for fetcher.")
-	return await fetch_harness(hub, method, fetchable, max_age=max_age)
+	return await fetch_harness(hub, method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
 
 
-async def get_url_from_redirect(hub, fetchable, max_age=None):
+async def get_url_from_redirect(hub, fetchable, max_age=None, refresh_interval=None):
 	method = getattr(hub.pkgtools.FETCHER, "get_url_from_redirect", None)
 	if method is None:
 		raise FetchError("Method get_url_from_redirect not implemented for fetcher.")
-	return await fetch_harness(hub, method, fetchable, max_age=max_age)
+	return await fetch_harness(hub, method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
 
 
 async def exists(hub, artifact):

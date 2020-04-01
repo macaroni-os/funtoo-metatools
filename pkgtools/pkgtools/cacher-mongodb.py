@@ -63,7 +63,7 @@ async def fetch_cache_write(hub, method_name, fetchable, result):
                   upsert=True)
 
 
-async def fetch_cache_read(hub, method_name, fetchable, max_age=None):
+async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_interval=None):
     # Fetchable can be a simple string (URL) or an Artifact. They are a bit different:
     if type(fetchable) == str:
         url = fetchable
@@ -72,6 +72,11 @@ async def fetch_cache_read(hub, method_name, fetchable, max_age=None):
     result = hub.MONGO_FC.find_one({'method_name': method_name, 'url': url})
     if result is None or 'fetched_on' not in result:
         return None
+    elif refresh_interval is not None:
+        if datetime.utcnow() - result['fetched_on'] <= refresh_interval:
+            return result
+        else:
+            return None
     elif max_age is not None and datetime.utcnow() - result['fetched_on'] > max_age:
         return None
     else:
