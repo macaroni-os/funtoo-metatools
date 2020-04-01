@@ -13,4 +13,8 @@ hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
 if __name__ == "__main__":
 	asyncio.run(hub.pkgtools.autogen.start())
 
+# TODO: generate Manifest once per catpkg, allowing support for multiple ebuilds per catpkg.
+# TODO: add after-action report (listing any failures.)
+# TODO: add mass-autogen YAML support.
+
 # vim: ts=4 sw=4 noet
