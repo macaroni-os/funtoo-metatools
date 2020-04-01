@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 
 from datetime import datetime
-import pymongo
-import pymongo.errors
-from pymongo import MongoClient
+
+try:
+    import pymongo
+    import pymongo.errors
+    from pymongo import MongoClient
+except ImportError:
+    pass
 
 
 """
