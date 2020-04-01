@@ -4,18 +4,18 @@ import os
 import asyncio
 import jinja2
 import logging
+from collections import defaultdict
 
 logging.basicConfig(level=logging.INFO)
 
 QUE = []
 HUB = None
 
-
 def __init__(hub):
 	global HUB
 	HUB = hub
 	hub.ARTIFACT_TEMP_PATH = os.path.join(hub.OPT.pkgtools.temp_path, 'distfiles')
-
+	hub.MANIFEST_LINES = defaultdict(set)
 
 async def parallelize_pending_tasks(hub):
 	for future in asyncio.as_completed(QUE):
@@ -218,13 +218,16 @@ class BreezyBuild:
 
 	# TODO: we should really generate one Manifest per catpkg -- this does one per ebuild:
 
-	def generate_manifest(self):
+	def record_manifest_lines(self):
+		"""
+		This method records literal Manifest output lines which will get written out later, because we may
+		not have *all* the Manifest lines we need to write out until autogen is fully complete.
+		"""
 		if not len(self.artifacts):
 			return
-		with open(self.output_pkgdir + "/Manifest", "w") as mf:
-			for artifact in self.artifacts:
-				mf.write("DIST %s %s BLAKE2B %s SHA512 %s\n" % (artifact.final_name, artifact.hashes["size"], artifact.hashes["blake2b"], artifact.hashes["sha512"] ))
-		logging.info("Manifest generated.")
+		key = self.output_pkgdir + "/Manifest"
+		for artifact in self.artifacts:
+				self.hub.MANIFEST_LINES[key].add("DIST %s %s BLAKE2B %s SHA512 %s\n" % (artifact.final_name, artifact.hashes["size"], artifact.hashes["blake2b"], artifact.hashes["sha512"]))
 
 	def create_ebuild(self):
 		if not self.template_text:
@@ -251,7 +254,7 @@ class BreezyBuild:
 			raise BreezyError("Please set 'name' to the package name of this ebuild.")
 		await self.setup()
 		self.create_ebuild()
-		self.generate_manifest()
+		self.record_manifest_lines()
 		return self
 
 # vim: ts=4 sw=4 noet

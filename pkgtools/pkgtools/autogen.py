@@ -46,4 +46,15 @@ async def start(hub, start_path=None, out_path=None):
 		await hub.pkgtools.ebuild.parallelize_pending_tasks()
 		hub.pop.sub.remove("my_catpkg")
 
+		for manifest_file, manifest_lines in hub.MANIFEST_LINES.items():
+			manifest_lines = sorted(list(manifest_lines))
+			with open(manifest_file, "w") as myf:
+				pos = 0
+				while pos < len(manifest_lines):
+					if pos != 0:
+						myf.write('\n')
+					myf.write(manifest_lines[pos])
+					pos += 1
+			logging.debug(f"Manifest {manifest_file} generated.")
+
 # vim: ts=4 sw=4 noet
