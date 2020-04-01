@@ -92,6 +92,11 @@ async def download(hub, artifact):
 	Upon success, the function will return a dict() containing hashes and the filesize.
 	On failure, a FetchError will be thrown.
 	"""
+	if artifact.fetching:
+		logging.info(f"Already fetching {self.url}; skipping this fetch.")
+		return
+	else:
+		artifact.fetching = True
 	os.makedirs(hub.ARTIFACT_TEMP_PATH, exist_ok=True)
 	temp_path = _get_temp_path(hub, artifact)
 	final_path = _get_final_path(hub, artifact)

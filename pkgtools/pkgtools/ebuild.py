@@ -51,6 +51,7 @@ class Artifact(Fetchable):
 		super().__init__(**kwargs)
 		self.hashes = {}
 		self._size = 0
+		self.fetching = False
 
 	async def setup(self):
 		if self.exists:
