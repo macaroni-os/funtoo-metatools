@@ -4,7 +4,6 @@ __virtualname__ = "FETCH_CACHE"
 
 
 def __virtual__(hub):
-    return False
     return hub.OPT.pkgtools['cacher'] == "noop"
 
 
