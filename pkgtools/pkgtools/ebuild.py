@@ -65,7 +65,7 @@ class Artifact(Fetchable):
 
 	async def setup(self):
 		if not self.exists:
-			await self.hub.pkgtools.fetch.download(self)
+			await self.hub.pkgtools.FETCHER.download(self)
 		try:
 			db_result = await self.hub.pkgtools.FETCH_CACHE.fetch_cache_read("artifact", self)
 			try:
