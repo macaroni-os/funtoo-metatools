@@ -39,6 +39,6 @@ def set_context(hub, path, out_path=None, name=None):
         raise hub.pkgtools.ebuild.BreezyError("Could not determine repo context: %s -- please create a profiles/repo_name file in your repository." % path)
     elif hub.OUTPUT_CONTEXT is None:
         raise hub.pkgtools.ebuild.BreezyError("Could not determine output repo context: %s -- please create a profiles/repo_name file in your repository." % out_path)
-    logging.info("Set source context to %s." % hub.CONTEXT.root)
-    logging.info("Set output context to %s." % hub.OUTPUT_CONTEXT.root)
+    logging.debug("Set source context to %s." % hub.CONTEXT.root)
+    logging.debug("Set output context to %s." % hub.OUTPUT_CONTEXT.root)
 
