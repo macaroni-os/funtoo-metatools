@@ -164,8 +164,8 @@ async def get_url_from_redirect(hub, url):
 def extract(hub, artifact):
 	if not artifact.exists:
 		artifact.fetch()
-	os.makedirs(artifact.extrac_path, exist_ok=True)
-	cmd = "tar -C %s -xf %s" % (artifact.extrac_path, artifact.final_path)
+	os.makedirs(artifact.extract_path, exist_ok=True)
+	cmd = "tar -C %s -xf %s" % (artifact.extract_path, artifact.final_path)
 	s, o = getstatusoutput(cmd)
 	if s != 0:
 		raise hub.pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
