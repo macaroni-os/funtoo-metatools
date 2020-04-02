@@ -166,6 +166,7 @@ class Artifact(Fetchable):
 	def extract_path(self):
 		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, "extract", self.final_name)
 
+	@property
 	def exists(self):
 		return os.path.exists(self.final_path)
 
