@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import asyncio
 import subprocess
 import os
 import logging
@@ -54,7 +54,7 @@ async def generate_individual_autogens(hub):
 		hub.pop.sub.remove("my_catpkg")
 
 
-async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, subpath=None, generator=None):
+async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, subpath=None):
 	"""
 	This method takes a single YAML rule that we've extracted from an autogen.yaml file,
 	loads the appropriate generator, and uses it to generate (probably) a bunch of catpkgs.
@@ -74,6 +74,7 @@ async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, sub
 	pkginfo['name'] = name
 	pkginfo['path'] = subpath
 	await generator_sub.generate(**pkginfo)
+	await hub.pkgtools.ebuild.parallelize_pending_tasks()
 
 
 async def generate_yaml_autogens(hub):
@@ -87,6 +88,9 @@ async def generate_yaml_autogens(hub):
 	"""
 	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % hub.OPT.pkgtools['start_path'])
 	files = o.split('\n')
+
+	pending_tasks = []
+
 	for file in files:
 		file = file.strip()
 		if not len(file):
@@ -100,8 +104,9 @@ async def generate_yaml_autogens(hub):
 					defaults = {}
 				generator_sub = getattr(hub.pkgtools.generators, rule['generator'])
 				for package in rule['packages']:
-					await process_yaml_rule(hub, generator_sub, package=package, defaults=defaults, subpath=subpath)
-				await hub.pkgtools.ebuild.parallelize_pending_tasks()
+					pending_tasks.append(process_yaml_rule(hub, generator_sub, package, defaults, subpath))
+
+	await asyncio.gather(*pending_tasks)
 
 
 async def start(hub, start_path=None, out_path=None):

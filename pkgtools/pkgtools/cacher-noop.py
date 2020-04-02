@@ -11,7 +11,7 @@ def __init__(hub):
     pass
 
 
-async def fetch_cache_write(hub, method_name, url, result):
+async def fetch_cache_write(hub, method_name, fetchable, body=None, metadata_only=False):
     pass
 
 

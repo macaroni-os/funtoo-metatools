@@ -89,17 +89,19 @@ async def download(hub, artifact):
 	it uses a streaming download so the entire file doesn't need to be cached in memory. Hashes
 	of the downloaded file are computed as the file is in transit.
 
-	Upon success, the function will return a dict() containing hashes and the filesize.
-	On failure, a FetchError will be thrown.
+	Upon success, the function will update the Artifact's hashes dict to contain hashes and
+	filesize of the downloaded artifact.
+
 	"""
 	if artifact.fetching:
 		logging.info(f"Already fetching {self.url}; skipping this fetch.")
 		return
 	else:
 		artifact.fetching = True
+	logging.info(f"Fetching {artifact.url}...")
 	os.makedirs(hub.ARTIFACT_TEMP_PATH, exist_ok=True)
-	temp_path = _get_temp_path(hub, artifact)
-	final_path = _get_final_path(hub, artifact)
+	temp_path = artifact.temp_path
+	final_path = artifact.final_path
 	fd = open(temp_path, "wb")
 	sha512 = hashlib.sha512()
 	blake2b = hashlib.blake2b()
@@ -122,8 +124,7 @@ async def download(hub, artifact):
 	fd.close()
 	os.link(temp_path, final_path)
 	os.unlink(temp_path)
-
-	return {
+	artifact.hashes = {
 		"sha512": sha512.hexdigest(),
 		"blake2b": blake2b.hexdigest(),
 		"size": filesize
@@ -160,32 +161,11 @@ async def get_url_from_redirect(hub, url):
 	raise hub.pkgtools.fetch.FetchError("URL %s doesn't appear to redirect" % url)
 
 
-async def update_digests(hub, artifact):
-	_sha512 = hashlib.sha512()
-	_blake2b = hashlib.blake2b()
-	_size = 0
-	logging.info("Calculating digests for %s..." % _get_final_path(hub, artifact))
-	with open(_get_final_path(hub, artifact), 'rb') as myf:
-		while True:
-			data = myf.read(1280000)
-			if not data:
-				break
-			_sha512.update(data)
-			_blake2b.update(data)
-			_size += len(data)
-	return {
-		"sha512": _sha512.hexdigest(),
-		"blake2b": _blake2b.hexdigest(),
-		"size": _size
-	}
-
-
 def extract(hub, artifact):
 	if not artifact.exists:
 		artifact.fetch()
-	ep = get_extract_path(hub, artifact)
-	os.makedirs(ep, exist_ok=True)
-	cmd = "tar -C %s -xf %s" % (ep, _get_final_path(hub, artifact))
+	os.makedirs(artifact.extrac_path, exist_ok=True)
+	cmd = "tar -C %s -xf %s" % (artifact.extrac_path, artifact.final_path)
 	s, o = getstatusoutput(cmd)
 	if s != 0:
 		raise hub.pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
@@ -195,20 +175,6 @@ def cleanup(hub, artifact):
 	getstatusoutput("rm -rf " + artifact.extract_path)
 
 
-def _get_temp_path(hub, artifact):
-	return os.path.join(hub.ARTIFACT_TEMP_PATH, "%s.__download__" % artifact.final_name)
 
-
-def _get_final_path(hub, artifact):
-	return os.path.join(hub.ARTIFACT_TEMP_PATH, artifact.final_name)
-
-
-def get_extract_path(hub, artifact):
-	return os.path.join(hub.ARTIFACT_TEMP_PATH, "extract", artifact.final_name)
-
-
-def exists(hub, artifact):
-	final_path = _get_final_path(hub, artifact)
-	return os.path.exists(final_path)
 
 # vim: ts=4 sw=4 noet

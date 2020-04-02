@@ -5,17 +5,21 @@ import asyncio
 import jinja2
 import logging
 from collections import defaultdict
+import hashlib
 
 logging.basicConfig(level=logging.INFO)
 
 QUE = []
 HUB = None
 
+
 def __init__(hub):
 	global HUB
 	HUB = hub
 	hub.ARTIFACT_TEMP_PATH = os.path.join(hub.OPT.pkgtools.temp_path, 'distfiles')
 	hub.MANIFEST_LINES = defaultdict(set)
+	hub.CHECK_DISK_HASHES = False
+
 
 async def parallelize_pending_tasks(hub):
 	for future in asyncio.as_completed(QUE):
@@ -23,6 +27,12 @@ async def parallelize_pending_tasks(hub):
 
 
 class BreezyError(Exception):
+
+	def __init__(self, msg):
+		self.msg = msg
+
+
+class DigestError(Exception):
 
 	def __init__(self, msg):
 		self.msg = msg
@@ -54,10 +64,63 @@ class Artifact(Fetchable):
 		self.fetching = False
 
 	async def setup(self):
-		if self.exists:
-			self.hashes = await self.hub.pkgtools.FETCHER.update_digests(self)
-		else:
-			self.hashes = await self.hub.pkgtools.FETCHER.download(self)
+		if not self.exists:
+			await self.hub.pkgtools.fetch.download(self)
+		try:
+			db_result = await self.hub.pkgtools.FETCH_CACHE.fetch_cache_read("artifact", self)
+			try:
+
+				self.hashes = db_result['metadata']['hashes']
+				if self.hub.CHECK_DISK_HASHES:
+					await self.check_hashes(self.hashes, await self.calc_hashes())
+			except (KeyError, TypeError) as foo:
+				await self.update_hashes()
+		except self.hub.pkgtools.fetch.CacheMiss:
+			await self.update_hashes()
+
+	async def update_hashes(self):
+		"""
+		This method calculates new hashes for the Artifact that currently exists on disk, and also updates the fetch cache with these new hash values.
+
+		This method assumes that the Artifact exists on disk.
+		"""
+		logging.debug(f"Updating hashes for {self.url}")
+		self.hashes = await self.calc_hashes()
+		await self.hub.pkgtools.FETCH_CACHE.fetch_cache_write("artifact", self, metadata_only=True)
+
+	async def check_hashes(self, old_hashes, new_hashes):
+		"""
+		This method compares two sets of hashes passed to it and throws an exception if they don't match.
+		"""
+		logging.debug("Checking hashes to make sure they match")
+		if new_hashes['sha512'] != old_hashes['sha512']:
+			raise DigestError(f"Digests of {self.final_name} do not match digest when it was originally downloaded. Current digest: {old_hashes['sha512']} Original digest: {new_hashes['sha512']}")
+		if new_hashes['blake2b'] != old_hashes['blake2b']:
+			raise DigestError(f"Digests of {self.final_name} do not match digest when it was originally downloaded. Current digest: {old_hashes['blake2b']} Original digest: {new_hashes['blake2b']}")
+		if new_hashes['size'] != old_hashes['size']:
+			raise DigestError(f"Filesize of {self.final_name} do not match filesize when it was originally downloaded. Current size: {old_hashes['size']} Original size: {new_hashes['size']}")
+
+	async def calc_hashes(self):
+		logging.debug("Performing hash calculations on Artifact on disk")
+		if not self.exists:
+			raise BreezyError("Asked to calculate digests but file does not exist on disk.")
+		_sha512 = hashlib.sha512()
+		_blake2b = hashlib.blake2b()
+		_size = 0
+		logging.info("Calculating digests for %s..." % self.final_path)
+		with open(self.final_path, 'rb') as myf:
+			while True:
+				data = myf.read(1280000)
+				if not data:
+					break
+				_sha512.update(data)
+				_blake2b.update(data)
+				_size += len(data)
+		return {
+			"sha512": _sha512.hexdigest(),
+			"blake2b": _blake2b.hexdigest(),
+			"size": _size
+		}
 
 	async def fetch(self):
 		await self.setup()
@@ -85,19 +148,26 @@ class Artifact(Fetchable):
 		else:
 			return url + " -> " + fn
 
-	@property
-	def exists(self):
-		return self.hub.pkgtools.FETCHER.exists(self)
-
 	def extract(self):
 		return self.hub.pkgtools.FETCHER.extract(self)
 
-	@property
-	def extract_path(self):
-		return self.hub.pkgtools.FETCHER.get_extract_path(self)
-
 	def cleanup(self):
 		self.hub.pkgtools.FETCHER.cleanup(self)
+
+	@property
+	def temp_path(self):
+		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, "%s.__download__" % self.final_name)
+
+	@property
+	def final_path(self):
+		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, self.final_name)
+
+	@property
+	def extract_path(self):
+		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, "extract", self.final_name)
+
+	def exists(self):
+		return os.path.exists(self.final_path)
 
 
 class BreezyBuild:

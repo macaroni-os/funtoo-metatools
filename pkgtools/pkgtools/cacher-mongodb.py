@@ -38,12 +38,15 @@ def __init__(hub):
     hub.MONGO_FC.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {'$exists': True}})
 
 
-async def fetch_cache_write(hub, method_name, fetchable, body):
+async def fetch_cache_write(hub, method_name, fetchable, body=None, metadata_only=False):
     """
     This method is called when we have successfully fetched something. In the case of a network resource such as
     a Web page, we will record the result of our fetching in the 'result' field so it is cached for later. In the
     case that we're recording that we successfully downloaded an Artifact (tarball), we don't store the tarball
     in MongoDB but we do store its metadata (hashes and filesize.)
+
+    If metadata_only is True, we are simply updating metadata rather than the content in the fetch cache.
+
     """
     # Fetchable can be a simple string (URL) or an Artifact. They are a bit different:
     if type(fetchable) == str:
@@ -53,14 +56,25 @@ async def fetch_cache_write(hub, method_name, fetchable, body):
         url = fetchable.url
         metadata = fetchable.as_metadata()
     now = datetime.utcnow()
-    hub.MONGO_FC.update_one({'method_name': method_name, 'url': url},
-                  {'$set': {
-                      'last_attempt': now,
-                      'fetched_on': now,
-                      'metadata': metadata,
-                      'body': body}
-                  },
-                  upsert=True)
+    if not metadata_only:
+
+        hub.MONGO_FC.update_one({'method_name': method_name, 'url': url},
+                      {'$set': {
+                          'last_attempt': now,
+                          'fetched_on': now,
+                          'metadata': metadata,
+                          'body': body}
+                      },
+                      upsert=True)
+    else:
+        hub.MONGO_FC.update_one({'method_name': method_name, 'url': url},
+                                {'$set': {
+                                    'last_attempt': now,
+                                    'fetched_on': now,
+                                    'metadata': metadata,
+                                }
+                                },
+                                upsert=True)
 
 
 async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_interval=None):
@@ -84,13 +98,13 @@ async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_in
         raise hub.pkgtools.fetch.CacheMiss()
     elif refresh_interval is not None:
         if datetime.utcnow() - result['fetched_on'] <= refresh_interval:
-            return result['body']  if 'body' in result else None
+            return result
         else:
             raise hub.pkgtools.fetch.CacheMiss()
     elif max_age is not None and datetime.utcnow() - result['fetched_on'] > max_age:
         raise hub.pkgtools.fetch.CacheMiss()
     else:
-        return result['body'] if 'body' in result else None
+        return result
 
 
 async def record_fetch_failure(hub, method_name, fetchable, failure_reason):
