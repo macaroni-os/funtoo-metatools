@@ -22,6 +22,10 @@ class FetchError(Exception):
 		self.retry = retry
 
 
+class CacheMiss(Exception):
+	pass
+
+
 async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_interval=None):
 
 	"""
@@ -56,10 +60,13 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 
 				# This call will return our cached resource if it's available and refresh_interval hasn't yet expired, i.e.
 				# it is not yet 'stale'.
-				result = await hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, refresh_interval=refresh_interval)
-				if result is not None:
+				try:
+					result = await hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, refresh_interval=refresh_interval)
 					logging.info(f"Retrieved cached result for {url}")
 					return result
+				except CacheMiss:
+					# We'll continue and attempt a live fetch of the resource...
+					pass
 			logging.info(f"Fetching {url}, attempt {attempts}...")
 			result = await fetch_method(fetchable)
 			await hub.pkgtools.FETCH_CACHE.fetch_cache_write(fetch_method.__name__, fetchable, result)
@@ -73,11 +80,10 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 				raise e
 
 	# If we've gotten here, we've performed all of our attempts to do live fetching.
-
-	result = await hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
-	if result is not None:
+	try:
+		result = await hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
 		return result
-	else:
+	except CacheMiss:
 		await hub.pkgtools.FETCH_CACHE.record_fetch_failure(fetch_method.__name__, fetchable, fail_reason=fail_reason)
 		raise FetchError(f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.")
 
@@ -107,19 +113,20 @@ async def download(hub, artifact):
 	return await fetch_harness(hub, method, artifact)
 
 
-async def update_digests(hub, artifact, check=True):
-	db_result = hub.pkgtools.FETCH_CACHE.fetch_cache_read("artifact", artifact)
-	if db_result is None:
-		raise FetchError(f"We couldn't find {artifact.url} in the fetch cache when verify digests. This shouldn't happen.")
-	# This will attempt to update artifact.hashes to contain the actual digests of the file on disk:
-	hub.pkgtools.FETCHER.update_digests(artifact)
-	if check:
-		# We will now check to see if the digests/size of the file on disk matches those when the file was originally downloaded by us:
-		if db_result['metadata']['sha512'] != artifact.hashes['sha512']:
-			raise FetchError(f"Digests of {artifact.final_name} do not match digest when it was originally downloaded. Current digest: {artifact.hashes['sha512']} Original digest: {db_result['metadata']['sha512']}")
-		if db_result['metadata']['blake2b'] != artifact.hashes['blake2b']:
-			raise FetchError(f"Digests of {artifact.final_name} do not match digest when it was originally downloaded. Current digest: {artifact.hashes['blake2b']} Original digest: {db_result['metadata']['blake2b']}")
-		if db_result['metadata']['size'] != artifact.hashes['size']:
-			raise FetchError(f"Filesize of {artifact.final_name} do not match filesize when it was originally downloaded. Current size: {artifact.hashes['size']} Original size: {db_result['metadata']['size']}")
+async def update_digests(hub, artifact, check=False):
+	try:
+		db_result = hub.pkgtools.FETCH_CACHE.fetch_cache_read("artifact", artifact)
+		if check:
+			hub.pkgtools.FETCHER.update_digests(artifact)
+			# We will now check to see if the digests/size of the file on disk matches those when the file was originally downloaded by us:
+			if db_result['metadata']['sha512'] != artifact.hashes['sha512']:
+				raise FetchError(f"Digests of {artifact.final_name} do not match digest when it was originally downloaded. Current digest: {artifact.hashes['sha512']} Original digest: {db_result['metadata']['sha512']}")
+			if db_result['metadata']['blake2b'] != artifact.hashes['blake2b']:
+				raise FetchError(f"Digests of {artifact.final_name} do not match digest when it was originally downloaded. Current digest: {artifact.hashes['blake2b']} Original digest: {db_result['metadata']['blake2b']}")
+			if db_result['metadata']['size'] != artifact.hashes['size']:
+				raise FetchError(f"Filesize of {artifact.final_name} do not match filesize when it was originally downloaded. Current size: {artifact.hashes['size']} Original size: {db_result['metadata']['size']}")
+		artifact.hashes = db_result.metadata
+	except CacheMiss:
+		hub.pkgtools.FETCHER.update_digests(artifact)
 
 # vim: ts=4 sw=4 noet

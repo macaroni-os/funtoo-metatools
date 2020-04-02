@@ -71,6 +71,8 @@ async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_in
 
     ``max_age`` and ``refresh_interval`` parameters are used to set criteria for what is acceptable for the
     caller. If criteria don't match, None is returned instead of the MongoDB document.
+
+    In the case the document is not found or does not meet criteria, we will raise a CacheMiss exception.
     """
     # Fetchable can be a simple string (URL) or an Artifact. They are a bit different:
     if type(fetchable) == str:
@@ -79,14 +81,14 @@ async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_in
         url = fetchable.url
     result = hub.MONGO_FC.find_one({'method_name': method_name, 'url': url})
     if result is None or 'fetched_on' not in result:
-        return None
+        raise hub.pkgtools.fetch.CacheMiss()
     elif refresh_interval is not None:
         if datetime.utcnow() - result['fetched_on'] <= refresh_interval:
             return result['body']  if 'body' in result else None
         else:
-            return None
+            raise hub.pkgtools.fetch.CacheMiss()
     elif max_age is not None and datetime.utcnow() - result['fetched_on'] > max_age:
-        return None
+        raise hub.pkgtools.fetch.CacheMiss()
     else:
         return result['body'] if 'body' in result else None
 

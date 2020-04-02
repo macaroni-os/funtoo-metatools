@@ -16,16 +16,8 @@ async def fetch_cache_write(hub, method_name, url, result):
 
 
 async def fetch_cache_read(hub, method_name, url, max_age=None, refresh_interval=None):
-    pass
+    raise hub.pkgtools.fetch.CacheMiss()
 
 
 async def record_fetch_failure(hub, method_name, url):
-    pass
-
-
-async def metadata_cache_write(hub, repo_name, branch, catpkg, metadata):
-    pass
-
-
-async def metadata_cache_read(hub, repo_name, branch, catpkg):
     pass
