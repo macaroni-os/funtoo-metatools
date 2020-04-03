@@ -1,6 +1,6 @@
-***********************
-Funtoo Meta-Tools
-***********************
+****************
+Funtoo Metatools
+****************
 
 Copyright 2020 Daniel Robbins, Funtoo Solutions, Inc.
 
@@ -19,7 +19,7 @@ limitations under the License.
 Installation
 *************
 
-To test out Funtoo Meta-Tools, perform the following steps::
+To test out Funtoo Metatools, perform the following steps::
 
   $ emerge pip
   $ pip3 install --user pop
