@@ -94,7 +94,7 @@ async def download(hub, artifact):
 
 	"""
 	if artifact.fetching:
-		logging.info(f"Already fetching {self.url}; skipping this fetch.")
+		logging.info(f"Already fetching {artifact.url}; skipping this fetch.")
 		return
 	else:
 		artifact.fetching = True
