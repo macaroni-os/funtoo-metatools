@@ -20,7 +20,8 @@ def __virtual__(hub):
 
 
 RESOLVERS = {}
-
+# map Artifact to the Task that is running.
+ACTIVE_DOWNLOAD_TASKS = {}
 
 def get_resolver(hub):
 	"""
@@ -93,11 +94,7 @@ async def download(hub, artifact):
 	filesize of the downloaded artifact.
 
 	"""
-	if artifact.fetching:
-		logging.info(f"Already fetching {artifact.url}; skipping this fetch.")
-		return
-	else:
-		artifact.fetching = True
+
 	logging.info(f"Fetching {artifact.url}...")
 	os.makedirs(hub.ARTIFACT_TEMP_PATH, exist_ok=True)
 	temp_path = artifact.temp_path
@@ -117,7 +114,6 @@ async def download(hub, artifact):
 		sys.stdout.write(".")
 		sys.stdout.flush()
 
-	logging.info("Fetching %s..." % artifact.url)
 	await http_fetch_stream(hub, artifact.url, on_chunk)
 	sys.stdout.write("x")
 	sys.stdout.flush()
@@ -137,6 +133,7 @@ async def get_page(hub, url):
 	and a decoded Python string is returned with the result. FetchError is thrown for an error
 	of any kind.
 	"""
+	logging.info(f"Fetching page {url}...")
 	try:
 		return await http_fetch(hub, url)
 	except Exception as e:
@@ -149,6 +146,7 @@ async def get_url_from_redirect(hub, url):
 	for /download URLs that redirect to a tarball 'foo-1.3.2.tar.xz' that you want to download,
 	when you want to grab the '1.3.2' without downloading the file (yet).
 	"""
+	logging.info(f"Getting redirect URL from {url}...")
 	http_client = httpclient.AsyncHTTPClient()
 	try:
 		req = HTTPRequest(url=url, follow_redirects=False)

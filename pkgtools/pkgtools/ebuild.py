@@ -2,12 +2,14 @@
 
 import os
 import asyncio
+import sys
+
 import jinja2
 import logging
 from collections import defaultdict
 import hashlib
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 
 QUE = []
 HUB = None
@@ -59,24 +61,38 @@ class Artifact(Fetchable):
 
 	def __init__(self, **kwargs):
 		super().__init__(**kwargs)
-		self.hashes = {}
+		self.hashes = None
 		self._size = 0
-		self.fetching = False
+		self.in_setup = asyncio.Semaphore()
+		self.in_download = asyncio.Semaphore()
+		self.attempted_download = False
 
 	async def setup(self):
-		if not self.exists:
-			await self.hub.pkgtools.FETCHER.download(self)
-		try:
-			db_result = await self.hub.pkgtools.FETCH_CACHE.fetch_cache_read("artifact", self)
+		async with self.in_setup:
+			if self.hashes is not None:
+				# someone else completed setup while I was waiting.
+				return
+			if not self.exists:
+				await self.download()
 			try:
-
-				self.hashes = db_result['metadata']['hashes']
-				if self.hub.CHECK_DISK_HASHES:
-					await self.check_hashes(self.hashes, await self.calc_hashes())
-			except (KeyError, TypeError) as foo:
+				db_result = await self.hub.pkgtools.FETCH_CACHE.fetch_cache_read("artifact", self)
+				try:
+					self.hashes = db_result['metadata']['hashes']
+					if self.hub.CHECK_DISK_HASHES:
+						logging.debug(f"Checking disk hashes for {self.final_name}")
+						await self.check_hashes(self.hashes, await self.calc_hashes())
+				except (KeyError, TypeError) as foo:
+					await self.update_hashes()
+			except self.hub.pkgtools.fetch.CacheMiss:
 				await self.update_hashes()
-		except self.hub.pkgtools.fetch.CacheMiss:
-			await self.update_hashes()
+
+	async def download(self):
+		async with self.in_download:
+			if self.exists or self.attempted_download:
+				# someone else completed the download while I was waiting
+				return
+			await self.hub.pkgtools.FETCHER.download(self)
+			self.attempted_download = True
 
 	async def update_hashes(self):
 		"""
@@ -84,7 +100,7 @@ class Artifact(Fetchable):
 
 		This method assumes that the Artifact exists on disk.
 		"""
-		logging.debug(f"Updating hashes for {self.url}")
+		logging.info(f"Updating hashes for {self.url}")
 		self.hashes = await self.calc_hashes()
 		await self.hub.pkgtools.FETCH_CACHE.fetch_cache_write("artifact", self, metadata_only=True)
 
@@ -103,7 +119,7 @@ class Artifact(Fetchable):
 	async def calc_hashes(self):
 		logging.debug("Performing hash calculations on Artifact on disk")
 		if not self.exists:
-			raise BreezyError("Asked to calculate digests but file does not exist on disk.")
+			raise BreezyError(f"Asked to calculate digests for {self.final_name} but file does not exist on disk.")
 		_sha512 = hashlib.sha512()
 		_blake2b = hashlib.blake2b()
 		_size = 0
@@ -123,7 +139,8 @@ class Artifact(Fetchable):
 		}
 
 	async def fetch(self):
-		await self.setup()
+		if not self.exists:
+			await self.setup()
 
 	def as_metadata(self):
 		return {
