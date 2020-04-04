@@ -59,7 +59,6 @@ async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, sub
 	This method takes a single YAML rule that we've extracted from an autogen.yaml file,
 	loads the appropriate generator, and uses it to generate (probably) a bunch of catpkgs.
 	"""
-
 	pkginfo = generator_sub.GLOBAL_DEFAULTS.copy()
 	pkginfo.update(defaults)
 	pkginfo['template_path'] = os.path.join(subpath, "templates")
@@ -68,6 +67,7 @@ async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, sub
 	if type(package) == str:
 		# simple '- pkgname' format.
 		pkginfo['name'] = package
+		await generator_sub.generate(**pkginfo)
 	elif type(package) == dict:
 
 		# more complex format.

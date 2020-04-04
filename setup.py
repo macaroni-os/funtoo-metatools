@@ -5,7 +5,7 @@ with open("README.rst", "r") as fh:
 
 setuptools.setup(
     name="funtoo-metatools",
-    version="0.3",
+    version="0.3.1",
     author="Daniel Robbins",
     author_email="drobbins@funtoo.org",
     description="Funtoo framework for auto-creation of ebuilds.",
@@ -13,7 +13,7 @@ setuptools.setup(
     long_description_content_type="text/x-rst",
     url="https://code.funtoo.org/bitbucket/users/drobbins/repos/funtoo-metatools/browse",
     packages=setuptools.find_packages(),
-    scripts=['bin/autogen'],
+    scripts=['bin/fondue'],
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: Apache Software License",
