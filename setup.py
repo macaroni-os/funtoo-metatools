@@ -5,14 +5,13 @@ with open("README.rst", "r") as fh:
 
 setuptools.setup(
     name="funtoo-metatools",
-    version="0.3.1",
+    version="0.3.2",
     author="Daniel Robbins",
     author_email="drobbins@funtoo.org",
     description="Funtoo framework for auto-creation of ebuilds.",
     long_description=long_description,
     long_description_content_type="text/x-rst",
     url="https://code.funtoo.org/bitbucket/users/drobbins/repos/funtoo-metatools/browse",
-    packages=setuptools.find_packages(),
     scripts=['bin/fondue'],
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -26,5 +25,6 @@ setuptools.setup(
         'aiohttp',
         'aiodns',
         'tornado>=5'
-    ]
+    ],
+    packages=setuptools.find_packages()
 )
