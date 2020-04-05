@@ -23,7 +23,7 @@ To test out Funtoo Metatools, perform the following steps::
 
   $ emerge pip
   $ pip3 install --user pop
-  $ emerge www-servers/tornado aiohttp
+  $ emerge www-servers/tornado aiohttp aiodns
   $ emerge jinja
 
 Now, set PYTHONPATH to point to the directory of the tools. Assuming that
