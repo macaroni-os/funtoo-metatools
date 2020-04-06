@@ -107,7 +107,13 @@ Installation
 These instructions asssume you are using Funtoo Linux but should be easy to adapt
 to other distributions.
 
-Funtoo-metatools is easy to install -- simply use ``pip`` to pull it from PyPi::
+Funtoo-metatools is easy to install. On Funtoo, it can simply be emerged::
+
+  # emerge metatools
+
+The primary executable, ``doit``, will now be in your path.
+
+Alternatively you can use ``pip3`` to pull it from PyPi::
 
   $ pip3 install --user funtoo-metatools
 
@@ -121,6 +127,65 @@ you can use virtualenv as follows::
 
 From this point forward, whenever you want to use the virtualenv, simply
 source the activate script to enter your isolated python virtual environment.
+
+Quick Usage
+===========
+
+To use the tool, go into an autogen-enabled tree like Funtoo's kit-fixups
+repository and run ``doit``. This will auto-generate all ebuilds in the current
+directory and below.
+
+For production usage, install and start ``mongodb``, and run ``doit --cacher=mongodb``.
+This will tell the framework to cache all HTTP requests in MongoDB so that if
+an autogen script fails it will still be able to successfully generate ebuilds
+using cached data.
+
+Examples
+========
+
+Next, take a look at the contents of the ``example-overlay`` directory. This is a
+Funtoo overlay or kit which contains a couple of catpkgs that perform auto-generation.
+
+The ``net-im/discord-bin/autogen.py`` script
+will auto-create a new version of a Discord package by grabbing the contents of an HTTP
+redirect which contains the name of the current version of Discord. The Discord artifact
+(aka SRC_URI) will then be downloaded, and new Discord ebuild generated with the proper
+version. The 'master' ebuild is stored in ``net-im/discord-bin/templates/discord.tmpl`` and
+while jinja2 templating is supported, no templating features are used so the template
+is simply written out to the proper ebuild filename as-is.
+
+The ``x11-base/xorg-proto/autogen.py`` script is more complex, and actually generates
+around 30 ebuilds. This file is heavily commented and also takes advantage of jinja
+templating.
+
+Performing Auto-Generation
+==========================
+
+To actually use these tools to auto-generate ebuilds, you can simply change directories
+into the ``example-overlay`` directory and run the ``doit`` command::
+
+  $ doit
+
+When ``doit`` runs, it will attempt to auto-detect the root of the overlay you are
+currently in (a lot like how git will attempt to determine what git repo it is in.)
+Then, it will look for all ``autogen.py`` scripts from the current directory and
+deeper and execute these auto-generation scripts to generate ebuilds.
+
+After running the command, you should be able to type ``git status`` to see all the
+files that were generated.
+
+Using in Overlays
+=================
+
+The ``example-overlay`` directory is included only as an example, and the ``doit``
+command is capable of applying its magic to any overlay or kit. The tool will attempt
+to determine what directory it is in by looking for a ``profiles/repo_name`` file in
+the current or parent directory, so if your overlay or kit is missing this file then
+``doit`` won't be able to detect the overlay root. Simply create this file and add
+a single line containing the name of the repo, such as ``my-overlay``, for example.
+
+Metatools is used extensively by Funtoo's `kit-fixups repository
+<https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse>`_.
 
 Indices and tables
 ==================
