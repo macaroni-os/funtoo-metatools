@@ -323,18 +323,20 @@ class BreezyBuild:
 				self.hub.MANIFEST_LINES[key].add("DIST %s %s BLAKE2B %s SHA512 %s\n" % (artifact.final_name, artifact.hashes["size"], artifact.hashes["blake2b"], artifact.hashes["sha512"]))
 
 	def create_ebuild(self):
-		template_file = os.path.join(self.template_path, self.template)
-		try:
-			if not self.template_text:
+
+		if not self.template_text:
+			try:
+				template_file = os.path.join(self.template_path, self.template)
 				with open(template_file, "r") as tempf:
 					template = jinja2.Template(tempf.read())
-			else:
-				template = jinja2.Template(self.template_text)
-			with open(self.output_ebuild_path, "wb") as myf:
-				myf.write(template.render(**self.template_args).encode("utf-8"))
-			logging.info("Created: " + os.path.relpath(self.output_ebuild_path))
-		except FileNotFoundError:
-			logging.error("Could not file template: {template_file}")
+			except FileNotFoundError:
+				logging.error("Could not file template: {template_file}")
+		else:
+			template = jinja2.Template(self.template_text)
+		with open(self.output_ebuild_path, "wb") as myf:
+			myf.write(template.render(**self.template_args).encode("utf-8"))
+		logging.info("Created: " + os.path.relpath(self.output_ebuild_path))
+
 
 	async def generate(self):
 		"""
