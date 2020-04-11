@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import asyncio
 import logging
 import sys
 from enum import Enum
@@ -52,7 +52,6 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 	fail_reason = None
 	while attempts < hub.FETCH_ATTEMPTS:
 		attempts += 1
-
 		try:
 			if refresh_interval is not None:
 				# Let's see if we should use an 'older' resource that we don't want to refresh as often.
@@ -76,6 +75,9 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 				continue
 			else:
 				raise e
+		except asyncio.CancelledError as e:
+			raise FetchError(f"Fetch of {url} cancelled.")
+
 
 	# If we've gotten here, we've performed all of our attempts to do live fetching.
 	try:
