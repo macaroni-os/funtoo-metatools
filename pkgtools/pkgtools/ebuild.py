@@ -10,7 +10,7 @@ import hashlib
 
 logging.basicConfig(level=logging.DEBUG)
 
-QUE = []
+
 HUB = None
 
 
@@ -20,11 +20,6 @@ def __init__(hub):
 	hub.ARTIFACT_TEMP_PATH = os.path.join(hub.OPT.pkgtools.temp_path, 'distfiles')
 	hub.MANIFEST_LINES = defaultdict(set)
 	hub.CHECK_DISK_HASHES = False
-
-
-async def parallelize_pending_tasks(hub):
-	for future in asyncio.as_completed(QUE):
-		builder = await future
 
 
 class BreezyError(Exception):
@@ -257,7 +252,7 @@ class BreezyBuild:
 		a lot of catpkgs. Push all the catpkgs you want to generate and they will all get fired off at once.
 		"""
 		task = asyncio.create_task(self.generate())
-		QUE.append(task)
+		self.hub.pkgtools.autogen.QUE.append(task)
 
 	@property
 	def pkgdir(self):
@@ -323,16 +318,17 @@ class BreezyBuild:
 				self.hub.MANIFEST_LINES[key].add("DIST %s %s BLAKE2B %s SHA512 %s\n" % (artifact.final_name, artifact.hashes["size"], artifact.hashes["blake2b"], artifact.hashes["sha512"]))
 
 	def create_ebuild(self):
-
 		if not self.template_text:
 			try:
 				template_file = os.path.join(self.template_path, self.template)
 				with open(template_file, "r") as tempf:
 					template = jinja2.Template(tempf.read())
-			except FileNotFoundError:
-				logging.error("Could not file template: {template_file}")
+			except FileNotFoundError as e:
+				logging.error(f"Could not find template: {template_file}")
+				raise BreezyError(f"Template file not found: {template_file}")
 		else:
 			template = jinja2.Template(self.template_text)
+
 		with open(self.output_ebuild_path, "wb") as myf:
 			myf.write(template.render(**self.template_args).encode("utf-8"))
 		logging.info("Created: " + os.path.relpath(self.output_ebuild_path))

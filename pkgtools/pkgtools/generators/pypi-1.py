@@ -9,7 +9,7 @@ GLOBAL_DEFAULTS = {
 }
 
 async def generate(hub, **pkginfo):
-	assert 'python_compat' in pkginfo
+	assert 'python_compat' in pkginfo, f'python_compat is not defined in {pkginfo}'
 	if 'pypi_name' in pkginfo:
 		pypi_name = pkginfo['pypi_name']
 	else:
@@ -26,7 +26,7 @@ async def generate(hub, **pkginfo):
 		if artifact['packagetype'] == 'sdist':
 			artifact_url = artifact['url']
 			break
-	assert artifact_url is not None
+	assert artifact_url is not None, f"Artifact URL could not be found in {pkginfo}. This can indicate a PyPi package without a 'source' distribution."
 	ebuild = hub.pkgtools.ebuild.BreezyBuild(
 		**pkginfo,
 		artifacts=[

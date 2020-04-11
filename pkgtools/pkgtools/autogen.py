@@ -7,6 +7,18 @@ import traceback
 from yaml import safe_load
 
 ERRORS = []
+QUE = []
+
+
+async def parallelize_pending_tasks(hub):
+	for future in asyncio.as_completed(QUE):
+		try:
+			await future
+		except (hub.pkgtools.fetch.FetchError, hub.pkgtools.ebuild.BreezyError) as e:
+			ERRORS.append(e)
+		except AssertionError as e:
+			ERRORS.append(e)
+
 
 def generate_manifests(hub):
 	for manifest_file, manifest_lines in hub.MANIFEST_LINES.items():
@@ -52,14 +64,14 @@ async def generate_individual_autogens(hub):
 			logging.error("Encountered problem in autogen script: \n\n" + traceback.format_exc())
 			continue
 		# we need to wait for all our pending futures before removing the sub:
-		await hub.pkgtools.ebuild.parallelize_pending_tasks()
+		await parallelize_pending_tasks(hub)
 		hub.pop.sub.remove("my_catpkg")
 
 
 async def run_autogen(hub, sub, pkginfo):
 	try:
 		await sub.generate(**pkginfo)
-	except hub.pkgtools.fetch.FetchError as e:
+	except (hub.pkgtools.fetch.FetchError, hub.pkgtools.ebuild.BreezyError) as e:
 		ERRORS.append(e)
 	except AssertionError as e:
 		ERRORS.append(e)
@@ -105,7 +117,7 @@ async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, sub
 			pkginfo.update(pkg_section)
 			await run_autogen(hub, generator_sub, pkginfo)
 
-	await hub.pkgtools.ebuild.parallelize_pending_tasks()
+	await parallelize_pending_tasks(hub)
 
 
 async def generate_yaml_autogens(hub):
