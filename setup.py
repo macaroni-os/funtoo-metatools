@@ -5,7 +5,7 @@ with open("README.rst", "r") as fh:
 
 setuptools.setup(
     name="funtoo-metatools",
-    version="0.4.1",
+    version="0.4.2",
     author="Daniel Robbins",
     author_email="drobbins@funtoo.org",
     description="Funtoo framework for auto-creation of ebuilds.",
