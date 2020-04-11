@@ -6,6 +6,8 @@ import logging
 import traceback
 from yaml import safe_load
 
+ERRORS = []
+
 def generate_manifests(hub):
 	for manifest_file, manifest_lines in hub.MANIFEST_LINES.items():
 		manifest_lines = sorted(list(manifest_lines))
@@ -54,6 +56,14 @@ async def generate_individual_autogens(hub):
 		hub.pop.sub.remove("my_catpkg")
 
 
+async def run_autogen(hub, sub, pkginfo):
+	try:
+		await sub.generate(**pkginfo)
+	except hub.pkgtools.fetch.FetchError as e:
+		ERRORS.append(e)
+	except AssertionError as e:
+		ERRORS.append(e)
+
 async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, subpath=None):
 	"""
 	This method takes a single YAML rule that we've extracted from an autogen.yaml file,
@@ -67,7 +77,7 @@ async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, sub
 	if type(package) == str:
 		# simple '- pkgname' format.
 		pkginfo['name'] = package
-		await generator_sub.generate(**pkginfo)
+		await run_autogen(hub, generator_sub, pkginfo)
 	elif type(package) == dict:
 
 		# more complex format.
@@ -90,10 +100,10 @@ async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, sub
 				v_pkginfo = pkginfo.copy()
 				v_pkginfo['version'] = version
 				v_pkginfo.update(v_pkg_section)
-				await generator_sub.generate(**v_pkginfo)
+				await run_autogen(hub, generator_sub, v_pkginfo)
 		else:
 			pkginfo.update(pkg_section)
-			await generator_sub.generate(**pkginfo)
+			await run_autogen(hub, generator_sub, pkginfo)
 
 	await hub.pkgtools.ebuild.parallelize_pending_tasks()
 
@@ -143,6 +153,9 @@ async def start(hub, start_path=None, out_path=None):
 	await generate_individual_autogens(hub)
 	await generate_yaml_autogens(hub)
 	generate_manifests(hub)
+	return ERRORS
+
+
 
 
 # vim: ts=4 sw=4 noet

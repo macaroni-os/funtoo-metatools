@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 import asyncio
+import sys
+
 import pop.hub
 import logging
 
@@ -11,8 +13,16 @@ hub = pop.hub.Hub()
 hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
 
 if __name__ == "__main__":
-	asyncio.run(hub.pkgtools.autogen.start())
-
+	errors = asyncio.run(hub.pkgtools.autogen.start())
+	if len(errors):
+		sys.stderr.write('\n\n')
+		for e in errors:
+			if type(e) == hub.pkgtools.fetch.FetchError:
+				logging.error(e.msg)
+			else:
+				logging.error(repr(e))
+		sys.stderr.write("\n\nErrors encountered.\n")
+		sys.exit(1)
 # TODO: add after-action report (listing any failures.)
 # TODO: add mass-autogen YAML support.
 # TODO: add 'facts' database concept to allow more resiliency on failures (fall back to cached facts from last
