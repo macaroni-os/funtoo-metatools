@@ -4,6 +4,7 @@ import subprocess
 import os
 import logging
 import traceback
+import sys
 from yaml import safe_load
 
 ERRORS = []
@@ -15,9 +16,11 @@ async def parallelize_pending_tasks(hub):
 		try:
 			await future
 		except (hub.pkgtools.fetch.FetchError, hub.pkgtools.ebuild.BreezyError) as e:
-			ERRORS.append(e)
+			_, _, tb = sys.exc_info()
+			ERRORS.append((e, traceback.extract_tb(tb)))
 		except AssertionError as e:
-			ERRORS.append(e)
+			_, _, tb = sys.exc_info()
+			ERRORS.append((e, traceback.extract_tb(tb)))
 
 
 def generate_manifests(hub):
@@ -72,9 +75,11 @@ async def run_autogen(hub, sub, pkginfo):
 	try:
 		await sub.generate(**pkginfo)
 	except (hub.pkgtools.fetch.FetchError, hub.pkgtools.ebuild.BreezyError) as e:
-		ERRORS.append(e)
+		_, _, tb = sys.exc_info()
+		ERRORS.append((e, traceback.extract_tb(tb)))
 	except AssertionError as e:
-		ERRORS.append(e)
+		_, _, tb = sys.exc_info()
+		ERRORS.append((e, traceback.extract_tb(tb)))
 
 async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, subpath=None):
 	"""

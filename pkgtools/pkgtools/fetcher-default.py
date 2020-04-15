@@ -50,21 +50,24 @@ async def http_fetch_stream(hub, url, on_chunk):
 	"""
 	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=get_resolver(hub), verify_ssl=False)
 	headers = {'User-Agent': 'funtoo-metatools (support@funtoo.org)'}
-	async with aiohttp.ClientSession(connector=connector) as http_session:
-		async with http_session.get(url, headers=headers, timeout=None) as response:
-			if response.status != 200:
-				raise hub.pkgtools.fetch.FetchError(f"HTTP Error {response.status}")
-			while True:
-				try:
-					chunk = await response.content.read(chunk_size)
-					if not chunk:
-						break
-					else:
-						sys.stdout.write(".")
-						sys.stdout.flush()
-						on_chunk(chunk)
-				except aiohttp.EofStream:
-					pass
+	try:
+		async with aiohttp.ClientSession(connector=connector) as http_session:
+			async with http_session.get(url, headers=headers, timeout=None) as response:
+				if response.status != 200:
+					raise hub.pkgtools.fetch.FetchError(f"HTTP Error {response.status}")
+				while True:
+					try:
+						chunk = await response.content.read(chunk_size)
+						if not chunk:
+							break
+						else:
+							sys.stdout.write(".")
+							sys.stdout.flush()
+							on_chunk(chunk)
+					except aiohttp.EofStream:
+						pass
+	except AssertionError:
+		raise hub.pkgtools.fetch.FetchError(f"Unable to fetch {url}; internal aiohttp assertion failed")
 	return None
 
 

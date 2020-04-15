@@ -16,11 +16,14 @@ if __name__ == "__main__":
 	errors = asyncio.run(hub.pkgtools.autogen.start())
 	if len(errors):
 		sys.stderr.write('\n\n')
-		for e in errors:
+		for e, tb_info in errors:
 			if type(e) in ( hub.pkgtools.fetch.FetchError, hub.pkgtools.ebuild.BreezyError):
 				logging.error(e.msg)
 			else:
-				logging.error(repr(e))
+				logging.error(repr(e) + ': ')
+				for tb in tb_info:
+					filename, line, func, text = tb
+					logging.error(f'  file {filename} line {line}: {func}: {text}')
 		sys.stderr.write("\n\nErrors encountered.\n")
 		sys.exit(1)
 # TODO: add after-action report (listing any failures.)
