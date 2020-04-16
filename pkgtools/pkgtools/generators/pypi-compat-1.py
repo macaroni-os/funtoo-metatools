@@ -14,6 +14,7 @@ async def generate(hub, **pkginfo):
 		pypi_name = pkginfo['pypi_name']
 	else:
 		pypi_name = pkginfo['name']
+		pkginfo['pypi_name'] = pypi_name
 
 	json_data = await hub.pkgtools.fetch.get_page(f'https://pypi.org/pypi/{pypi_name}/json', refresh_interval=pkginfo['refresh_interval'])
 	json_dict = json.loads(json_data)
@@ -26,13 +27,39 @@ async def generate(hub, **pkginfo):
 		if artifact['packagetype'] == 'sdist':
 			artifact_url = artifact['url']
 			break
+
 	assert artifact_url is not None, f"Artifact URL could not be found in {pkginfo}. This can indicate a PyPi package without a 'source' distribution."
+
+	pkginfo['name'] = 'pyyaml-test'
 	ebuild = hub.pkgtools.ebuild.BreezyBuild(
 		**pkginfo,
 		artifacts=[
 			hub.pkgtools.ebuild.Artifact(url=artifact_url)
-		]
+		],
+		template='pypi-base.tmpl'
 	)
 	ebuild.push()
+
+	pkginfo['version'] = pkginfo['compat']
+	artifact_url = None
+	for artifact in json_dict['releases'][pkginfo['version']]:
+		if artifact['packagetype'] == 'sdist':
+			artifact_url = artifact['url']
+			break
+
+	assert artifact_url is not None, f"Artifact URL could not be found in {pkginfo}. This can indicate a PyPi package without a 'source' distribution."
+
+	pkginfo['python_compat'] = 'python2_7'
+	pkginfo['name'] = 'pyyaml-test'
+
+	ebuild = hub.pkgtools.ebuild.BreezyBuild(
+		**pkginfo,
+		artifacts=[
+			hub.pkgtools.ebuild.Artifact(url=artifact_url)
+		],
+		template='pypi-base.tmpl'
+	)
+	ebuild.push()
+
 
 # vim: ts=4 sw=4 noet
