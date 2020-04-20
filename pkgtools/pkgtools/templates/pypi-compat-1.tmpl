@@ -1,0 +1,38 @@
+# Distributed under the terms of the GNU General Public License v2
+
+EAPI={{eapi|default('7')}}
+
+PYTHON_COMPAT=( {{python_compat}} )
+
+inherit distutils-r1
+
+DESCRIPTION="{{desc|default('')}}"
+HOMEPAGE="{{homepage|default('')}}"
+SRC_URI="{{artifacts[0].src_uri}}"
+
+DEPEND="{{depend|default('')}}"
+{%- if compat_ebuild %}
+RDEPEND="{{rdepend|default('')}} {% if blocker %}{{blocker}}{% endif %}"
+{%- else %}
+RDEPEND="{{rdepend|default('')}} python_targets_python2_7? ( {{cat}}/{{name}}-compat )"
+{%- endif %}
+
+BDEPEND="{{bdepend|default('')}}"
+
+{%- if compat_ebuild %}
+IUSE="{{iuse|default('')}}"
+{%- else %}
+IUSE="{{iuse|default('')}} python_targets_python2_7 python_single_target_python2_7"
+{%- endif %}
+SLOT="{{slot|default('0')}}"
+LICENSE="{{license|default('')}}"
+KEYWORDS="{{keywords|default('*')}}"
+
+S="${WORKDIR}/{{pypi_name}}-${PV}"
+
+# Convert 2-space indents to tabs in the ebuild:
+{%- for line in body.split('\n') %}
+  {%- set indent_level = (line|length - line.lstrip(" ")|length) // 2 %}
+  {%- set newline = "\t" * indent_level + line[indent_level*2:] %}
+{{newline}}
+{%- endfor %}
