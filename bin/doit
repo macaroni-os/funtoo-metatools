@@ -17,7 +17,9 @@ if __name__ == "__main__":
 	if len(errors):
 		sys.stderr.write('\n\n')
 		for e, tb_info in errors:
-			if type(e) in ( hub.pkgtools.fetch.FetchError, hub.pkgtools.ebuild.BreezyError):
+			if type(e) == hub.pkgtools.fetch.FetchError:
+				logging.error(repr(e))
+			elif type(e) == hub.pkgtools.ebuild.BreezyError:
 				logging.error(e.msg)
 			else:
 				logging.error(repr(e) + ': ')

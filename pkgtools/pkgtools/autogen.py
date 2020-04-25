@@ -58,7 +58,7 @@ async def generate_individual_autogens(hub):
 		try:
 			await hub.my_catpkg.autogen.generate(name=pkg_name, cat=pkg_cat, path=subpath)
 		except hub.pkgtools.fetch.FetchError as fe:
-			logging.error(fe.msg)
+			logging.error(repr(fe))
 			continue
 		except hub.pkgtools.ebuild.BreezyError as be:
 			logging.error(be.msg)

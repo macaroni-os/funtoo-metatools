@@ -54,7 +54,7 @@ async def http_fetch_stream(hub, url, on_chunk):
 		async with aiohttp.ClientSession(connector=connector) as http_session:
 			async with http_session.get(url, headers=headers, timeout=None) as response:
 				if response.status != 200:
-					raise hub.pkgtools.fetch.FetchError(f"HTTP Error {response.status}")
+					raise hub.pkgtools.fetch.FetchError(url, f"HTTP Error {response.status}")
 				while True:
 					try:
 						chunk = await response.content.read(chunk_size)
@@ -67,7 +67,7 @@ async def http_fetch_stream(hub, url, on_chunk):
 					except aiohttp.EofStream:
 						pass
 	except AssertionError:
-		raise hub.pkgtools.fetch.FetchError(f"Unable to fetch {url}; internal aiohttp assertion failed")
+		raise hub.pkgtools.fetch.FetchError(url, f"Unable to fetch: internal aiohttp assertion failed")
 	return None
 
 
@@ -82,7 +82,7 @@ async def http_fetch(hub, url):
 	async with aiohttp.ClientSession(connector=connector) as http_session:
 		async with http_session.get(url, headers=headers, timeout=None) as response:
 			if response.status != 200:
-				raise hub.pkgtools.fetch.FetchError(f"HTTP Error {response.status}")
+				raise hub.pkgtools.fetch.FetchError(url, f"HTTP Error {response.status}")
 			return await response.text()
 	return None
 
@@ -140,7 +140,7 @@ async def get_page(hub, url):
 	try:
 		return await http_fetch(hub, url)
 	except Exception as e:
-		raise hub.pkgtools.fetch.FetchError("Couldn't get URL %s -- %s" % (url, repr(e)))
+		raise hub.pkgtools.fetch.FetchError(url, f"Couldn't get_page due to exception {repr(e)}")
 
 
 async def get_url_from_redirect(hub, url):
@@ -158,8 +158,8 @@ async def get_url_from_redirect(hub, url):
 		if e.response.code == 302:
 			return e.response.headers["location"]
 	except Exception as e:
-		raise hub.pkgtools.fetch.FetchError("Couldn't get URL %s -- %s" % (url, repr(e)))
-	raise hub.pkgtools.fetch.FetchError("URL %s doesn't appear to redirect" % url)
+		raise hub.pkgtools.fetch.FetchError(url, f"Couldn't get_url_from_redirect due to exception {repr(e)}")
+		raise hub.pkgtools.fetch.FetchError(url, "Doesn't appear to redirect")
 
 
 def extract(hub, artifact):

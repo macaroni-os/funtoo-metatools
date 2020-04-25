@@ -16,9 +16,13 @@ class FetchError(Exception):
 	and thus retry should have the default value of False.
 	"""
 
-	def __init__(self, msg, retry=False):
+	def __init__(self, fetchable, msg, retry=False):
+		self.fetchable = fetchable
 		self.msg = msg
 		self.retry = retry
+
+	def __repr__(self):
+		return f'FetchError for {self.fetchable}: {self.msg}'
 
 
 class CacheMiss(Exception):
@@ -76,7 +80,7 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 			else:
 				raise e
 		except asyncio.CancelledError as e:
-			raise FetchError(f"Fetch of {url} cancelled.")
+			raise FetchError(fetchable, f"Fetch of {url} cancelled.")
 
 
 	# If we've gotten here, we've performed all of our attempts to do live fetching.
@@ -85,20 +89,20 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 		return result['body']
 	except CacheMiss:
 		await hub.pkgtools.FETCH_CACHE.record_fetch_failure(fetch_method.__name__, fetchable, fail_reason=fail_reason)
-		raise FetchError(f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.")
+		raise FetchError(fetchable, f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.")
 
 
 async def get_page(hub, fetchable, max_age=None, refresh_interval=None):
 	method = getattr(hub.pkgtools.FETCHER, "get_page", None)
 	if method is None:
-		raise FetchError("Method get_page not implemented for fetcher.")
+		raise FetchError(fetchable, "Method get_page not implemented for fetcher.")
 	return await fetch_harness(hub, method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
 
 
 async def get_url_from_redirect(hub, fetchable, max_age=None, refresh_interval=None):
 	method = getattr(hub.pkgtools.FETCHER, "get_url_from_redirect", None)
 	if method is None:
-		raise FetchError("Method get_url_from_redirect not implemented for fetcher.")
+		raise FetchError(fetchable, "Method get_url_from_redirect not implemented for fetcher.")
 	return await fetch_harness(hub, method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
 
 
