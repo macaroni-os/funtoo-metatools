@@ -5,7 +5,7 @@ with open("README.rst", "r") as fh:
 
 setuptools.setup(
     name="funtoo-metatools",
-    version="0.4.6",
+    version="0.4.8",
     author="Daniel Robbins",
     author_email="drobbins@funtoo.org",
     description="Funtoo framework for auto-creation of ebuilds.",
@@ -26,5 +26,6 @@ setuptools.setup(
         'aiodns',
         'tornado>=5'
     ],
-    packages=setuptools.find_packages()
+    packages=setuptools.find_packages(),
+    package_data={ '' : [ '*.tmpl' ] }
 )

@@ -48,7 +48,7 @@ async def http_fetch_stream(hub, url, on_chunk):
 	performed. A FetchError will be raised if any error occurs. If this function
 	returns successfully then the download completed successfully.
 	"""
-	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=get_resolver(hub), verify_ssl=False)
+	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=get_resolver(hub), ssl=False)
 	headers = {'User-Agent': 'funtoo-metatools (support@funtoo.org)'}
 	try:
 		async with aiohttp.ClientSession(connector=connector) as http_session:
@@ -77,7 +77,7 @@ async def http_fetch(hub, url):
 	string and return the entire content as a string.
 	"""
 	global RESOLVER
-	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=get_resolver(hub), verify_ssl=False)
+	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=get_resolver(hub), ssl=False)
 	headers = {'User-Agent': 'funtoo-metatools (support@funtoo.org)'}
 	async with aiohttp.ClientSession(connector=connector) as http_session:
 		async with http_session.get(url, headers=headers, timeout=None) as response:

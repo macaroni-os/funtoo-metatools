@@ -38,7 +38,7 @@ def add_ebuild(hub, json_dict=None, compat_ebuild=False, **pkginfo):
 			artifact_url = artifact['url']
 			break
 	assert artifact_url is not None, f"Artifact URL could not be found in {pkginfo['name']}. This can indicate a PyPi package without a 'source' distribution."
-	local_pkginfo['template_path'] = os.path.join(os.path.dirname(__file__), '../templates')
+	local_pkginfo['template_path'] = os.path.normpath(os.path.join(os.path.dirname(__file__), '../../templates'))
 	ebuild = hub.pkgtools.ebuild.BreezyBuild(
 		**local_pkginfo,
 		artifacts=[
