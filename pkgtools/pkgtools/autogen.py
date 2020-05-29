@@ -36,6 +36,17 @@ def generate_manifests(hub):
 		logging.debug(f"Manifest {manifest_file} generated.")
 
 
+def _map_filepath_as_sub(hub, subpath):
+
+	# This method does a special pop trick to temporarily map a path into a sub so we
+	# can access autogen.py or generator.py in that directory.
+	hub.pop.sub.add(static=subpath, subname="my_catpkg")
+
+def _unmap_sub(hub):
+
+	hub.pop.sub.remove("my_catpkg")
+
+
 async def generate_individual_autogens(hub):
 	"""
 	This method finds individual autogen.py files in the current repository path and runs them all.
@@ -49,9 +60,9 @@ async def generate_individual_autogens(hub):
 		subpath = os.path.dirname(file)
 		if subpath.endswith("pkgtools"):
 			continue
-		hub.pop.sub.add(static=subpath, subname="my_catpkg")
-
 		# TODO: pass repo_name as well as branch to the generate method below:
+
+		_map_filepath_as_sub(hub, subpath)
 
 		pkg_name = file.split("/")[-2]
 		pkg_cat = file.split("/")[-3]
@@ -68,8 +79,7 @@ async def generate_individual_autogens(hub):
 			continue
 		# we need to wait for all our pending futures before removing the sub:
 		await parallelize_pending_tasks(hub)
-		hub.pop.sub.remove("my_catpkg")
-
+		_unmap_sub()
 
 async def run_autogen(hub, sub, pkginfo):
 	try:
@@ -86,7 +96,8 @@ async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, sub
 	This method takes a single YAML rule that we've extracted from an autogen.yaml file,
 	loads the appropriate generator, and uses it to generate (probably) a bunch of catpkgs.
 	"""
-	pkginfo = generator_sub.GLOBAL_DEFAULTS.copy()
+	glob_defs = getattr(generator_sub, "GLOBAL_DEFAULTS", {})
+	pkginfo = glob_defs.copy()
 	pkginfo.update(defaults)
 	pkginfo['template_path'] = os.path.join(subpath, "templates")
 	pkginfo['path'] = subpath
@@ -138,6 +149,7 @@ async def generate_yaml_autogens(hub):
 	files = o.split('\n')
 
 	pending_tasks = []
+	generator_id = None
 
 	for file in files:
 		file = file.strip()
@@ -150,7 +162,43 @@ async def generate_yaml_autogens(hub):
 					defaults = rule['defaults']
 				else:
 					defaults = {}
-				generator_sub = getattr(hub.pkgtools.generators, rule['generator'])
+			
+				if 'generator' in rule:
+					# use an 'official' generator
+					new_generator_id = 'official:' + rule['generator']
+				else:
+					# use an ad-hoc 'generator.py' generator in the same dir as autogen.yaml:
+					new_generator_id = 'adhoc:' + subpath
+
+
+				# We are switching generators -- we need to execute all pending tasks first.
+
+				if generator_id != new_generator_id:
+					if len(pending_tasks):
+						await asyncio.gather(*pending_tasks)
+						pending_tasks = []
+					if generator_id is not None and generator_id.startswith('adhoc:'):
+						_unmap_sub(hub)
+
+					generator_id = new_generator_id
+
+					# Set up new generator:
+
+					if generator_id.startswith('adhoc:'):
+						# Set up ad-hoc generator in generator.py in autogen.yaml path:
+						_map_filepath_as_sub(hub, subpath)
+						try:
+							generator_sub = hub.my_catpkg.generator
+						except AttributeError as e:
+							logging.error("FOOBAR")
+							raise
+					else:
+						# Use an official generator bundled with funtoo-metatools:
+						try:
+							generator_sub = getattr(hub.pkgtools.generators, rule['generator'])
+						except AttributeError as e:
+							logging.error(f'Could not find specified generator {generator}.')
+							raise
 				for package in rule['packages']:
 					pending_tasks.append(process_yaml_rule(hub, generator_sub, package, defaults, subpath))
 

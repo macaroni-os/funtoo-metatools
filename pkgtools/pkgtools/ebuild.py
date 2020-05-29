@@ -209,10 +209,23 @@ class BreezyBuild:
 		self.template_args = kwargs
 		for kwarg in ['cat', 'name', 'version', 'revision', 'path']:
 			if kwarg in kwargs:
+				logging.info(f"Setting {kwarg} to {kwargs[kwarg]}")
 				setattr(self, kwarg, kwargs[kwarg])
 		self.template = template
 		self.template_text = template_text
-		self._template_path = template_path
+		if template_path is None:
+			if 'path' in self.template_args:
+				# If we have a pkginfo['path'], this gives us our current processing path.
+				# Use this as a base for our default template path.
+				self._template_path = os.path.join(self.template_args['path'] + '/templates')
+			else:
+				# This is a no-op, but wit this set to None, we will use the template_path()
+				# property to get the value, which will be relative to the repo root and based
+				# on the setting of name and category.
+				self._template_path = None
+		else:
+			# A manual template path was specified.
+			self._template_path = template_path
 		if self.template_text is None and self.template is None:
 			self.template = self.name + ".tmpl"
 
