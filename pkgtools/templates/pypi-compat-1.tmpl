@@ -16,7 +16,7 @@ RDEPEND="{{rdepend|default('')}} {% if blocker %}{{blocker}}{% endif %}"
 {%- else %}
 RDEPEND="{{rdepend|default('')}} python_targets_python2_7? ( {{cat}}/{{name}}-compat )"
 {%- endif %}
-
+PDEPEND="{{pdepende|default('')}}"
 BDEPEND="{{bdepend|default('')}}"
 
 {%- if compat_ebuild %}
@@ -24,6 +24,7 @@ IUSE="{{iuse|default('')}}"
 {%- else %}
 IUSE="{{iuse|default('')}} python_targets_python2_7 python_single_target_python2_7"
 {%- endif %}
+RESTRICT="{{restrict|default('')}}"
 SLOT="{{slot|default('0')}}"
 LICENSE="{{license|default('')}}"
 KEYWORDS="{{keywords|default('*')}}"
