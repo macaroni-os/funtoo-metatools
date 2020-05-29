@@ -79,7 +79,7 @@ async def generate_individual_autogens(hub):
 			continue
 		# we need to wait for all our pending futures before removing the sub:
 		await parallelize_pending_tasks(hub)
-		_unmap_sub()
+		_unmap_sub(hub)
 
 async def run_autogen(hub, sub, pkginfo):
 	try:
