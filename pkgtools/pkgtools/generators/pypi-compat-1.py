@@ -29,7 +29,6 @@ def add_ebuild(hub, json_dict=None, compat_ebuild=False, **pkginfo):
 		local_pkginfo['version'] = local_pkginfo['compat']
 		local_pkginfo['name'] = local_pkginfo['name'] + '-compat'
 	else:
-		#local_pkginfo['python_compat'] += ' python2_7'
 		if 'version' not in local_pkginfo or local_pkginfo['version'] == 'latest':
 			local_pkginfo['version'] = json_dict['info']['version']
 	artifact_url = None
@@ -57,7 +56,8 @@ async def generate(hub, **pkginfo):
 	json_data = await hub.pkgtools.fetch.get_page(f'https://pypi.org/pypi/{pypi_name}/json', refresh_interval=pkginfo['refresh_interval'])
 	json_dict = json.loads(json_data)
 	add_ebuild(hub, json_dict, compat_ebuild=False, **pkginfo)
-	add_ebuild(hub, json_dict, compat_ebuild=True, **pkginfo)
+	if 'compat' in pkginfo and pkginfo['compat']:
+		add_ebuild(hub, json_dict, compat_ebuild=True, **pkginfo)
 
 
 # vim: ts=4 sw=4 noet

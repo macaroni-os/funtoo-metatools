@@ -13,27 +13,41 @@ SRC_URI="{{artifacts[0].src_uri}}"
 DEPEND="{{depend|default('')}}"
 {%- if compat_ebuild %}
 RDEPEND="{{rdepend|default('')}} {% if blocker %}{{blocker}}{% endif %}"
-{%- else %}
+{%- elif compat is defined %}
 RDEPEND="{{rdepend|default('')}} python_targets_python2_7? ( {{cat}}/{{name}}-compat )"
+{%- else %}
+  {%- if rdepend is defined %}
+RDEPEND="{{rdepend|default('')}}"
+  {%- endif %}
 {%- endif %}
-PDEPEND="{{pdepende|default('')}}"
+{%- if pdepend is defined %}
+PDEPEND="{{pdepend|default('')}}"
+{%- endif %}
+{%- if bdepend is defined %}
 BDEPEND="{{bdepend|default('')}}"
+{%- endif %}
 
 {%- if compat_ebuild %}
 IUSE="{{iuse|default('')}}"
-{%- else %}
+{%- elif compat is defined %}
 IUSE="{{iuse|default('')}} python_targets_python2_7 python_single_target_python2_7"
+{%- else %}
+IUSE="{{iuse|default('')}}"
 {%- endif %}
+{%- if restrict is defined %}
 RESTRICT="{{restrict|default('')}}"
+{%- endif %}
 SLOT="{{slot|default('0')}}"
 LICENSE="{{license|default('')}}"
 KEYWORDS="{{keywords|default('*')}}"
 
 S="${WORKDIR}/{{pypi_name}}-${PV}"
 
-# Convert 2-space indents to tabs in the ebuild:
+{# Convert 2-space indents to tabs in the ebuild: #}
+{%- if body is defined %}
 {%- for line in body.split('\n') %}
   {%- set indent_level = (line|length - line.lstrip(" ")|length) // 2 %}
   {%- set newline = "\t" * indent_level + line[indent_level*2:] %}
 {{newline}}
 {%- endfor %}
+{%- endif %}
