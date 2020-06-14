@@ -6,7 +6,7 @@ import asyncio
 import jinja2
 import logging
 from collections import defaultdict
-import hashlib
+
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -17,9 +17,9 @@ HUB = None
 def __init__(hub):
 	global HUB
 	HUB = hub
-	hub.ARTIFACT_TEMP_PATH = os.path.join(hub.OPT.pkgtools.temp_path, 'distfiles')
+
 	hub.MANIFEST_LINES = defaultdict(set)
-	hub.CHECK_DISK_HASHES = False
+
 
 
 class BreezyError(Exception):
@@ -36,134 +36,43 @@ class DigestError(Exception):
 
 class Fetchable:
 
-	def __init__(self, **kwargs):
+	def __init__(self, url=None, **kwargs):
 		global HUB
 		self.hub = HUB
-		self.metadata = kwargs
-
-	@property
-	def url(self):
-		return self.metadata["url"]
-
-	def as_metadata(self):
-		return {
-			"url": self.metadata['url']
-		}
+		self.url = url
 
 
 class Artifact(Fetchable):
 
-	def __init__(self, **kwargs):
-		super().__init__(**kwargs)
-		self.hashes = None
-		self._size = 0
-		self.in_setup = asyncio.Semaphore()
-		self.in_download = asyncio.Semaphore()
-		self.attempted_download = False
-
-	async def setup(self):
-		async with self.in_setup:
-			if self.hashes is not None:
-				# someone else completed setup while I was waiting.
-				return
-			if not self.exists:
-				await self.download()
-			try:
-				db_result = await self.hub.pkgtools.FETCH_CACHE.fetch_cache_read("artifact", self)
-				try:
-					self.hashes = db_result['metadata']['hashes']
-					if self.hub.CHECK_DISK_HASHES:
-						logging.debug(f"Checking disk hashes for {self.final_name}")
-						await self.check_hashes(self.hashes, await self.calc_hashes())
-				except (KeyError, TypeError) as foo:
-					await self.update_hashes()
-			except self.hub.pkgtools.fetch.CacheMiss:
-				await self.update_hashes()
-
-	async def download(self):
-		async with self.in_download:
-			if self.exists or self.attempted_download:
-				# someone else completed the download while I was waiting
-				return
-			await self.hub.pkgtools.FETCHER.download(self)
-			self.attempted_download = True
-
-	async def update_hashes(self):
-		"""
-		This method calculates new hashes for the Artifact that currently exists on disk, and also updates the fetch cache with these new hash values.
-
-		This method assumes that the Artifact exists on disk.
-		"""
-		logging.info(f"Updating hashes for {self.url}")
-		self.hashes = await self.calc_hashes()
-		await self.hub.pkgtools.FETCH_CACHE.fetch_cache_write("artifact", self, metadata_only=True)
-
-	async def check_hashes(self, old_hashes, new_hashes):
-		"""
-		This method compares two sets of hashes passed to it and throws an exception if they don't match.
-		"""
-		logging.debug("Checking hashes to make sure they match")
-		if new_hashes['sha512'] != old_hashes['sha512']:
-			raise DigestError(f"Digests of {self.final_name} do not match digest when it was originally downloaded. Current digest: {old_hashes['sha512']} Original digest: {new_hashes['sha512']}")
-		if new_hashes['blake2b'] != old_hashes['blake2b']:
-			raise DigestError(f"Digests of {self.final_name} do not match digest when it was originally downloaded. Current digest: {old_hashes['blake2b']} Original digest: {new_hashes['blake2b']}")
-		if new_hashes['size'] != old_hashes['size']:
-			raise DigestError(f"Filesize of {self.final_name} do not match filesize when it was originally downloaded. Current size: {old_hashes['size']} Original size: {new_hashes['size']}")
-
-	async def calc_hashes(self):
-		logging.debug("Performing hash calculations on Artifact on disk")
-		if not self.exists:
-			raise BreezyError(f"Asked to calculate digests for {self.final_name} but file does not exist on disk.")
-		_sha512 = hashlib.sha512()
-		_blake2b = hashlib.blake2b()
-		_size = 0
-		logging.info("Calculating digests for %s..." % self.final_path)
-		with open(self.final_path, 'rb') as myf:
-			while True:
-				data = myf.read(1280000)
-				if not data:
-					break
-				_sha512.update(data)
-				_blake2b.update(data)
-				_size += len(data)
-		return {
-			"sha512": _sha512.hexdigest(),
-			"blake2b": _blake2b.hexdigest(),
-			"size": _size
-		}
-
-	async def fetch(self):
-		if not self.exists:
-			await self.setup()
-
-	def as_metadata(self):
-		return {
-			"url": self.metadata['url'],
-			"final_name": self.final_name,
-			"hashes": self.hashes
-		}
+	def __init__(self, url=None, final_name=None, **kwargs):
+		super().__init__(url=url, **kwargs)
+		self._final_name = final_name
+		self.fetch_handle = None
 
 	@property
 	def final_name(self):
-		if "final_name" not in self.metadata:
-			return self.metadata["url"].split("/")[-1]
+		if self._final_name is None:
+			return self.url.split("/")[-1]
 		else:
-			return self.metadata["final_name"]
+			return self._final_name
+
+	async def fetch(self):
+		# Simply delegate responsibility to ensure that our artifact is successfully fetched:
+		if not self.fetch_handle:
+			self.fetch_handle = await self.hub.pkgtools.FETCHER.artifact_ensure_fetched(self)
 
 	@property
 	def src_uri(self):
-		url = self.metadata["url"]
-		fn = self.final_name
-		if fn is None:
-			return url
+		if self._final_name is None:
+			return self.url
 		else:
-			return url + " -> " + fn
+			return self.url + " -> " + self._final_name
 
-	def extract(self):
-		return self.hub.pkgtools.FETCHER.extract(self)
+	async def extract(self):
+		return await self.hub.pkgtools.FETCHER.extract(self)
 
-	def cleanup(self):
-		self.hub.pkgtools.FETCHER.cleanup(self)
+	async def cleanup(self):
+		return await self.hub.pkgtools.FETCHER.cleanup(self)
 
 	@property
 	def temp_path(self):
