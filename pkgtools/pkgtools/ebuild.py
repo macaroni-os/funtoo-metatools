@@ -57,9 +57,7 @@ class Artifact(Fetchable):
 			return self._final_name
 
 	async def fetch(self):
-		# Simply delegate responsibility to ensure that our artifact is successfully fetched:
-		if not self.fetch_handle:
-			self.fetch_handle = await self.hub.pkgtools.FETCHER.artifact_ensure_fetched(self)
+		await self.hub.pkgtools.FETCHER.artifact_ensure_fetched(self)
 
 	@property
 	def src_uri(self):
@@ -74,21 +72,6 @@ class Artifact(Fetchable):
 	async def cleanup(self):
 		return await self.hub.pkgtools.FETCHER.cleanup(self)
 
-	@property
-	def temp_path(self):
-		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, "%s.__download__" % self.final_name)
-
-	@property
-	def final_path(self):
-		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, self.final_name)
-
-	@property
-	def extract_path(self):
-		return os.path.join(self.hub.ARTIFACT_TEMP_PATH, "extract", self.final_name)
-
-	@property
-	def exists(self):
-		return os.path.exists(self.final_path)
 
 
 class BreezyBuild:
