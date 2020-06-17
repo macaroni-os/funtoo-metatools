@@ -69,6 +69,7 @@ class Artifact(Fetchable):
 	def hashes(self):
 		return self.final_data['hashes']
 
+	@property
 	def size(self):
 		return self.final_data['size']
 
