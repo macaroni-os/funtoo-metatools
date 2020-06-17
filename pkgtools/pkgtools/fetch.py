@@ -8,6 +8,7 @@ from enum import Enum
 def __init__(hub):
 	hub.FETCH_ATTEMPTS = 3
 
+
 class FetchError(Exception):
 
 	"""

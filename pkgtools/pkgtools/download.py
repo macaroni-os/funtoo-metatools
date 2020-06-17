@@ -6,20 +6,25 @@ import os
 import sys
 from subprocess import getstatusoutput
 
+
 def __init__(hub):
 	hub.ARTIFACT_TEMP_PATH = os.path.join(hub.OPT.pkgtools.temp_path, 'distfiles')
 	hub.CHECK_DISK_HASHES = False
+
 
 HASHES = [ 'sha512', 'blake2b' ]
 
 # TODO: implement different download strategies with different levels of security. Maybe as a
 #       declarative pipeline.
 
+
 def _final_path(hub, artifact):
 	return os.path.join(hub.ARTIFACT_TEMP_PATH, artifact.final_name)
 
+
 def _temp_path(hub, artifact):
 	return os.path.join(hub.ARTIFACT_TEMP_PATH, "%s.__download__" % artifact.final_name)
+
 
 async def artifact_ensure_fetched(hub, artifact):
 	if os.path.exists(_final_path(hub, artifact)):
@@ -35,6 +40,7 @@ async def artifact_ensure_fetched(hub, artifact):
 		except hub.pkgtools.fetch.FetchError as e:
 			#hub.pkgtools.FETCH_CACHE.record_download_failure(TODO)
 			raise e
+
 
 async def download(hub, artifact):
 	"""
@@ -89,8 +95,9 @@ async def download(hub, artifact):
 
 	return final_data
 
+
 def extract(hub, artifact):
-	# TODO: maybe refactor thest next 2 lines
+	# TODO: maybe refactor these next 2 lines
 	if not artifact.exists:
 		artifact.fetch()
 	extract_path = os.path.join(hub.ARTIFACT_TEMP_PATH, "extract", artifact.final_name)

@@ -240,8 +240,8 @@ class BreezyBuild:
 
 	def create_ebuild(self):
 		if not self.template_text:
+			template_file = os.path.join(self.template_path, self.template)
 			try:
-				template_file = os.path.join(self.template_path, self.template)
 				with open(template_file, "r") as tempf:
 					template = jinja2.Template(tempf.read())
 			except FileNotFoundError as e:
