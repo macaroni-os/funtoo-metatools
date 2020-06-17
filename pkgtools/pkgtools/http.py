@@ -7,10 +7,6 @@ import sys
 import logging
 import socket
 
-__virtualname__ = "FETCHER"
-
-def __virtual__(hub):
-	return True
 
 http_data_timeout = 60
 chunk_size = 262144
@@ -23,7 +19,7 @@ async def http_fetch_stream(hub, url, on_chunk):
 	performed. A FetchError will be raised if any error occurs. If this function
 	returns successfully then the download completed successfully.
 	"""
-	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub.pkgtools.dns.get_resolver(hub), ssl=False)
+	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub.pkgtools.dns.get_resolver(), ssl=False)
 	headers = {'User-Agent': 'funtoo-metatools (support@funtoo.org)'}
 	try:
 		async with aiohttp.ClientSession(connector=connector) as http_session:
@@ -51,7 +47,7 @@ async def http_fetch(hub, url):
 	This is a non-streaming HTTP fetcher that will properly convert the request to a Python
 	string and return the entire content as a string.
 	"""
-	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub.pkgtools.dns.get_resolver(hub), ssl=False)
+	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub.pkgtools.dns.get_resolver(), ssl=False)
 	headers = {'User-Agent': 'funtoo-metatools (support@funtoo.org)'}
 	async with aiohttp.ClientSession(connector=connector) as http_session:
 		async with http_session.get(url, headers=headers, timeout=None) as response:

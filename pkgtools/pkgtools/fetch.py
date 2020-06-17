@@ -93,14 +93,14 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 
 
 async def get_page(hub, fetchable, max_age=None, refresh_interval=None):
-	method = getattr(hub.pkgtools.FETCHER, "get_page", None)
+	method = getattr(hub.pkgtools.http, "get_page", None)
 	if method is None:
 		raise FetchError(fetchable, "Method get_page not implemented for fetcher.")
 	return await fetch_harness(hub, method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
 
 
 async def get_url_from_redirect(hub, fetchable, max_age=None, refresh_interval=None):
-	method = getattr(hub.pkgtools.FETCHER, "get_url_from_redirect", None)
+	method = getattr(hub.pkgtools.http, "get_url_from_redirect", None)
 	if method is None:
 		raise FetchError(fetchable, "Method get_url_from_redirect not implemented for fetcher.")
 	return await fetch_harness(hub, method, fetchable, max_age=max_age, refresh_interval=refresh_interval)

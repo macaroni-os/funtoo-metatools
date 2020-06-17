@@ -1,29 +1,16 @@
 #!/usr/bin/env python3
 
-import asyncio
-import aiohttp
-from tornado import httpclient
-from tornado.httpclient import HTTPRequest
-import sys
-import os
 import hashlib
 import logging
-import socket
+import os
+import sys
 from subprocess import getstatusoutput
-import hashlib
-
-__virtualname__ = "FETCHER"
-
-
-def __virtual__(hub):
-	return True
 
 def __init__(hub):
 	hub.ARTIFACT_TEMP_PATH = os.path.join(hub.OPT.pkgtools.temp_path, 'distfiles')
 	hub.CHECK_DISK_HASHES = False
 
 HASHES = [ 'sha512', 'blake2b' ]
-
 
 # TODO: implement different download strategies with different levels of security. Maybe as a
 #       declarative pipeline.
@@ -36,14 +23,18 @@ def _temp_path(hub, artifact):
 
 async def artifact_ensure_fetched(hub, artifact):
 	if os.path.exists(_final_path(hub, artifact)):
+		final_data = await calc_hashes(hub, _final_path(hub, artifact))
+		artifact.record_final_data(final_data)
 		return
 	else:
 		try:
 			final_data = await download(hub, artifact)
-			# TODO: implement:
-			hub.pkgtools.FETCH_CACHE.record_download_success(final_data)
-		except FetchError as e:
-			hub.pkgtools.FETCH_CACHE.record_download_failure(TODO)
+			artifact.record_final_data(final_data)
+			## TODO: implement:
+			#hub.pkgtools.FETCH_CACHE.record_download_success(final_data)
+		except hub.pkgtools.fetch.FetchError as e:
+			#hub.pkgtools.FETCH_CACHE.record_download_failure(TODO)
+			raise e
 
 async def download(hub, artifact):
 	"""
@@ -79,7 +70,7 @@ async def download(hub, artifact):
 		sys.stdout.write(".")
 		sys.stdout.flush()
 
-	await http_fetch_stream(hub, artifact.url, on_chunk)
+	await hub.pkgtools.http.http_fetch_stream(artifact.url, on_chunk)
 	sys.stdout.write("x")
 	sys.stdout.flush()
 	fd.close()

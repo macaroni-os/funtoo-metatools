@@ -47,7 +47,7 @@ class Artifact(Fetchable):
 	def __init__(self, url=None, final_name=None, **kwargs):
 		super().__init__(url=url, **kwargs)
 		self._final_name = final_name
-		self.fetch_handle = None
+		self.final_data = None
 
 	@property
 	def final_name(self):
@@ -57,7 +57,23 @@ class Artifact(Fetchable):
 			return self._final_name
 
 	async def fetch(self):
-		await self.hub.pkgtools.FETCHER.artifact_ensure_fetched(self)
+		await self.hub.pkgtools.download.artifact_ensure_fetched(self)
+
+	async def ensure_fetched(self):
+		await self.fetch()
+
+	def record_final_data(self, final_data):
+		self.final_data = final_data
+
+	@property
+	def hashes(self):
+		return self.final_data['hashes']
+
+	def size(self):
+		return self.final_data['size']
+
+	def hash(self, h):
+		return self.final_data['hashes'][h]
 
 	@property
 	def src_uri(self):
@@ -67,11 +83,10 @@ class Artifact(Fetchable):
 			return self.url + " -> " + self._final_name
 
 	async def extract(self):
-		return await self.hub.pkgtools.FETCHER.extract(self)
+		return await self.hub.pkgtools.download.extract(self)
 
 	async def cleanup(self):
-		return await self.hub.pkgtools.FETCHER.cleanup(self)
-
+		return await self.hub.pkgtools.download.cleanup(self)
 
 
 class BreezyBuild:
@@ -139,7 +154,8 @@ class BreezyBuild:
 		futures = []
 
 		async def lil_coroutine(a):
-			await a.setup()
+			await a.ensure_fetched()
+			print(f"Artifact {a.url} fetched.")
 			return a
 
 		for artifact in self.artifact_dicts:
@@ -220,7 +236,7 @@ class BreezyBuild:
 			return
 		key = self.output_pkgdir + "/Manifest"
 		for artifact in self.artifacts:
-				self.hub.MANIFEST_LINES[key].add("DIST %s %s BLAKE2B %s SHA512 %s\n" % (artifact.final_name, artifact.hashes["size"], artifact.hashes["blake2b"], artifact.hashes["sha512"]))
+				self.hub.MANIFEST_LINES[key].add("DIST %s %s BLAKE2B %s SHA512 %s\n" % (artifact.final_name, artifact.size, artifact.hash('blake2b'), artifact.hash('sha512')))
 
 	def create_ebuild(self):
 		if not self.template_text:
