@@ -141,17 +141,20 @@ async def _download(hub, artifact):
 	return final_data
 
 
+def extract_path(hub, artifact):
+	return os.path.join(hub.ARTIFACT_TEMP_PATH, "extract", artifact.final_name)
+
+
 def extract(hub, artifact):
 	# TODO: maybe refactor these next 2 lines
 	if not artifact.exists:
 		artifact.fetch()
-	extract_path = os.path.join(hub.ARTIFACT_TEMP_PATH, "extract", artifact.final_name)
-	os.makedirs(extract_path, exist_ok=True)
-	cmd = "tar -C %s -xf %s" % (extract_path, artifact.final_path)
+	ep = extract_path(hub, artifact)
+	os.makedirs(ep, exist_ok=True)
+	cmd = "tar -C %s -xf %s" % (ep, _final_path(hub, artifact))
 	s, o = getstatusoutput(cmd)
 	if s != 0:
 		raise hub.pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
-
 
 def cleanup(hub, artifact):
 	# TODO: check for path stuff like ../.. in final_name to avoid security issues.

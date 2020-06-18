@@ -51,6 +51,10 @@ class Artifact(Fetchable):
 		else:
 			return self._final_name
 
+	@property
+	def extract_path(self):
+		return self.hub.pkgtools.download.extract_path(self)
+
 	async def fetch(self):
 		await self.hub.pkgtools.download.ensure_fetched(self)
 
@@ -81,12 +85,14 @@ class Artifact(Fetchable):
 		else:
 			return self.url + " -> " + self._final_name
 
-	async def extract(self):
-		return await self.hub.pkgtools.download.extract(self)
+	def extract(self):
+		return self.hub.pkgtools.download.extract(self)
 
-	async def cleanup(self):
-		return await self.hub.pkgtools.download.cleanup(self)
+	def cleanup(self):
+		return self.hub.pkgtools.download.cleanup(self)
 
+	def exists(self):
+		return self.hub.pkgtools.is_fetched(self)
 
 class BreezyBuild:
 
