@@ -10,7 +10,6 @@ from yaml import safe_load
 ERRORS = []
 QUE = []
 
-
 async def parallelize_pending_tasks(hub):
 	for future in asyncio.as_completed(QUE):
 		try:

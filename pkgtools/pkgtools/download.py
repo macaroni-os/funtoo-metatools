@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-
+import asyncio
 import hashlib
 import logging
 import os
 import sys
+from collections import defaultdict
 from subprocess import getstatusoutput
-
 
 def __init__(hub):
 	hub.ARTIFACT_TEMP_PATH = os.path.join(hub.OPT.pkgtools.temp_path, 'distfiles')
 	hub.CHECK_DISK_HASHES = False
-
+	hub.DL_ACTIVE = {}
 
 HASHES = [ 'sha512', 'blake2b' ]
 
@@ -26,23 +26,68 @@ def _temp_path(hub, artifact):
 	return os.path.join(hub.ARTIFACT_TEMP_PATH, "%s.__download__" % artifact.final_name)
 
 
-async def artifact_ensure_fetched(hub, artifact):
-	if os.path.exists(_final_path(hub, artifact)):
-		final_data = await calc_hashes(hub, _final_path(hub, artifact))
-		artifact.record_final_data(final_data)
-		return
+def is_fetched(hub, artifact):
+	return os.path.exists(_final_path(hub, artifact))
+
+
+async def ensure_fetched(hub, artifact):
+	if is_fetched(hub, artifact):
+		if artifact.final_data is not None:
+			return
+		else:
+			# TODO: put this in a threadpool to avoid multiple simultaneous hash calcs on same file:
+			artifact.record_final_data(await calc_hashes(hub, _final_path(hub, artifact)))
 	else:
-		try:
-			final_data = await download(hub, artifact)
+		if artifact.final_name in hub.DL_ACTIVE:
+			# Active download -- wait for it to finish:
+			print(f"Waiting for {artifact.final_name} to finish")
+			await hub.DL_ACTIVE[artifact.final_name].wait_for_completion(artifact)
+		else:
+			# No active download for this file -- start one:
+			print(f"Starting download of {artifact.final_name}")
+			dl_file = Download(hub, artifact)
+			await dl_file.download()
+
+
+class Download:
+
+	"""
+	When we need to download an artifact, we create a download. Multiple, co-existing Artifact
+	objects can reference the same file. Rather than have them try to download the same file
+	at the same time, they leverage a "Download" which eliminates conflicts and manages the
+	retrieval of the file.
+
+	The Download object will record all Artifacts that need this file, and arbitrate the download
+	of this file and update the Artifacts with the completion data when the download is complete.
+
+	"""
+
+	def __init__(self, hub, artifact):
+		self.hub = hub
+		self.final_name = artifact.final_name
+		self.url = artifact.url
+		self.artifacts = [artifact]
+		self.futures = []
+
+	def add_artifact(self, artifact):
+		self.artifacts.append(artifact)
+
+	def wait_for_completion(self, artifact):
+		self.artifacts.append(artifact)
+		fut = asyncio.get_event_loop().create_future()
+		self.futures.append(fut)
+		return fut
+
+	async def download(self):
+		self.hub.DL_ACTIVE[self.final_name] = self
+		final_data = await _download(self.hub, self.artifacts[0])
+		for artifact in self.artifacts:
 			artifact.record_final_data(final_data)
-			## TODO: implement:
-			#hub.pkgtools.FETCH_CACHE.record_download_success(final_data)
-		except hub.pkgtools.fetch.FetchError as e:
-			#hub.pkgtools.FETCH_CACHE.record_download_failure(TODO)
-			raise e
+		for future in self.futures:
+			future.set_result(None)
+		del self.hub.DL_ACTIVE[self.final_name]
 
-
-async def download(hub, artifact):
+async def _download(hub, artifact):
 	"""
 
 	This function is used to download tarballs and other artifacts. Because files can be large,

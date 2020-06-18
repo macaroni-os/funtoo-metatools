@@ -7,19 +7,14 @@ import jinja2
 import logging
 from collections import defaultdict
 
-
 logging.basicConfig(level=logging.DEBUG)
 
-
 HUB = None
-
 
 def __init__(hub):
 	global HUB
 	HUB = hub
-
 	hub.MANIFEST_LINES = defaultdict(set)
-
 
 
 class BreezyError(Exception):
@@ -57,7 +52,10 @@ class Artifact(Fetchable):
 			return self._final_name
 
 	async def fetch(self):
-		await self.hub.pkgtools.download.artifact_ensure_fetched(self)
+		await self.hub.pkgtools.download.ensure_fetched(self)
+
+	def is_fetched(self):
+		return self.hub.pkgtools.download.is_fetched(self)
 
 	async def ensure_fetched(self):
 		await self.fetch()
@@ -152,18 +150,23 @@ class BreezyBuild:
 		Note that this now parallelizes all downloads.
 		"""
 
-		futures = []
+		# TODO: if not fetched, we need to wait on something that will return when the file is actually
+		#       fetched.
 
-		async def lil_coroutine(a):
-			await a.ensure_fetched()
-			print(f"Artifact {a.url} fetched.")
-			return a
+		futures = []
 
 		for artifact in self.artifact_dicts:
 			if type(artifact) != Artifact:
 				artifact = Artifact(**artifact)
+
+			async def lil_coroutine(a):
+				await a.ensure_fetched()
+				print(f"Artifact {a.url} fetched.")
+				return a
+
 			futures.append(lil_coroutine(artifact))
 
+		# At this point, all artifacts are fetched:
 		self.artifacts = await asyncio.gather(*futures)
 		self.template_args["artifacts"] = self.artifacts
 
