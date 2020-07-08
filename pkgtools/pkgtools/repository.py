@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 import os
-import sys
 import logging
+
 
 class Tree:
     def __init__(self, root=None, name=None):
