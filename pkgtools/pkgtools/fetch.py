@@ -74,11 +74,16 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 			await hub.pkgtools.FETCH_CACHE.fetch_cache_write(fetch_method.__name__, fetchable, body=result)
 			return result
 		except FetchError as e:
-			if e.retry:
+			if e.retry and attempts + 1 < hub.FETCH_ATTEMPTS:
 				fail_reason = e.msg
 				logging.error(f"Fetch method {fetch_method.__name__} failed with URL {url}; retrying...")
 				continue
-			else:
+			# if we got here, we are on our LAST retry attempt or retry is False:
+			logging.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
+			try:
+				return await hub.pkgtools.FETCH_CACHE.fetch_cache_read(fetch_method.__name__, fetchable)
+			except CacheMiss as ce:
+				# raise original exception
 				raise e
 		except asyncio.CancelledError as e:
 			raise FetchError(fetchable, f"Fetch of {url} cancelled.")

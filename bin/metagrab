@@ -1,0 +1,19 @@
+#!/usr/bin/env python3
+
+import sys
+import pop.hub
+import logging
+import os
+
+hub_logger = logging.getLogger("pop.hub")
+hub_logger.setLevel(logging.DEBUG)
+hub = pop.hub.Hub()
+
+hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
+
+if __name__ == "__main__":
+	for dir in os.listdir(sys.argv[1]):
+		for metafile in os.listdir(os.path.join(sys.argv[1], dir)):
+			print(hub.pkgtools.metadata.get_metadata(metafile))
+
+# vim: ts=4 sw=4 noet
