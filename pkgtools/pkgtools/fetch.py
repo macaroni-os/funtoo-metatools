@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
+import json
 import logging
 import sys
 from enum import Enum
@@ -98,12 +99,27 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 		raise FetchError(fetchable, f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.")
 
 
-async def get_page(hub, fetchable, max_age=None, refresh_interval=None):
+async def get_page(hub, fetchable, max_age=None, refresh_interval=None, is_json=False):
 	method = getattr(hub.pkgtools.http, "get_page", None)
 	if method is None:
 		raise FetchError(fetchable, "Method get_page not implemented for fetcher.")
-	return await fetch_harness(hub, method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
-
+	result = await fetch_harness(hub, method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
+	if not is_json:
+		return result
+	try:
+		json_data = json.loads(result)
+		return json_data
+	except json.JSONDecodeError as e:
+		logging.warning(repr(e))
+		logging.warning("JSON appears corrupt -- trying to get cached version of resource...")
+		try:
+			result = await hub.pkgtools.FETCH_CACHE.fetch_cache_read("get_page", fetchable, max_age=max_age)
+			return json.loads(result)
+		except CacheMiss:
+			# bumm3r.
+			raise FetchError(fetchable, "Couldn't find cached version of resource (live version was corrupt JSON.)")
+		except json.JSONDecodeError as e:
+			raise FetchError(fetchable, f"Tried using cached version of resource but it doesn't appear to be in JSON format: {repr(e)}")
 
 async def get_url_from_redirect(hub, fetchable, max_age=None, refresh_interval=None):
 	method = getattr(hub.pkgtools.http, "get_url_from_redirect", None)
