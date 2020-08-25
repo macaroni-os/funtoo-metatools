@@ -14,7 +14,7 @@ DEPEND="{{depend|default('')}}"
 {%- if compat_ebuild %}
 RDEPEND="{{rdepend|default('')}} {% if blocker %}{{blocker}}{% endif %}"
 {%- elif compat is defined %}
-RDEPEND="{{rdepend|default('')}} python_targets_python2_7? ( {{cat}}/{{name}}-compat )"
+RDEPEND="{{rdepend|default('')}} python_targets_python2_7? ( {{cat}}/{{name}}-compat ) {{rdepend_compat|default('')}}"
 {%- else %}
   {%- if rdepend is defined %}
 RDEPEND="{{rdepend|default('')}}"
