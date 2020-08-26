@@ -30,7 +30,7 @@ BDEPEND="{{bdepend|default('')}}"
 {%- if compat_ebuild %}
 IUSE="{{iuse|default('')}}"
 {%- elif compat is defined %}
-IUSE="{{iuse|default('')}} python_targets_python2_7 python_single_target_python2_7"
+IUSE="{{iuse|default('')}} python_targets_python2_7"
 {%- else %}
 IUSE="{{iuse|default('')}}"
 {%- endif %}
