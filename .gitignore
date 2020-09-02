@@ -1,5 +1,8 @@
+*.log
+*.egg-info
 .idea
 __pycache__
+dist/
 example-overlay/x11-proto/*
 example-overlay/x11-base/xorg-proto/Manifest
 example-overlay/x11-base/xorg-proto/xorg-proto-2018.4_p20180627-r2.ebuild

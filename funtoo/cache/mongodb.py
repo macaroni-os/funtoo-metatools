@@ -22,11 +22,11 @@ of the downloaded artifact -- its message digests and size at the time the downl
 
 """
 
-__virtualname__ = "FETCH_CACHE"
+__virtualname__ = "fetch"
 
 
 def __virtual__(hub):
-    return hub.OPT.pkgtools['cacher'] == "mongodb"
+    return hub.FETCHER == "mongodb"
 
 
 def __init__(hub):

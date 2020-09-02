@@ -1,6 +1,6 @@
 import os
-
-CONFIG = {
+CONFIG = {}
+CLI_CONFIG = {
     "start_path": {
         'default': os.getcwd(),
         'os': 'AUTOGEN_START_PATH',
@@ -33,13 +33,5 @@ CONFIG = {
     }
 }
 
-CLI_CONFIG = {
-    "start_path": {},
-    "out_path": {},
-    "temp_path": {},
-    "fetcher": {},
-    "cacher": {}
-}
-
-DYNE = {'pkgtools': ['pkgtools']}
+DYNE = {'doit': ['doit']}
 

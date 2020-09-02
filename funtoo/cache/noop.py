@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-__virtualname__ = "FETCH_CACHE"
+__virtualname__ = "fetch"
 
 
 def __virtual__(hub):
-    return hub.OPT.pkgtools['cacher'] == "noop"
-
+    cacher = getattr(hub, "CACHER", None)
+    return cacher in [ "noop", None ]
 
 def __init__(hub):
     pass

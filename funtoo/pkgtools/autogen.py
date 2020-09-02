@@ -50,14 +50,15 @@ async def generate_individual_autogens(hub):
 	"""
 	This method finds individual autogen.py files in the current repository path and runs them all.
 	"""
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % hub.OPT.pkgtools['start_path'])
+	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % hub.CONTEXT.root)
+	print("AUTHOEN",o)
 	files = o.split('\n')
 	for file in files:
 		file = file.strip()
 		if not len(file):
 			continue
 		subpath = os.path.dirname(file)
-		if subpath.endswith("pkgtools"):
+		if subpath.endswith("metatools"):
 			continue
 		# TODO: pass repo_name as well as branch to the generate method below:
 
@@ -144,7 +145,7 @@ async def generate_yaml_autogens(hub):
 	Currently supported in the initial implementation are autogen.yaml files existing in *category*
 	directories.
 	"""
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % hub.OPT.pkgtools['start_path'])
+	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % hub.CONTEXT.root)
 	files = o.split('\n')
 
 	pending_tasks = []
@@ -194,9 +195,9 @@ async def generate_yaml_autogens(hub):
 					else:
 						# Use an official generator bundled with funtoo-metatools:
 						try:
-							generator_sub = getattr(hub.pkgtools.generators, rule['generator'])
+							generator_sub = getattr(hub.generators, rule['generator'])
 						except AttributeError as e:
-							logging.error(f'Could not find specified generator {generator}.')
+							logging.error(f'Could not find specified generator {generator_id}.')
 							raise
 				for package in rule['packages']:
 					pending_tasks.append(process_yaml_rule(hub, generator_sub, package, defaults, subpath))
@@ -204,16 +205,18 @@ async def generate_yaml_autogens(hub):
 	await asyncio.gather(*pending_tasks)
 
 
-async def start(hub, start_path=None, out_path=None):
+async def start(hub, start_path=None, out_path=None, temp_path=None, cacher=None, fetcher=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
-
-	hub.pkgtools.repository.set_context(
-		start_path if start_path is not None else hub.OPT.pkgtools.start_path,
-		out_path=out_path if out_path is not None else hub.OPT.pkgtools.out_path, name=hub.OPT.pkgtools.name)
-
+	hub.CACHER = cacher
+	hub.FETCHER = fetcher
+	hub.TEMP_PATH = temp_path
+	hub.pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
+	hub.pop.sub.add("funtoo.cache")
+	hub.pop.sub.add("funtoo.generators")
+	print(hub.cache.fetch)
 	await generate_individual_autogens(hub)
 	await generate_yaml_autogens(hub)
 	generate_manifests(hub)

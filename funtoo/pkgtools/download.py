@@ -8,7 +8,6 @@ from collections import defaultdict
 from subprocess import getstatusoutput
 
 def __init__(hub):
-	hub.ARTIFACT_TEMP_PATH = os.path.join(hub.OPT.pkgtools.temp_path, 'distfiles')
 	hub.CHECK_DISK_HASHES = False
 	hub.DL_ACTIVE = {}
 
@@ -18,16 +17,16 @@ HASHES = [ 'sha512', 'blake2b' ]
 #       declarative pipeline.
 
 
-def _final_path(hub, artifact):
-	return os.path.join(hub.ARTIFACT_TEMP_PATH, artifact.final_name)
+def final_path(hub, artifact):
+	return os.path.join(hub.TEMP_PATH, "distfiles", artifact.final_name)
 
 
 def _temp_path(hub, artifact):
-	return os.path.join(hub.ARTIFACT_TEMP_PATH, "%s.__download__" % artifact.final_name)
+	return os.path.join(hub.TEMP_PATH, "distfiles", "%s.__download__" % artifact.final_name)
 
 
 def is_fetched(hub, artifact):
-	return os.path.exists(_final_path(hub, artifact))
+	return os.path.exists(final_path(hub, artifact))
 
 
 async def ensure_fetched(hub, artifact):
@@ -36,7 +35,7 @@ async def ensure_fetched(hub, artifact):
 			return
 		else:
 			# TODO: put this in a threadpool to avoid multiple simultaneous hash calcs on same file:
-			artifact.record_final_data(await calc_hashes(hub, _final_path(hub, artifact)))
+			artifact.record_final_data(await calc_hashes(hub, final_path(hub, artifact)))
 	else:
 		if artifact.final_name in hub.DL_ACTIVE:
 			# Active download -- wait for it to finish:
@@ -100,9 +99,9 @@ async def _download(hub, artifact):
 	"""
 
 	logging.info(f"Fetching {artifact.url}...")
-	os.makedirs(hub.ARTIFACT_TEMP_PATH, exist_ok=True)
+	os.makedirs(os.path.join(hub.TEMP_PATH, "distfiles"), exist_ok=True)
 	temp_path = _temp_path(hub, artifact)
-	final_path = _final_path(hub, artifact)
+	final_path = final_path(hub, artifact)
 
 	fd = open(temp_path, "wb")
 	hashes = {}
@@ -142,7 +141,7 @@ async def _download(hub, artifact):
 
 
 def extract_path(hub, artifact):
-	return os.path.join(hub.ARTIFACT_TEMP_PATH, "extract", artifact.final_name)
+	return os.path.join(hub.TEMP_PATH, "distfile", "extract", artifact.final_name)
 
 
 def extract(hub, artifact):
@@ -151,14 +150,14 @@ def extract(hub, artifact):
 		artifact.fetch()
 	ep = extract_path(hub, artifact)
 	os.makedirs(ep, exist_ok=True)
-	cmd = "tar -C %s -xf %s" % (ep, _final_path(hub, artifact))
+	cmd = "tar -C %s -xf %s" % (ep, final_path(hub, artifact))
 	s, o = getstatusoutput(cmd)
 	if s != 0:
 		raise hub.pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
 
 def cleanup(hub, artifact):
 	# TODO: check for path stuff like ../.. in final_name to avoid security issues.
-	getstatusoutput("rm -rf " + os.path.join(hub.ARTIFACT_TEMP_PATH, "extract", artifact.final_name))
+	getstatusoutput("rm -rf " + os.path.join(hub.TEMP_PATH, "distfiles", "extract", artifact.final_name))
 
 
 async def calc_hashes(hub, fn):

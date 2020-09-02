@@ -29,14 +29,14 @@ def repository_of(hub, p, name=None):
     return Tree(root=start_path, name=repo_name if name is None else name)
 
 
-def set_context(hub, path, out_path=None, name=None):
-    hub.CONTEXT = hub._.repository_of(path, name=name)
-    if out_path is None or path == out_path:
+def set_context(hub, start_path=None, out_path=None, name=None):
+    hub.CONTEXT = hub._.repository_of(start_path, name=name)
+    if out_path is None or start_path == out_path:
         hub.OUTPUT_CONTEXT = hub.CONTEXT
     else:
         hub.OUTPUT_CONTEXT = hub._.repository_of(out_path, name=name)
     if hub.CONTEXT is None:
-        raise hub.pkgtools.ebuild.BreezyError("Could not determine repo context: %s -- please create a profiles/repo_name file in your repository." % path)
+        raise hub.pkgtools.ebuild.BreezyError("Could not determine repo context: %s -- please create a profiles/repo_name file in your repository." % start_path)
     elif hub.OUTPUT_CONTEXT is None:
         raise hub.pkgtools.ebuild.BreezyError("Could not determine output repo context: %s -- please create a profiles/repo_name file in your repository." % out_path)
     logging.debug("Set source context to %s." % hub.CONTEXT.root)

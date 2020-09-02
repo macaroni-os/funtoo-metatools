@@ -10,10 +10,18 @@ hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
 hub = pop.hub.Hub()
 
-hub.pop.sub.add(dyne_name="pkgtools", omit_class=False)
+int_g = ["doit", "pkgtools"]
+
+hub.pop.conf.integrate(int_g, cli="doit", roots=True, loader="yaml")
 
 if __name__ == "__main__":
-	errors = asyncio.run(hub.pkgtools.autogen.start())
+	hub.pop.sub.add("funtoo.pkgtools", omit_class=False)
+	kwargs = {}
+	for arg in [ "cacher", "fetcher", "temp_path", "out_path", "start_path"]:
+		kwargs[arg] = hub.OPT['doit'][arg]
+
+	errors = asyncio.run(hub.pkgtools.autogen.start(**kwargs))
+
 	if len(errors):
 		sys.stderr.write('\n\n')
 		for e, tb_info in errors:
