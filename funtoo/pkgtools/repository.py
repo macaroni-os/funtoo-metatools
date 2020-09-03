@@ -5,20 +5,21 @@ import logging
 
 
 class Tree:
-    def __init__(self, root=None, name=None):
-       self.root = root
-       self.name = name
+    def __init__(self, root=None, start=None, name=None):
+        self.root = root
+        self.name = name
+        self.start = start
 
 
-def repository_of(hub, p, name=None):
-    start_path = p
-    while start_path != "/" and not os.path.exists(os.path.join(start_path, "profiles/repo_name")) and not os.path.exists(os.path.join(start_path, "metadata/layout.conf")):
-        start_path = os.path.dirname(start_path)
-    if start_path == "/":
+def repository_of(hub, start_path, name=None):
+    root_path = start_path
+    while root_path != "/" and not os.path.exists(os.path.join(root_path, "profiles/repo_name")) and not os.path.exists(os.path.join(root_path, "metadata/layout.conf")):
+        root_path = os.path.dirname(root_path)
+    if root_path == "/":
         return None
 
     repo_name = None
-    repo_name_path = os.path.join(start_path, "profiles/repo_name")
+    repo_name_path = os.path.join(root_path, "profiles/repo_name")
     if os.path.exists(repo_name_path):
         with open(repo_name_path, "r") as repof:
             repo_name = repof.read().strip()
@@ -26,7 +27,7 @@ def repository_of(hub, p, name=None):
     if repo_name is None:
         logging.warning("Unable to find %s." % repo_name_path)
 
-    return Tree(root=start_path, name=repo_name if name is None else name)
+    return Tree(root=root_path, start=start_path, name=repo_name if name is None else name)
 
 
 def set_context(hub, start_path=None, out_path=None, name=None):

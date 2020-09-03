@@ -50,8 +50,7 @@ async def generate_individual_autogens(hub):
 	"""
 	This method finds individual autogen.py files in the current repository path and runs them all.
 	"""
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % hub.CONTEXT.root)
-	print("AUTHOEN",o)
+	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % hub.CONTEXT.start)
 	files = o.split('\n')
 	for file in files:
 		file = file.strip()
@@ -145,7 +144,7 @@ async def generate_yaml_autogens(hub):
 	Currently supported in the initial implementation are autogen.yaml files existing in *category*
 	directories.
 	"""
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % hub.CONTEXT.root)
+	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % hub.CONTEXT.start)
 	files = o.split('\n')
 
 	pending_tasks = []
@@ -216,13 +215,9 @@ async def start(hub, start_path=None, out_path=None, temp_path=None, cacher=None
 	hub.pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
 	hub.pop.sub.add("funtoo.cache")
 	hub.pop.sub.add("funtoo.generators")
-	print(hub.cache.fetch)
 	await generate_individual_autogens(hub)
 	await generate_yaml_autogens(hub)
 	generate_manifests(hub)
 	return ERRORS
-
-
-
 
 # vim: ts=4 sw=4 noet

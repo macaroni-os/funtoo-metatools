@@ -86,6 +86,7 @@ class Download:
 			future.set_result(None)
 		del self.hub.DL_ACTIVE[self.final_name]
 
+
 async def _download(hub, artifact):
 	"""
 
