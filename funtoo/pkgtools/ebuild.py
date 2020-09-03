@@ -115,7 +115,6 @@ class BreezyBuild:
 		self.template_args = kwargs
 		for kwarg in ["cat", "name", "version", "revision", "path"]:
 			if kwarg in kwargs:
-				logging.info(f"Setting {kwarg} to {kwargs[kwarg]}")
 				setattr(self, kwarg, kwargs[kwarg])
 		self.template = template
 		self.template_text = template_text
