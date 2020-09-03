@@ -26,7 +26,7 @@ __virtualname__ = "fetch"
 
 
 def __virtual__(hub):
-	return hub.FETCHER == "mongodb"
+	return hub.CACHER == "mongodb"
 
 
 def __init__(hub):
