@@ -25,7 +25,8 @@ async def http_fetch_stream(hub, url, on_chunk):
 		async with aiohttp.ClientSession(connector=connector) as http_session:
 			async with http_session.get(url, headers=headers, timeout=None) as response:
 				if response.status != 200:
-					raise hub.pkgtools.fetch.FetchError(url, f"HTTP Error {response.status}")
+					reason = (await response.text()).strip()
+					raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}")
 				while True:
 					try:
 						chunk = await response.content.read(chunk_size)
@@ -52,9 +53,11 @@ async def http_fetch(hub, url):
 	async with aiohttp.ClientSession(connector=connector) as http_session:
 		async with http_session.get(url, headers=headers, timeout=None) as response:
 			if response.status != 200:
-				raise hub.pkgtools.fetch.FetchError(url, f"HTTP Error {response.status}")
+				reason = (await response.text()).strip()
+				raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason}")
 			return await response.text()
 	return None
+
 
 async def get_page(hub, url):
 	"""
@@ -66,7 +69,10 @@ async def get_page(hub, url):
 	try:
 		return await http_fetch(hub, url)
 	except Exception as e:
-		raise hub.pkgtools.fetch.FetchError(url, f"Couldn't get_page due to exception {repr(e)}")
+		if isinstance(e, hub.pkgtools.fetch.FetchError):
+			raise e
+		else:
+			raise hub.pkgtools.fetch.FetchError(url, f"Couldn't get_page due to exception {repr(e)}")
 
 
 async def get_url_from_redirect(hub, url):

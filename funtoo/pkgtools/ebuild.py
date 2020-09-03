@@ -167,7 +167,6 @@ class BreezyBuild:
 
 			async def lil_coroutine(a):
 				await a.ensure_fetched()
-				print(f"Artifact {a.url} fetched. ({self.hub.pkgtools.download.get_final_path(a)})")
 				return a
 
 			futures.append(lil_coroutine(artifact))

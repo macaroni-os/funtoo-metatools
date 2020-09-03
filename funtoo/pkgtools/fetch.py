@@ -24,7 +24,7 @@ class FetchError(Exception):
 		self.retry = retry
 
 	def __repr__(self):
-		return f'FetchError for {self.fetchable}: {self.msg}'
+		return f'{self.fetchable}: {self.msg}'
 
 
 class CacheMiss(Exception):
@@ -76,8 +76,7 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 			return result
 		except FetchError as e:
 			if e.retry and attempts + 1 < hub.FETCH_ATTEMPTS:
-				fail_reason = e.msg
-				logging.error(f"Fetch method {fetch_method.__name__} failed with URL {url}; retrying...")
+				logging.error(f"Fetch method {fetch_method.__name__}: {e.msg}; retrying...")
 				continue
 			# if we got here, we are on our LAST retry attempt or retry is False:
 			logging.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
