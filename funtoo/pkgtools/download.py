@@ -17,7 +17,7 @@ HASHES = [ 'sha512', 'blake2b' ]
 #       declarative pipeline.
 
 
-def final_path(hub, artifact):
+def get_final_path(hub, artifact):
 	return os.path.join(hub.TEMP_PATH, "distfiles", artifact.final_name)
 
 
@@ -26,7 +26,7 @@ def _temp_path(hub, artifact):
 
 
 def is_fetched(hub, artifact):
-	return os.path.exists(final_path(hub, artifact))
+	return os.path.exists(get_final_path(hub, artifact))
 
 
 async def ensure_fetched(hub, artifact):
@@ -35,7 +35,7 @@ async def ensure_fetched(hub, artifact):
 			return
 		else:
 			# TODO: put this in a threadpool to avoid multiple simultaneous hash calcs on same file:
-			artifact.record_final_data(await calc_hashes(hub, final_path(hub, artifact)))
+			artifact.record_final_data(await calc_hashes(hub, get_final_path(hub, artifact)))
 	else:
 		if artifact.final_name in hub.DL_ACTIVE:
 			# Active download -- wait for it to finish:
@@ -101,7 +101,7 @@ async def _download(hub, artifact):
 	logging.info(f"Fetching {artifact.url}...")
 	os.makedirs(os.path.join(hub.TEMP_PATH, "distfiles"), exist_ok=True)
 	temp_path = _temp_path(hub, artifact)
-	final_path = final_path(hub, artifact)
+	final_path = get_final_path(hub, artifact)
 
 	fd = open(temp_path, "wb")
 	hashes = {}
@@ -129,7 +129,7 @@ async def _download(hub, artifact):
 	final_data = {
 		"size": filesize,
 		"hashes": {},
-		"path" : final_path
+		"path": final_path
 	}
 
 	for h in HASHES:
@@ -150,7 +150,7 @@ def extract(hub, artifact):
 		artifact.fetch()
 	ep = extract_path(hub, artifact)
 	os.makedirs(ep, exist_ok=True)
-	cmd = "tar -C %s -xf %s" % (ep, final_path(hub, artifact))
+	cmd = "tar -C %s -xf %s" % (ep, get_final_path(hub, artifact))
 	s, o = getstatusoutput(cmd)
 	if s != 0:
 		raise hub.pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
@@ -176,7 +176,7 @@ async def calc_hashes(hub, fn):
 	final_data = {
 		"size": filesize,
 		"hashes": {},
-		"path" : fn
+		"path": fn
 	}
 	for h in HASHES:
 		final_data['hashes'][h] = hashes[h].hexdigest()
