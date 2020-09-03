@@ -13,7 +13,11 @@ class Tree:
 
 def repository_of(hub, start_path, name=None):
     root_path = start_path
-    while root_path != "/" and not os.path.exists(os.path.join(root_path, "profiles/repo_name")) and not os.path.exists(os.path.join(root_path, "metadata/layout.conf")):
+    while (
+        root_path != "/"
+        and not os.path.exists(os.path.join(root_path, "profiles/repo_name"))
+        and not os.path.exists(os.path.join(root_path, "metadata/layout.conf"))
+    ):
         root_path = os.path.dirname(root_path)
     if root_path == "/":
         return None
@@ -37,9 +41,14 @@ def set_context(hub, start_path=None, out_path=None, name=None):
     else:
         hub.OUTPUT_CONTEXT = hub._.repository_of(out_path, name=name)
     if hub.CONTEXT is None:
-        raise hub.pkgtools.ebuild.BreezyError("Could not determine repo context: %s -- please create a profiles/repo_name file in your repository." % start_path)
+        raise hub.pkgtools.ebuild.BreezyError(
+            "Could not determine repo context: %s -- please create a profiles/repo_name file in your repository."
+            % start_path
+        )
     elif hub.OUTPUT_CONTEXT is None:
-        raise hub.pkgtools.ebuild.BreezyError("Could not determine output repo context: %s -- please create a profiles/repo_name file in your repository." % out_path)
+        raise hub.pkgtools.ebuild.BreezyError(
+            "Could not determine output repo context: %s -- please create a profiles/repo_name file in your repository."
+            % out_path
+        )
     logging.debug("Set source context to %s." % hub.CONTEXT.root)
     logging.debug("Set output context to %s." % hub.OUTPUT_CONTEXT.root)
-

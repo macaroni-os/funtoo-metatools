@@ -15,27 +15,27 @@ int_g = ["doit", "pkgtools"]
 hub.pop.conf.integrate(int_g, cli="doit", roots=True, loader="yaml")
 
 if __name__ == "__main__":
-	hub.pop.sub.add("funtoo.pkgtools", omit_class=False)
-	kwargs = {}
-	for arg in [ "cacher", "fetcher", "temp_path", "out_path", "start_path"]:
-		kwargs[arg] = hub.OPT['doit'][arg]
+    hub.pop.sub.add("funtoo.pkgtools", omit_class=False)
+    kwargs = {}
+    for arg in ["cacher", "fetcher", "temp_path", "out_path", "start_path"]:
+        kwargs[arg] = hub.OPT["doit"][arg]
 
-	errors = asyncio.run(hub.pkgtools.autogen.start(**kwargs))
+    errors = asyncio.run(hub.pkgtools.autogen.start(**kwargs))
 
-	if len(errors):
-		sys.stderr.write('\n\n')
-		for e, tb_info in errors:
-			if type(e) == hub.pkgtools.fetch.FetchError:
-				logging.error(repr(e))
-			elif type(e) == hub.pkgtools.ebuild.BreezyError:
-				logging.error(e.msg)
-			else:
-				logging.error(repr(e) + ': ')
-				for tb in tb_info:
-					filename, line, func, text = tb
-					logging.error(f'  file {filename} line {line}: {func}: {text}')
-		sys.stderr.write("\n\nErrors encountered.\n")
-		sys.exit(1)
+    if len(errors):
+        sys.stderr.write("\n\n")
+        for e, tb_info in errors:
+            if type(e) == hub.pkgtools.fetch.FetchError:
+                logging.error(repr(e))
+            elif type(e) == hub.pkgtools.ebuild.BreezyError:
+                logging.error(e.msg)
+            else:
+                logging.error(repr(e) + ": ")
+                for tb in tb_info:
+                    filename, line, func, text = tb
+                    logging.error(f"  file {filename} line {line}: {func}: {text}")
+        sys.stderr.write("\n\nErrors encountered.\n")
+        sys.exit(1)
 # TODO: add after-action report (listing any failures.)
 # TODO: add mass-autogen YAML support.
 # TODO: add 'facts' database concept to allow more resiliency on failures (fall back to cached facts from last

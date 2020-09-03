@@ -34,8 +34,8 @@ def __init__(hub):
     db_name = "metatools"
     hub.MONGO_DB = getattr(mc, db_name)
     hub.MONGO_FC = hub.MONGO_DB.fetch_cache
-    hub.MONGO_FC.create_index([('method_name', pymongo.ASCENDING), ('url', pymongo.ASCENDING)])
-    hub.MONGO_FC.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {'$exists': True}})
+    hub.MONGO_FC.create_index([("method_name", pymongo.ASCENDING), ("url", pymongo.ASCENDING)])
+    hub.MONGO_FC.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {"$exists": True}})
 
 
 async def fetch_cache_write(hub, method_name, fetchable, body=None, metadata_only=False):
@@ -58,23 +58,17 @@ async def fetch_cache_write(hub, method_name, fetchable, body=None, metadata_onl
     now = datetime.utcnow()
     if not metadata_only:
 
-        hub.MONGO_FC.update_one({'method_name': method_name, 'url': url},
-                      {'$set': {
-                          'last_attempt': now,
-                          'fetched_on': now,
-                          'metadata': metadata,
-                          'body': body}
-                      },
-                      upsert=True)
+        hub.MONGO_FC.update_one(
+            {"method_name": method_name, "url": url},
+            {"$set": {"last_attempt": now, "fetched_on": now, "metadata": metadata, "body": body}},
+            upsert=True,
+        )
     else:
-        hub.MONGO_FC.update_one({'method_name': method_name, 'url': url},
-                                {'$set': {
-                                    'last_attempt': now,
-                                    'fetched_on': now,
-                                    'metadata': metadata,
-                                }
-                                },
-                                upsert=True)
+        hub.MONGO_FC.update_one(
+            {"method_name": method_name, "url": url},
+            {"$set": {"last_attempt": now, "fetched_on": now, "metadata": metadata,}},
+            upsert=True,
+        )
 
 
 async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_interval=None):
@@ -93,15 +87,15 @@ async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_in
         url = fetchable
     else:
         url = fetchable.url
-    result = hub.MONGO_FC.find_one({'method_name': method_name, 'url': url})
-    if result is None or 'fetched_on' not in result:
+    result = hub.MONGO_FC.find_one({"method_name": method_name, "url": url})
+    if result is None or "fetched_on" not in result:
         raise hub.pkgtools.fetch.CacheMiss()
     elif refresh_interval is not None:
-        if datetime.utcnow() - result['fetched_on'] <= refresh_interval:
+        if datetime.utcnow() - result["fetched_on"] <= refresh_interval:
             return result
         else:
             raise hub.pkgtools.fetch.CacheMiss()
-    elif max_age is not None and datetime.utcnow() - result['fetched_on'] > max_age:
+    elif max_age is not None and datetime.utcnow() - result["fetched_on"] > max_age:
         raise hub.pkgtools.fetch.CacheMiss()
     else:
         return result
@@ -117,9 +111,11 @@ async def record_fetch_failure(hub, method_name, fetchable, failure_reason):
     else:
         url = fetchable.url
     now = datetime.utcnow()
-    hub.MONGO_FC.update_one({'method_name': method_name, 'url': url},
-                  {'$set': {'last_attempt': now, 'last_failure_on': now},
-                   '$push': {'failures': {
-                       'attempted_on': now,
-                       'failure_reason': failure_reason
-                   }}}, upsert=True)
+    hub.MONGO_FC.update_one(
+        {"method_name": method_name, "url": url},
+        {
+            "$set": {"last_attempt": now, "last_failure_on": now},
+            "$push": {"failures": {"attempted_on": now, "failure_reason": failure_reason}},
+        },
+        upsert=True,
+    )

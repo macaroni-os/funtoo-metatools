@@ -20,4 +20,3 @@ Background and Installation
 ***************************
 
 Please see `our in-progress documentation <docs/index.rst>`_
-

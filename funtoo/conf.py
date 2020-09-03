@@ -1,5 +1,4 @@
 CONFIG = {}
 CLI_CONFIG = {}
 
-DYNE = {'pkgtools': ['pkgtools']}
-
+DYNE = {"pkgtools": ["pkgtools"]}
