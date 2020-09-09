@@ -20,7 +20,7 @@ if __name__ == "__main__":
 	for arg in ["cacher", "fetcher", "temp_path", "out_path", "start_path"]:
 		kwargs[arg] = hub.OPT["doit"][arg]
 
-	errors = asyncio.run(hub.pkgtools.autogen.start(**kwargs))
+	errors = asyncio.get_event_loop().run_until_complete(hub.pkgtools.autogen.start(**kwargs))
 
 	if len(errors):
 		sys.stderr.write("\n\n")

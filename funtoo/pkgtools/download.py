@@ -11,6 +11,7 @@ from subprocess import getstatusoutput
 def __init__(hub):
 	hub.CHECK_DISK_HASHES = False
 	hub.DL_ACTIVE = {}
+	hub.DL_ACTIVE_COUNT = asyncio.Semaphore(value=24, loop=asyncio.get_event_loop())
 
 
 HASHES = ["sha512", "blake2b"]
@@ -80,13 +81,16 @@ class Download:
 		return fut
 
 	async def download(self):
+		await self.hub.DL_ACTIVE_COUNT.acquire()
 		self.hub.DL_ACTIVE[self.final_name] = self
 		final_data = await _download(self.hub, self.artifacts[0])
 		for artifact in self.artifacts:
 			artifact.record_final_data(final_data)
+		del self.hub.DL_ACTIVE[self.final_name]
+		self.hub.DL_ACTIVE_COUNT.release()
 		for future in self.futures:
 			future.set_result(None)
-		del self.hub.DL_ACTIVE[self.final_name]
+
 
 
 async def _download(hub, artifact):
