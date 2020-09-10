@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+
+import asyncio
+import os
+import sys
+
+import pop.hub
+import logging
+
+hub_logger = logging.getLogger("pop.hub")
+hub_logger.setLevel(logging.DEBUG)
+hub = pop.hub.Hub()
+
+sub_name = os.path.basename(sys.argv[0])
+int_g = [sub_name, "pkgtools"]
+
+hub.pop.conf.integrate(int_g, cli=sub_name, roots=True, loader="yaml", logs=False)
+
+if __name__ == "__main__":
+	print("Why hello there.")
+	push = not hub.OPT['merge-kits']['nopush']
+	prod = hub.OPT['merge-kits']['prod']
+	print(hub.OPT['merge-kits']['release'])
+	print("prod:", prod)
+	print("push:", push)
+
+# vim: ts=4 sw=4 noet
