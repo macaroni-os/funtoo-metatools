@@ -1,27 +1,199 @@
 #!/usr/bin/env python3
-
 import asyncio
+import json
 import os
 import sys
 
 import pop.hub
 import logging
 
+import yaml
+
+from merge.config import Configuration
+from merge.merge_utils import GitTree
+
 hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
 hub = pop.hub.Hub()
 
-sub_name = os.path.basename(sys.argv[0])
-int_g = [sub_name, "pkgtools"]
+class Foundation:
 
-hub.pop.conf.integrate(int_g, cli=sub_name, roots=True, loader="yaml", logs=False)
+	def __init__(self, fixup_repo, config: Configuration = None, release=None):
+		self.fixup_repo = fixup_repo
+		self.release = release
+		self.config = config
+		with open(os.path.join(fixup_repo.root, "foundations.yaml"), "r") as f:
+			self.fdata = yaml.safe_load(f)
+		#print(json.dumps(self.fdata, indent=True))
 
+	def kit_groups(self):
+		defaults = self.fdata['kit-groups']['defaults'] if 'defaults' in self.fdata['kit-groups'] else {}
+		for release_dict in self.fdata['kit-groups']['releases']:
+
+			# unbundle from singleton dict:
+			release = list(release_dict.keys())[0]
+			release_data = release_dict[release]
+
+			if release != self.release:
+				continue
+
+			for kg in release_data:
+				out = defaults.copy()
+				if isinstance(kg, str):
+					out['name'] = kg
+				elif isinstance(kg, dict):
+					out['name'] = list(kg.keys())[0]
+					out.update(list(kg.values())[0])
+				yield out
+			break
+
+	def source_defs(self, name):
+		for sdef in self.fdata['source-defs']:
+			sdef_name = list(sdef.keys())[0]
+			if sdef_name != name:
+				continue
+			sdef_data = list(sdef.values())[0]
+			for sdef_entry in sdef_data:
+				yield sdef_entry
+
+	def get_overlay(self, name):
+		"""
+		Gets data on a specific overlay
+		"""
+		for ov_dict in self.fdata['overlays']:
+
+			if isinstance(ov_dict, str):
+				ov_name = ov_dict
+				ov_data = { "name" : ov_name }
+			else:
+				ov_name = list(ov_dict.keys())[0]
+				if ov_name != name:
+					continue
+				ov_data = list(ov_dict.values())[0]
+				ov_data['name'] = ov_name
+
+			if ov_name != name:
+				continue
+
+			url = self.config.get_option("sources", ov_name, None)
+			if url is not None:
+				ov_data['url'] = url
+
+			if "url" not in ov_data:
+				raise IndexError(f"No url found for overlay {name}")
+
+			return ov_data
+		raise IndexError(f"overlay not found: {name}")
+
+	def get_repos(self, source_name):
+		"""
+		Given a source definition, return a list of repositories with all data included (like urls
+		from the source definitions, etc.)
+		"""
+		source_defs = self.source_defs(source_name)
+		for repo_dict in source_defs:
+			ov_name = repo_dict['repo']
+			ov_data = self.get_overlay(ov_name)
+			repo_dict.update(ov_data)
+
+			if "src_sha1" not in repo_dict:
+				branch = self.config.get_option("branches", ov_name, None)
+				if branch is not None:
+					repo_dict['branch'] = branch
+				else:
+					repo_dict['branch'] = 'master'
+			yield repo_dict
+
+async def main_thread(config):
+	fixup_repo = GitTree("kit-fixups", config.branch("kit-fixups"), destfix=None, config=config, url=config.kit_fixups, root=config.source_trees + "/kit-fixups")
+
+	await fixup_repo.initialize()
+	# once the correct branch is checked out, then we want to do this import:
+	sys.path.insert(0, fixup_repo.root + "/modules")
+
+	foundation = Foundation(fixup_repo, config=config, release="1.4-release")
+
+	# developer specified a path to a git repo on the command-line, now we will look in all defined releases for independently-maintained kits with this
+	# name and process all defined branches:
+
+	already_processed_kit_keys = set()
+
+	for kit in foundation.kit_groups():
+		print(kit)
+
+	for sdef in foundation.get_repos('funtoo_release_1.4'):
+		print(sdef)
+
+	for path in ["foobar-repo"]:
+		path = os.path.realpath(path)
+		print('Processing path %s' % path)
+		if not os.path.isdir(path):
+			print("Error: %s does not exist or is not a directory. Skipping." % path)
+			continue
+
+		kit_name = os.path.basename(path)
+
+
+		sys.exit(1)
+
+
+
+		"""
+	
+			for kit_dict in release_kits:
+
+				# Don't process kits that don't match:
+				kit_branch = kit_dict["branch"]
+				if "type" not in kit_dict or kit_dict["type"] != KitType.INDEPENDENTLY_MAINTAINED:
+					continue
+				if "name" not in kit_dict or kit_dict["name"] != kit_name:
+					continue
+
+				# Don't repeatedly process the same kit (can be defined in multiple releases)
+				kit_key = "%s/%s" % (kit_name, kit_branch)
+				if kit_key in already_processed_kit_keys:
+					continue
+				else:
+					already_processed_kit_keys.add(kit_key)
+
+				# OK, if we got here, we have something to process --
+				print("Processing branch %s" % kit_dict["branch"])
+				branch = kit_dict["branch"]
+				indy_kit = 'type' in kit_dict and kit_dict['type'] == KitType.INDEPENDENTLY_MAINTAINED
+				tree = mu.AutoCreatedGitTree(name=kit_name, root=path, config=config, branch=kit_dict["branch"])
+				await tree.gitCheckout(branch=kit_dict["branch"])
+				post_steps = []
+				python_settings = foundation.python_kit_settings[release]
+
+				for py_branch, py_settings in python_settings.items():
+					post_steps += [mu.GenPythonUse(hub, py_settings, "funtoo/kits/python-kit/%s" % py_branch, release=release)]
+
+				post_steps += [
+					mu.Minify(),
+					mu.GenUseLocalDesc(),
+					mu.GenCache(cache_dir=config.metadata_cache + "/%s-%s-%s" % (release, kit_dict['name'], branch), release=release),
+				]
+				await tree.run(post_steps)
+				await tree.gitCommit(message="python USE setting and metadata cache updates")
+
+"""
 if __name__ == "__main__":
+	sub_name = os.path.basename(sys.argv[0])
+	int_g = [sub_name, "pkgtools"]
+
+	hub.pop.conf.integrate(int_g, cli=sub_name, roots=True, loader="yaml", logs=False)
+
 	print("Why hello there.")
 	push = not hub.OPT['merge-kits']['nopush']
 	prod = hub.OPT['merge-kits']['prod']
 	print(hub.OPT['merge-kits']['release'])
 	print("prod:", prod)
 	print("push:", push)
+
+	config = Configuration()
+
+	loop = asyncio.get_event_loop()
+	loop.run_until_complete(main_thread(config))
+	sys.exit(0)
 
 # vim: ts=4 sw=4 noet
