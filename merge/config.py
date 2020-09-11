@@ -6,7 +6,6 @@ from configparser import ConfigParser
 
 
 class Configuration:
-
 	def __init__(self, path=None):
 		if path is None:
 			home_dir = os.path.expanduser("~")
@@ -14,7 +13,8 @@ class Configuration:
 		else:
 			self.config_path = path
 		if not os.path.exists(self.config_path):
-			print("""
+			print(
+				"""
 Merge scripts now use a configuration file. Create a ~/.merge file with the following format. Note that
 while the config file must exist, it may be empty, in which case, the following settings will be used.
 These are the recommended 'starter' settings for use as an individual developer:
@@ -32,22 +32,18 @@ kit-fixups = master
 meta-repo = master
 
 
-""")
+"""
+			)
 			sys.exit(1)
-		self.defaults = {
-			"sources" : {
-				"flora": "ssh://git@code.funtoo.org:7999/co/flora.git"
-			}
-
-		}
+		self.defaults = {"sources": {"flora": "ssh://git@code.funtoo.org:7999/co/flora.git"}}
 		self.config = ConfigParser()
 		self.config.read(self.config_path)
 
 		valids = {
-			"sources": [ "flora", "kit-fixups", "gentoo-staging" ],
-			"destinations": [ "base_url", "mirror", "indy_url" ],
-			"branches": [ "flora", "kit-fixups", "meta-repo" ],
-			"work": [ "source", "destination", "metadata-cache" ]
+			"sources": ["flora", "kit-fixups", "gentoo-staging"],
+			"destinations": ["base_url", "mirror", "indy_url"],
+			"branches": ["flora", "kit-fixups", "meta-repo"],
+			"work": ["source", "destination", "metadata-cache"],
 		}
 		for section, my_valids in valids.items():
 

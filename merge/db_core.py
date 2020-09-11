@@ -11,6 +11,7 @@ from sqlalchemy.schema import MetaData
 
 app_config = Configuration()
 
+
 class Database(object):
 
 	# Abstract database class with contextmanager pattern.
@@ -27,14 +28,15 @@ class Database(object):
 		finally:
 			session.close()
 
+
 class FastPullDatabase(Database):
 
 	MetaData = MetaData()
-	
+
 	def __init__(self):
-		
+
 		self.Base = declarative_base(self.MetaData)
-		
+
 		class Distfile(self.Base):
 
 			# A distfile represents a single file for download. A distfile has a filename, which is its local filename
@@ -53,51 +55,55 @@ class FastPullDatabase(Database):
 
 			__tablename__ = "distfiles"
 
-
-			id = Column('id', String(128), primary_key=True)                            # sha512 in ASCII
-			rand_id = Column('rand_id', String(128), index=True)                        # fastpull_id
-			filename = Column('filename', String(255), primary_key=True)                # filename on disk
+			id = Column("id", String(128), primary_key=True)  # sha512 in ASCII
+			rand_id = Column("rand_id", String(128), index=True)  # fastpull_id
+			filename = Column("filename", String(255), primary_key=True)  # filename on disk
 
 			# the id/filename is a composite key, because a SHA512 may exist under potentially multiple filenames, and we
 			# want to be aware of these situations.
 
-			digest_type = Column('digest_type', String(20))
-			alt_digest = Column('alt_digest', Text)
-			size = Column('size', BigInteger)
-			catpkg = Column('catpkg', String(255), index=True)                          # catpkg
-			kit = Column('kit', String(40), index=True)                                 # source kit
-			src_uri = Column('src_uri', Text)                                           # src_uris -- filename may be different as Portage can rename -- stored in order of appearance, one per line
-			mirror = Column('mirror', Boolean, default=True)
-			last_fetched_on = Column('last_fetched_on', DateTime)                       # set to a datetime the last time we successfully fetched the file                    # last failure
+			digest_type = Column("digest_type", String(20))
+			alt_digest = Column("alt_digest", Text)
+			size = Column("size", BigInteger)
+			catpkg = Column("catpkg", String(255), index=True)  # catpkg
+			kit = Column("kit", String(40), index=True)  # source kit
+			src_uri = Column(
+				"src_uri", Text
+			)  # src_uris -- filename may be different as Portage can rename -- stored in order of appearance, one per line
+			mirror = Column("mirror", Boolean, default=True)
+			last_fetched_on = Column(
+				"last_fetched_on", DateTime
+			)  # set to a datetime the last time we successfully fetched the file                    # last failure
 
 			# deprecated fields:
 
-			last_attempted_on = Column('last_attempted_on', DateTime)
-			last_failure_on = Column('last_failure_on', DateTime)
-			failtype = Column('failtype', Text)
-			priority = Column('priority', Integer, default=0)
-
+			last_attempted_on = Column("last_attempted_on", DateTime)
+			last_failure_on = Column("last_failure_on", DateTime)
+			failtype = Column("failtype", Text)
+			priority = Column("priority", Integer, default=0)
 
 		class QueuedDistfile(self.Base):
 
-			__tablename__ = 'queued_distfiles'
+			__tablename__ = "queued_distfiles"
 
 			id = Column(Integer, primary_key=True)
-			filename = Column('filename', String(255), index=True)                # filename on disk
-			catpkg = Column('catpkg', String(255), index=True)                    # catpkg
-			kit = Column('kit', String(40), index=True)                           # source kit
-			branch = Column('branch', String(40), index=True)                     # source kit
-			src_uri	= Column('src_uri', Text)                                           # src_uris -- filename may be different as Portage can rename -- stored in order of appearance, one per line
-			size = Column('size', BigInteger)
-			mirror = Column('mirror', Boolean, default=True)
-			digest_type = Column('digest_type', String(20))
-			digest = Column('digest', Text)
-			added_on = Column('added_on', DateTime, default=datetime.utcnow)
-			priority = Column('priority', Integer, default=0)
-			last_attempted_on = Column('last_attempted_on', DateTime)
-			last_failure_on = Column('last_failure_on', DateTime)
+			filename = Column("filename", String(255), index=True)  # filename on disk
+			catpkg = Column("catpkg", String(255), index=True)  # catpkg
+			kit = Column("kit", String(40), index=True)  # source kit
+			branch = Column("branch", String(40), index=True)  # source kit
+			src_uri = Column(
+				"src_uri", Text
+			)  # src_uris -- filename may be different as Portage can rename -- stored in order of appearance, one per line
+			size = Column("size", BigInteger)
+			mirror = Column("mirror", Boolean, default=True)
+			digest_type = Column("digest_type", String(20))
+			digest = Column("digest", Text)
+			added_on = Column("added_on", DateTime, default=datetime.utcnow)
+			priority = Column("priority", Integer, default=0)
+			last_attempted_on = Column("last_attempted_on", DateTime)
+			last_failure_on = Column("last_failure_on", DateTime)
 			failcount = Column(Integer, default=0)
-			failtype = Column('failtype', Text)
+			failtype = Column("failtype", Text)
 
 		class MissingRequestedFile(self.Base):
 
@@ -110,23 +116,28 @@ class FastPullDatabase(Database):
 
 		class MissingManifestFailure(self.Base):
 
-			__tablename__ = 'manifest_failures'
+			__tablename__ = "manifest_failures"
 
-			filename = Column('filename', String(255), primary_key=True)                # filename on disk
-			catpkg = Column('catpkg', String(255), primary_key=True)                    # catpkg
-			kit = Column('kit', String(40), primary_key=True)                           # source kit
-			branch = Column('branch', String(40), primary_key=True)                     # source kit
-			src_uri	= Column('src_uri', Text)                                           # src_uris -- filename may be different as Portage can rename -- stored in order of appearance, one per line
-			failtype = Column('failtype', String(8))                                    # 'missing'
-			fail_on = Column('fail_on', DateTime)                                       #last failure
+			filename = Column("filename", String(255), primary_key=True)  # filename on disk
+			catpkg = Column("catpkg", String(255), primary_key=True)  # catpkg
+			kit = Column("kit", String(40), primary_key=True)  # source kit
+			branch = Column("branch", String(40), primary_key=True)  # source kit
+			src_uri = Column(
+				"src_uri", Text
+			)  # src_uris -- filename may be different as Portage can rename -- stored in order of appearance, one per line
+			failtype = Column("failtype", String(8))  # 'missing'
+			fail_on = Column("fail_on", DateTime)  # last failure
 
 		self.Distfile = Distfile
 		self.QueuedDistfile = QueuedDistfile
 		self.MissingManifestFailure = MissingManifestFailure
 		self.MissingRequestedFile = MissingRequestedFile
-		
-		self.engine = create_engine(app_config.db_connection("fastpull"), strategy='threadlocal', pool_size=40, max_overflow=80)
+
+		self.engine = create_engine(
+			app_config.db_connection("fastpull"), strategy="threadlocal", pool_size=40, max_overflow=80
+		)
 		self.Base.metadata.create_all(self.engine)
+
 
 if __name__ == "__main__":
 
@@ -187,7 +198,7 @@ if __name__ == "__main__":
 					sys.stdout.write(">")
 					sys.stdout.flush()
 			session.commit()
-	
+
 	else:
 		db = FastPullDatabase()
 		with db.get_session() as session:

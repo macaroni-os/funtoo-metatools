@@ -92,7 +92,6 @@ class Download:
 			future.set_result(None)
 
 
-
 async def _download(hub, artifact):
 	"""
 

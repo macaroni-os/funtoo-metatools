@@ -1,145 +1,229 @@
 #!/usr/bin/env python3
+
 import asyncio
-import json
 import os
 import sys
+from collections import defaultdict
+from datetime import datetime
 
 import pop.hub
 import logging
 
-import yaml
-
+from merge.foundations import Foundation
 from merge.config import Configuration
-from merge.merge_utils import GitTree
+from merge.portage import GenPythonUse, getAllLicenses
+from merge.steps import (
+	InsertEbuilds,
+	GitCheckout,
+	CleanTree,
+	ELTSymlinkWorkaround,
+	CreateCategories,
+	Minify,
+	GenUseLocalDesc,
+	GenCache,
+	RunSed,
+	SyncDir,
+	ThirdPartyMirrors,
+	SyncFiles,
+	GenerateRepoMetadata,
+)
+from merge.tree import GitTree, AutoCreatedGitTree
 
 hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
 hub = pop.hub.Hub()
 
-class Foundation:
 
-	def __init__(self, fixup_repo, config: Configuration = None, release=None):
-		self.fixup_repo = fixup_repo
-		self.release = release
-		self.config = config
-		with open(os.path.join(fixup_repo.root, "foundations.yaml"), "r") as f:
-			self.fdata = yaml.safe_load(f)
-		#print(json.dumps(self.fdata, indent=True))
+def getKitPrepSteps(kit_dict):
+	kit_steps = {
+		"core-kit": {
+			"pre": [
+				GenerateRepoMetadata("core-kit", aliases=["gentoo"], priority=1000),
+				# core-kit has special logic for eclasses -- we want all of them, so that third-party overlays can reference the full set.
+				# All other kits use alternate logic (not in kit_steps) to only grab the eclasses they actually use.
+				SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "eclass"),
+			],
+			"post": [
+				# news items are not included here anymore
+				SyncDir(hub.FIXUP_REPO.root, "metadata", exclude=["cache", "md5-cache", "layout.conf"]),
+				# add funtoo stuff to thirdpartymirrors
+				ThirdPartyMirrors(),
+				RunSed(["profiles/base/make.defaults"], ["/^PYTHON_TARGETS=/d", "/^PYTHON_SINGLE_TARGET=/d"]),
+			],
+		},
+		# masters of core-kit for regular kits and nokit ensure that masking settings set in core-kit for catpkgs in other kits are applied
+		# to the other kits. Without this, mask settings in core-kit apply to core-kit only.
+		"regular-kits": {"pre": [GenerateRepoMetadata(kit_dict["name"], masters=["core-kit"], priority=500),]},
+		"all-kits": {
+			"pre": [SyncFiles(hub.FIXUP_REPO.root, {"COPYRIGHT.txt": "COPYRIGHT.txt", "LICENSE.txt": "LICENSE.txt",}),]
+		},
+		"nokit": {"pre": [GenerateRepoMetadata("nokit", masters=["core-kit"], priority=-2000),]},
+	}
 
-	def kit_groups(self):
-		defaults = self.fdata['kit-groups']['defaults'] if 'defaults' in self.fdata['kit-groups'] else {}
-		for release_dict in self.fdata['kit-groups']['releases']:
+	out_pre_steps = []
+	out_post_steps = []
 
-			# unbundle from singleton dict:
-			release = list(release_dict.keys())[0]
-			release_data = release_dict[release]
+	kd = kit_dict["name"]
+	if kd in kit_steps:
+		if "pre" in kit_steps[kd]:
+			out_pre_steps += kit_steps[kd]["pre"]
+		if "post" in kit_steps[kd]:
+			out_post_steps += kit_steps[kd]["post"]
 
-			if release != self.release:
-				continue
+	# a 'regular kit' is not core-kit or nokit -- if we have pre or post steps for them, append these steps:
+	if kit_dict["name"] not in ["core-kit", "nokit"] and "regular-kits" in kit_steps:
+		if "pre" in kit_steps["regular-kits"]:
+			out_pre_steps += kit_steps["regular-kits"]["pre"]
+		if "post" in kit_steps["regular-kits"]:
+			out_post_steps += kit_steps["regular-kits"]["post"]
 
-			for kg in release_data:
-				out = defaults.copy()
-				if isinstance(kg, str):
-					out['name'] = kg
-				elif isinstance(kg, dict):
-					out['name'] = list(kg.keys())[0]
-					out.update(list(kg.values())[0])
-				yield out
-			break
+	if "all-kits" in kit_steps:
+		if "pre" in kit_steps["all-kits"]:
+			out_pre_steps += kit_steps["all-kits"]["pre"]
+		if "post" in kit_steps["all-kits"]:
+			out_post_steps += kit_steps["all-kits"]["post"]
 
-	def source_defs(self, name):
-		for sdef in self.fdata['source-defs']:
-			sdef_name = list(sdef.keys())[0]
-			if sdef_name != name:
-				continue
-			sdef_data = list(sdef.values())[0]
-			for sdef_entry in sdef_data:
-				yield sdef_entry
+	return out_pre_steps, out_post_steps
 
-	def get_overlay(self, name):
-		"""
-		Gets data on a specific overlay
-		"""
-		for ov_dict in self.fdata['overlays']:
 
-			if isinstance(ov_dict, str):
-				ov_name = ov_dict
-				ov_data = { "name" : ov_name }
-			else:
-				ov_name = list(ov_dict.keys())[0]
-				if ov_name != name:
-					continue
-				ov_data = list(ov_dict.values())[0]
-				ov_data['name'] = ov_name
+async def auto_kit_gen(kit_dict=None):
 
-			if ov_name != name:
-				continue
+	await hub.merge.sources.initialize_sources(kit_dict=kit_dict)
 
-			url = self.config.get_option("sources", ov_name, None)
-			if url is not None:
-				ov_data['url'] = url
+	if hub.GIT_CLASS_KWARGS_FN:
+		kwargs = hub.GIT_CLASS_KWARGS_FN()
+	else:
+		kwargs = {}
 
-			if "url" not in ov_data:
-				raise IndexError(f"No url found for overlay {name}")
+	branch = kit_dict["branch"]
+	out_tree = hub.GIT_CLASS(
+		hub, kit_dict["name"], branch=branch, root=hub.MERGE_CONFIG.dest_trees + "/" + kit_dict["name"], **kwargs
+	)
+	await out_tree.initialize()
 
-			return ov_data
-		raise IndexError(f"overlay not found: {name}")
+	# Phase 1: prep the kit
+	steps = [GitCheckout(branch), CleanTree()]
 
-	def get_repos(self, source_name):
-		"""
-		Given a source definition, return a list of repositories with all data included (like urls
-		from the source definitions, etc.)
-		"""
-		source_defs = self.source_defs(source_name)
-		for repo_dict in source_defs:
-			ov_name = repo_dict['repo']
-			ov_data = self.get_overlay(ov_name)
-			repo_dict.update(ov_data)
+	pre_steps, post_steps = getKitPrepSteps(kit_dict)
 
-			if "src_sha1" not in repo_dict:
-				branch = self.config.get_option("branches", ov_name, None)
-				if branch is not None:
-					repo_dict['branch'] = branch
-				else:
-					repo_dict['branch'] = 'master'
-			yield repo_dict
+	# TODO: process copyfiles and eclass sections from the packages.yaml.
 
-async def main_thread(config):
-	fixup_repo = GitTree("kit-fixups", config.branch("kit-fixups"), destfix=None, config=config, url=config.kit_fixups, root=config.source_trees + "/kit-fixups")
+	pre_steps.append(SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "licenses"))
+
+	for repo_name, packages in hub.FOUNDATION.get_kit_packages(kit_dict["name"]):
+		from_tree = hub.SOURCE_REPOS[repo_name]
+		# TODO: add move maps below
+		steps += [InsertEbuilds(hub, from_tree, skip=None, replace=True, move_maps=None, select=packages)]
+	print("FONK", steps)
+
+	# await out_tree.run(steps)
+
+	# Phase 4: finalize and commit
+
+	# remove unused licenses...
+
+	if os.path.exists(out_tree.root + "/licenses"):
+		used_licenses = await getAllLicenses(out_tree, hub.RELEASE)
+		to_remove = []
+
+		for license in os.listdir(out_tree.root + "/licenses"):
+			if license not in used_licenses["dest_kit"]:
+				to_remove.append(out_tree.root + "/licenses/" + license)
+		for file in to_remove:
+			os.unlink(file)
+
+	post_steps += [
+		ELTSymlinkWorkaround(),
+		CreateCategories(),
+	]
+
+	python_settings = foundation.python_kit_settings[release]
+
+	for py_branch, py_settings in python_settings.items():
+		post_steps += [GenPythonUse(hub, py_settings, "funtoo/kits/python-kit/%s" % py_branch, release=hub.RELEASE)]
+
+	post_steps += [
+		Minify(),
+		GenUseLocalDesc(),
+		GenCache(
+			cache_dir=config.metadata_cache + "/%s-%s-%s" % (hub.RELEASE, kit_dict["name"], branch), release=hub.RELEASE
+		),
+	]
+
+	# post_steps += [
+	# 	FastPullScan(now=hub.START_TIME)
+	# ]
+
+	await out_tree.run(post_steps)
+	# push is ignored if we are using local AutoCreatedGitTrees.
+	await out_tree.gitCommit(message="updates", push=push)
+	return kit_dict, out_tree, out_tree.head()
+
+
+"""
+async def indy_kit_gen(kit_dict, release):
+	name = kit_dict['name']
+	tree = mu.AutoCreatedGitTree(name=name, root=path, config=config, branch=kit_dict["branch"])
+	await tree.gitCheckout(branch=kit_dict["branch"])
+	post_steps = []
+	python_settings = foundation.python_kit_settings[release]
+
+	for py_branch, py_settings in python_settings.items():
+		post_steps += [mu.GenPythonUse(hub, py_settings, "funtoo/kits/python-kit/%s" % py_branch, release=release)]
+
+	post_steps += [
+		mu.Minify(),
+		mu.GenUseLocalDesc(),
+		mu.GenCache(cache_dir=config.metadata_cache + "/%s-%s-%s" % (release, kit_dict['name'], branch),
+		            release=release),
+	]
+	await tree.run(post_steps)
+	await tree.gitCommit(message="python USE setting and metadata cache updates")
+"""
+
+
+async def main_thread():
+	fixup_repo = GitTree(
+		hub,
+		"kit-fixups",
+		hub.MERGE_CONFIG.branch("kit-fixups"),
+		url=hub.MERGE_CONFIG.kit_fixups,
+		root=hub.MERGE_CONFIG.source_trees + "/kit-fixups",
+	)
 
 	await fixup_repo.initialize()
 	# once the correct branch is checked out, then we want to do this import:
 	sys.path.insert(0, fixup_repo.root + "/modules")
 
-	foundation = Foundation(fixup_repo, config=config, release="1.4-release")
+	hub.FOUNDATION = Foundation(hub, fixup_repo, release="1.4-release")
 
 	# developer specified a path to a git repo on the command-line, now we will look in all defined releases for independently-maintained kits with this
 	# name and process all defined branches:
 
 	already_processed_kit_keys = set()
 
-	for kit in foundation.kit_groups():
-		print(kit)
+	thread_groups = defaultdict(list)
+	indy_kits = []
 
-	for sdef in foundation.get_repos('funtoo_release_1.4'):
-		print(sdef)
+	for kit in hub.FOUNDATION.kit_groups():
+		kind = kit["kind"]
+		if kind == "autogenerated":
+			source = kit["source"]
+			thread_groups[source].append(kit)
+		else:
+			indy_kits.append(kit)
 
-	for path in ["foobar-repo"]:
-		path = os.path.realpath(path)
-		print('Processing path %s' % path)
-		if not os.path.isdir(path):
-			print("Error: %s does not exist or is not a directory. Skipping." % path)
-			continue
+	for gr_name, gr_list in thread_groups.items():
+		print(gr_name)
+		for kit in gr_list:
+			print("  ", kit)
 
-		kit_name = os.path.basename(path)
+	test_sources = list(thread_groups.keys())[0]
+	kit_dict = thread_groups[test_sources][0]
+	await auto_kit_gen(kit_dict=kit_dict)
 
+	"""
 
-		sys.exit(1)
-
-
-
-		"""
-	
 			for kit_dict in release_kits:
 
 				# Don't process kits that don't match:
@@ -160,23 +244,11 @@ async def main_thread(config):
 				print("Processing branch %s" % kit_dict["branch"])
 				branch = kit_dict["branch"]
 				indy_kit = 'type' in kit_dict and kit_dict['type'] == KitType.INDEPENDENTLY_MAINTAINED
-				tree = mu.AutoCreatedGitTree(name=kit_name, root=path, config=config, branch=kit_dict["branch"])
-				await tree.gitCheckout(branch=kit_dict["branch"])
-				post_steps = []
-				python_settings = foundation.python_kit_settings[release]
 
-				for py_branch, py_settings in python_settings.items():
-					post_steps += [mu.GenPythonUse(hub, py_settings, "funtoo/kits/python-kit/%s" % py_branch, release=release)]
-
-				post_steps += [
-					mu.Minify(),
-					mu.GenUseLocalDesc(),
-					mu.GenCache(cache_dir=config.metadata_cache + "/%s-%s-%s" % (release, kit_dict['name'], branch), release=release),
-				]
-				await tree.run(post_steps)
-				await tree.gitCommit(message="python USE setting and metadata cache updates")
 
 """
+
+
 if __name__ == "__main__":
 	sub_name = os.path.basename(sys.argv[0])
 	int_g = [sub_name, "pkgtools"]
@@ -184,16 +256,68 @@ if __name__ == "__main__":
 	hub.pop.conf.integrate(int_g, cli=sub_name, roots=True, loader="yaml", logs=False)
 
 	print("Why hello there.")
-	push = not hub.OPT['merge-kits']['nopush']
-	prod = hub.OPT['merge-kits']['prod']
-	print(hub.OPT['merge-kits']['release'])
+	push = not hub.OPT["merge-kits"]["nopush"]
+	prod = hub.OPT["merge-kits"]["prod"]
+	forcepush = hub.OPT["merge-kits"]["forcepush"]
+	print(hub.OPT["merge-kits"]["release"])
 	print("prod:", prod)
 	print("push:", push)
+	hub.pop.sub.add("funtoo.merge")
 
-	config = Configuration()
+	hub.MERGE_CONFIG = config = Configuration()
+	hub.RELEASE = hub.OPT["merge-kits"]["release"]
+
+	local_merge = not prod
+	if local_merge is True:
+		# This means we'll just generate our own local git trees for the purposes of generating kits. This is generally used by developers to see what
+		# would end up in kits, when you don't really need to create any kits that will be used anywhere else.
+		hub.GIT_CLASS = AutoCreatedGitTree
+		hub.GIT_CLASS_KWARGS_FN = None
+		hub.PUSH = False
+		hub.META_REPO = meta_repo = hub.GIT_CLASS(
+			hub, name="meta-repo", branch=config.branch("meta-repo"), root=config.dest_trees + "/meta-repo"
+		)
+		hub.NEST_KITS = True
+	else:
+
+		def get_git_class_kwargs(kit_dict):
+			return {
+				"url": hub.MERGE_CONFIG.base_url(kit_dict["name"]),
+				"mirror": hub.MERGE_CONFIG.mirror.rstrip("/") + "/" + kit_dict["name"] if hub.MERGE_CONFIG.mirror else None,
+				"origin_check": True,
+				"destfix": False,
+				"forcepush": forcepush,
+			}
+
+		# In this mode, we're actually wanting to update real kits, and likely are going to push our updates to remotes (unless --nopush is specified as an arg.)
+		# This might be used by people generating their own custom kits for use on other systems, or by Funtoo itself for updating official kits and meta-repo.
+		hub.GIT_CLASS = GitTree
+		hub.GIT_CLASS_KWARGS_FN = get_git_class_kwargs
+		hub.META_REPO = meta_repo = GitTree(
+			hub,
+			"meta-repo",
+			config.branch("meta-repo"),
+			url=config.base_url("meta-repo"),
+			root=config.dest_trees + "/meta-repo",
+			mirror=config.mirror.rstrip("/") + "/meta-repo" if config.mirror else None,
+			origin_check=True,
+		)
+		hub.NEST_KITS = False
+		hub.PUSH = push
+
+	hub.START_TIME = datetime.utcnow()
+
+	# TODO: hook into fastpull
+
+	fixup_repo = hub.FIXUP_REPO = GitTree(
+		hub, "kit-fixups", config.branch("kit-fixups"), url=config.kit_fixups, root=config.source_trees + "/kit-fixups"
+	)
+
+	await fixup_repo.initialize()
+	await meta_repo.initialize()
 
 	loop = asyncio.get_event_loop()
-	loop.run_until_complete(main_thread(config))
+	loop.run_until_complete(main_thread())
 	sys.exit(0)
 
 # vim: ts=4 sw=4 noet
