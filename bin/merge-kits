@@ -132,6 +132,10 @@ async def indy_kit_gen(kit_dict, release):
 
 async def main_thread():
 
+	if not hub.merge.foundations.release_exists(hub.RELEASE):
+		print(f"Release not found: {hub.RELEASE}.")
+		sys.exit(1)
+
 	await hub.FIXUP_REPO.initialize()
 	await hub.META_REPO.initialize()
 

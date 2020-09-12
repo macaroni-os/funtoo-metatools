@@ -124,7 +124,8 @@ class Tree:
 			return branch
 
 	async def initialize(self):
-		return
+		if not self.initialized:
+			await self._initialize_tree()
 
 	async def gitCheckout(self, branch=None, from_init=False):
 		if not from_init:
@@ -162,14 +163,9 @@ class AutoCreatedGitTree(Tree):
 		self.name = self.reponame = name
 		self.has_cleaned = False
 		self.initialized = False
-		self.initial_future = self.initialize_tree(branch)
 		self.commit_sha1 = commit_sha1
 		self.do_fetch = False
 		self.merged = []
-
-	async def initialize(self):
-		if not self.initialized:
-			await self.initial_future
 
 	async def gitCommit(self, message="", skip=None, push=False):
 		"""
@@ -214,14 +210,14 @@ class AutoCreatedGitTree(Tree):
 			print("Commit failed.")
 			sys.exit(1)
 
-	async def initialize_tree(self, branch):
+	async def _initialize_tree(self):
 		if not os.path.exists(self.root):
 			os.makedirs(self.root)
 			await runShell("( cd %s && git init )" % self.root)
 			await runShell("echo 'created by merge.py' > %s/README" % self.root)
 			await runShell("( cd %s &&  git add README; git commit -a -m 'initial commit by merge.py' )" % self.root)
-			if not self.localBranchExists(branch):
-				await runShell("( cd %s && git checkout -b %s)" % (self.root, branch))
+			if not self.localBranchExists(self.branch):
+				await runShell("( cd %s && git checkout -b %s)" % (self.root, self.branch))
 			else:
 				await self.gitCheckout(self.branch, from_init=True)
 
@@ -272,19 +268,17 @@ class GitTree(Tree):
 		self.reponame = reponame
 		self.has_cleaned = False
 		self.initialized = False
-		self.initial_future = self.initialize_tree(branch, commit_sha1)
 		self.mirror = mirror
 		self.origin_check = origin_check
 		self.destfix = destfix
 		self.reclone = reclone
 		self.forcepush = "--force" if forcepush else "--no-force"
-
-	# if we don't specify root destination tree, assume we are source only:
-
-	async def initialize_tree(self, branch, commit_sha1=None):
 		self.branch = branch
 		self.commit_sha1 = commit_sha1
 
+	# if we don't specify root destination tree, assume we are source only:
+
+	async def _initialize_tree(self):
 		if self.root is None:
 			base = self.hub.MERGE_CONFIG.source_trees
 			self.root = "%s/%s" % (base, self.name)
@@ -374,10 +368,6 @@ class GitTree(Tree):
 			# we are on the right branch, but we want to make sure we have the latest updates
 			await runShell("(cd %s && git pull --no-force --all || true)" % self.root)
 			self.pulled = True
-
-	async def initialize(self):
-		if not self.initialized:
-			await self.initial_future
 
 	def getRemoteURL(self, remote):
 		s, o = subprocess.getstatusoutput("( cd %s && git remote get-url %s )" % (self.root, remote))

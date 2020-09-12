@@ -77,6 +77,14 @@ def get_kit_packages(hub, kit_name):
 	return hub._.get_kit_items(kit_name)
 
 
+def release_exists(hub, release):
+	for release_dict in hub.FDATA["kit-groups"]["releases"]:
+		cur_release = list(release_dict.keys())[0]
+		if cur_release == release:
+			return True
+	return False
+
+
 def kit_groups(hub):
 	defaults = hub.FDATA["kit-groups"]["defaults"] if "defaults" in hub.FDATA["kit-groups"] else {}
 	for release_dict in hub.FDATA["kit-groups"]["releases"]:
