@@ -8,7 +8,7 @@ def __init__(hub):
 
 
 async def initialize_sources(hub, kit_dict=None):
-	repos = list(hub.FOUNDATION.get_repos(kit_dict["source"]))
+	repos = list(hub.merge.foundations.get_repos(kit_dict["source"]))
 	for repo_dict in repos:
 		repo_name = repo_dict["name"]
 		repo_url = repo_dict["url"]
