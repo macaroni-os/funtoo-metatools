@@ -4,21 +4,21 @@ import os
 import subprocess
 import sys
 
-debug = True
+debug = False
 
 
-async def run(args, env=None):
+def run(args, env=None):
 	if env:
-		result = subprocess.run(args, shell=True, env=env)
+		result = subprocess.run(args, shell=True, env=env, capture_output=True)
 	else:
-		result = subprocess.run(args, shell=True)
+		result = subprocess.run(args, shell=True, capture_output=True)
 	return result
 
 
-async def runShell(cmd_list, abort_on_failure=True, env=None):
+def runShell(cmd_list, abort_on_failure=True, env=None):
 	if debug:
 		print("running: %r" % cmd_list)
-	result: subprocess.CompletedProcess = await run(cmd_list, env=env)
+	result: subprocess.CompletedProcess = run(cmd_list, env=env)
 	if result.returncode != 0:
 		print("Error executing %r" % cmd_list)
 		print()
@@ -80,7 +80,7 @@ class Tree:
 
 	async def cleanTree(self):
 		print("Cleaning tree %s" % self.root)
-		await runShell("(cd %s &&  git reset --hard && git clean -fd )" % self.root)
+		runShell("(cd %s &&  git reset --hard && git clean -fd )" % self.root)
 		self.autogenned = False
 
 	def getDepthOfCommit(self, sha1):
@@ -122,10 +122,10 @@ class Tree:
 			await self.initialize()
 		if self.currentLocalBranch != branch:
 			if self.localBranchExists(branch):
-				await runShell("(cd %s && git checkout %s)" % (self.root, branch))
+				runShell("(cd %s && git checkout %s)" % (self.root, branch))
 			else:
 				# An AutoCreatedGitTree will automatically create branches as needed, as forks of master.
-				await runShell("(cd %s && git checkout master && git checkout -b %s)" % (self.root, branch))
+				runShell("(cd %s && git checkout master && git checkout -b %s)" % (self.root, branch))
 			await self.cleanTree()
 		if self.currentLocalBranch != branch:
 			raise GitTreeError(
@@ -169,7 +169,7 @@ class AutoCreatedGitTree(Tree):
 			skip = []
 		for x in os.listdir(self.root):
 			if x not in skip:
-				await runShell("( cd %s && git add %s )" % (self.root, x))
+				runShell("( cd %s && git add %s )" % (self.root, x))
 		cmd = '( cd %s && [ -n "$(git status --porcelain)" ] && git commit -a -F - << EOF\n' % self.root
 		if message != "":
 			cmd += "%s\n\n" % message
@@ -203,22 +203,22 @@ class AutoCreatedGitTree(Tree):
 	async def _initialize_tree(self):
 		if not os.path.exists(self.root):
 			os.makedirs(self.root)
-			await runShell("( cd %s && git init )" % self.root)
-			await runShell("echo 'created by merge.py' > %s/README" % self.root)
-			await runShell("( cd %s &&  git add README; git commit -a -m 'initial commit by merge.py' )" % self.root)
+			runShell("( cd %s && git init )" % self.root)
+			runShell("echo 'created by merge.py' > %s/README" % self.root)
+			runShell("( cd %s &&  git add README; git commit -a -m 'initial commit by merge.py' )" % self.root)
 			if not self.localBranchExists(self.branch):
-				await runShell("( cd %s && git checkout -b %s)" % (self.root, self.branch))
+				runShell("( cd %s && git checkout -b %s)" % (self.root, self.branch))
 			else:
 				await self.gitCheckout(self.branch, from_init=True)
 
 		if not self.has_cleaned:
-			await runShell("(cd %s &&  git reset --hard && git clean -fd )" % self.root)
+			runShell("(cd %s &&  git reset --hard && git clean -fd )" % self.root)
 			self.has_cleaned = True
 
 		# point to specified sha1:
 
 		if self.commit_sha1:
-			await runShell("(cd %s && git checkout %s )" % (self.root, self.commit_sha1))
+			runShell("(cd %s && git checkout %s )" % (self.root, self.commit_sha1))
 			if self.head() != self.commit_sha1:
 				raise GitTreeError("%s: Was not able to check out specified SHA1: %s." % (self.root, self.commit_sha1))
 			if self.currentLocalBranch != self.branch:
@@ -274,7 +274,7 @@ class GitTree(Tree):
 			self.root = "%s/%s" % (base, self.name)
 
 		if os.path.isdir("%s/.git" % self.root) and self.reclone:
-			await runShell("rm -rf %s" % self.root)
+			runShell("rm -rf %s" % self.root)
 
 		if not os.path.isdir("%s/.git" % self.root):
 			# repo does not exist? - needs to be cloned or created
@@ -286,7 +286,7 @@ class GitTree(Tree):
 				if not os.path.exists(base):
 					os.makedirs(base)
 				# we aren't supposed to create it from scratch -- can we clone it?
-				await runShell("(cd %s && git clone %s %s)" % (base, self.url, os.path.basename(self.root)))
+				runShell("(cd %s && git clone %s %s)" % (base, self.url, os.path.basename(self.root)))
 
 			else:
 				# we've run out of options
@@ -298,7 +298,7 @@ class GitTree(Tree):
 		if s != 0:
 			# if repo is totally uninitialized (like gitolite wildrepo) -- initialize it with a first commit.
 			print("Attempting to initialize git repository for first use...")
-			await runShell(
+			runShell(
 				"(cd %s && touch README && git add README && git commit -a -m 'first commit' && git push %s)"
 				% (self.root, self.forcepush)
 			)
@@ -309,7 +309,7 @@ class GitTree(Tree):
 		for branch in o.split():
 			branch = branch.split("/")[-1]
 			if not self.localBranchExists(branch):
-				await runShell("( cd %s && git checkout %s)" % (self.root, branch))
+				runShell("( cd %s && git checkout %s)" % (self.root, branch))
 
 		# if we've gotten here, we can assume that the repo exists at self.root.
 		if self.url is not None and self.origin_check:
@@ -345,7 +345,7 @@ class GitTree(Tree):
 		# point to specified sha1:
 
 		if self.commit_sha1:
-			await runShell("(cd %s && git checkout %s )" % (self.root, self.commit_sha1))
+			runShell("(cd %s && git checkout %s )" % (self.root, self.commit_sha1))
 			if self.head() != self.commit_sha1:
 				raise GitTreeError("%s: Was not able to check out specified SHA1: %s." % (self.root, self.commit_sha1))
 		elif self.pull:
@@ -356,7 +356,7 @@ class GitTree(Tree):
 	async def do_pull(self):
 		if not self.pulled:
 			# we are on the right branch, but we want to make sure we have the latest updates
-			await runShell("(cd %s && git pull --no-force --all || true)" % self.root)
+			runShell("(cd %s && git pull --no-force --all || true)" % self.root)
 			self.pulled = True
 
 	def getRemoteURL(self, remote):
@@ -424,20 +424,20 @@ class GitTree(Tree):
 		if not from_init:
 			await self.initialize()
 		if sha1 is not None and self.head() != sha1:
-			await runShell("(cd %s && git fetch --verbose && git checkout %s)" % (self.root, sha1))
+			runShell("(cd %s && git fetch --verbose && git checkout %s)" % (self.root, sha1))
 			await self.cleanTree()
 			if self.head() != sha1:
 				raise GitTreeError("Not able to check out requested sha1: %s, got: %s" % (sha1, self.head()))
 		else:
 			if self.currentLocalBranch != branch:
-				await runShell("(cd %s && git fetch --verbose)" % self.root)
+				runShell("(cd %s && git fetch --verbose)" % self.root)
 				if self.localBranchExists(branch):
-					await runShell("(cd %s && git checkout %s)" % (self.root, branch))
+					runShell("(cd %s && git checkout %s)" % (self.root, branch))
 				elif self.remoteBranchExists(branch):
 					# An AutoCreatedGitTree will automatically create branches as needed, as forks of master.
-					await runShell("(cd %s && git checkout -b %s --track origin/%s)" % (self.root, branch, branch))
+					runShell("(cd %s && git checkout -b %s --track origin/%s)" % (self.root, branch, branch))
 				else:
-					await runShell("(cd %s && git checkout -b %s)" % (self.root, branch))
+					runShell("(cd %s && git checkout -b %s)" % (self.root, branch))
 				await self.cleanTree()
 			else:
 				old_head = self.head()
@@ -454,13 +454,13 @@ class GitTree(Tree):
 	async def gitCheckoutOld(self, branch="master", from_init=False):
 		if not from_init:
 			await self.initialize()
-		await runShell("(cd %s && git fetch --verbose)" % self.root)
+		runShell("(cd %s && git fetch --verbose)" % self.root)
 		if self.localBranchExists(branch):
 			await self.do_pull()
 		elif self.remoteBranchExists(branch):
-			await runShell("(cd %s && git checkout -b %s --track origin/%s)" % (self.root, branch, branch))
+			runShell("(cd %s && git checkout -b %s --track origin/%s)" % (self.root, branch, branch))
 		else:
-			await runShell("(cd %s && git checkout -b %s)" % (self.root, branch))
+			runShell("(cd %s && git checkout -b %s)" % (self.root, branch))
 		await self.cleanTree()
 		if self.currentLocalBranch != branch:
 			raise GitTreeError(
@@ -471,19 +471,19 @@ class GitTree(Tree):
 		if mirror is None:
 			mirror = self.url
 		# This is a special push command that will push local tags and branches *only*
-		await runShell("(cd %s && git push %s %s +refs/heads/* +refs/tags/*)" % (self.root, self.forcepush, mirror))
+		runShell("(cd %s && git push %s %s +refs/heads/* +refs/tags/*)" % (self.root, self.forcepush, mirror))
 
 	async def mirrorUpstreamRepository(self, mirror):
 		# This is a special push command that will push all the stuff from origin (branches and tags) *only*
 		# It will skip local branches.
-		await runShell("(cd %s && git fetch --prune)" % self.root)
-		await runShell(
+		runShell("(cd %s && git fetch --prune)" % self.root)
+		runShell(
 			"(cd %s && git push %s --prune %s +refs/remotes/origin/*:refs/heads/* +refs/tags/*:refs/tags/*)"
 			% (self.root, self.forcepush, mirror)
 		)
 
 	async def gitMirrorPush(self):
-		await runShell(
+		runShell(
 			"(cd %s && ( git rev-parse --abbrev-ref --symbolic-full-name @{u} || git branch --set-upstream-to origin/%s))"
 			% (self.root, self.branch)
 		)
@@ -496,7 +496,7 @@ class GitTree(Tree):
 			skip = []
 		for x in os.listdir(self.root):
 			if x not in skip:
-				await runShell("( cd %s && git add %s )" % (self.root, x))
+				runShell("( cd %s && git add %s )" % (self.root, x))
 		cmd = '( cd %s && [ -n "$(git status --porcelain)" ] && git commit -a -F - << EOF\n' % self.root
 		if message != "":
 			cmd += "%s\n\n" % message

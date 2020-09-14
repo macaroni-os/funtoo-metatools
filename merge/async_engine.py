@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from collections import defaultdict
 from queue import Queue, Empty
 
@@ -13,7 +13,7 @@ class AsyncEngine:
 	def __init__(self, num_threads=40):
 		self.task_q = Queue(maxsize=self.queue_size)
 		self.num_threads = num_threads
-		self.thread_exec = ThreadPoolExecutor(max_workers=self.num_threads)
+		self.thread_exec = ProcessPoolExecutor(max_workers=self.num_threads)
 		self.workers = []
 		self.loop = asyncio.get_event_loop()
 		self.keep_running = True
@@ -21,6 +21,7 @@ class AsyncEngine:
 	def start_threads(self, enable_workers=True):
 		if enable_workers is True:
 			for x in range(0, self.num_threads):
+				print(f"Starting worker {x}")
 				self.loop.run_in_executor(self.thread_exec, self._worker)
 		print("Started %s workers." % self.num_threads)
 

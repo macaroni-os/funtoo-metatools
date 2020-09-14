@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 
 import asyncio
+from concurrent.futures import ProcessPoolExecutor, as_completed
 import os
 import sys
 from collections import defaultdict
+from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime
 
 import pop.hub
 import logging
 
+from merge.async_engine import AsyncEngine
 from merge.config import Configuration
 from merge.steps import GenPythonUse, InsertFilesFromSubdir, PruneLicenses, CopyFiles
 from merge.steps import (
@@ -90,8 +93,51 @@ def copyFromFixupsSteps(kit_dict=None):
 	return steps
 
 
+class MetadataEngine(AsyncEngine):
+	def worker_thread(self, **kwargs):
+		if not kwargs["ebuild"].endswith(".ebuild"):
+			print(f"PROBLMEATIC {kwargs['ebuild']}")
+		hub.merge.metadata.gen_metadata(kwargs["ebuild"])
+
+
+def ebuild_generator():
+	basepath = "/var/git/meta-repo/kits/core-kit"
+	for catdir in os.listdir(basepath):
+		catpath = os.path.join(basepath, catdir)
+		if not os.path.isdir(catpath):
+			continue
+		for pkgdir in os.listdir(catpath):
+			pkgpath = os.path.join(catpath, pkgdir)
+			if not os.path.isdir(pkgpath):
+				continue
+			for ebfile in os.listdir(pkgpath):
+				if ebfile.endswith(".ebuild"):
+					yield os.path.join(pkgpath, ebfile)
+
+
 async def auto_kit_gen(kit_dict=None):
-	await hub.merge.metadata.gen_metadata()
+
+	with ThreadPoolExecutor(max_workers=24) as executor:
+		count = 0
+		futures = []
+		fut_map = {}
+
+		for ebpath in ebuild_generator():
+			future = executor.submit(hub.merge.metadata.gen_metadata, ebpath, "/var/tmp/metadata")
+			fut_map[future] = ebpath
+			futures.append(future)
+
+		baddies = []
+		for future in as_completed(futures):
+			count += 1
+			result, data, out = future.result()
+			if result != "OK":
+				baddies.append((fut_map[future], result, out.decode("utf-8") if isinstance(out, bytes) else out))
+			sys.stdout.write(".")
+			sys.stdout.flush()
+		for foo in sorted(baddies):
+			print("!", foo)
+		print(f"{count} ebuilds processed.")
 	sys.exit(0)
 	await hub.merge.sources.initialize_sources(kit_dict=kit_dict)
 

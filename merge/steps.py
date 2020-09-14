@@ -82,7 +82,7 @@ class SyncDir(MergeStep):
 		if self.delete:
 			cmd += "--delete --delete-excluded "
 		cmd += "%s %s" % (src, dest)
-		await runShell(cmd)
+		runShell(cmd)
 
 
 class GenerateRepoMetadata(MergeStep):
@@ -129,7 +129,7 @@ class RemoveFiles(MergeStep):
 	async def run(self, tree):
 		for glob in self.globs:
 			cmd = "rm -rf %s/%s" % (tree.root, glob)
-			await runShell(cmd)
+			runShell(cmd)
 
 
 class CopyFiles(MergeStep):
@@ -151,7 +151,7 @@ class CopyFiles(MergeStep):
 		self.srctree = srctree
 		self.file_map_tuples = file_map_tuples
 
-	async def run(self, desttree):
+	def run(self, desttree):
 		for src_path, dst_path in self.file_map_tuples:
 			f_src_path = os.path.join(self.srctree.root, src_path)
 			if not os.path.exists(f_src_path):
@@ -162,7 +162,7 @@ class CopyFiles(MergeStep):
 			parent = os.path.dirname(f_dst_path)
 			if not os.path.exists(parent):
 				os.makedirs(parent, exist_ok=True)
-			await runShell(f"cp -a {f_src_path} {f_dst_path}")
+			runShell(f"cp -a {f_src_path} {f_dst_path}")
 
 
 class CopyAndRename(MergeStep):
@@ -177,7 +177,7 @@ class CopyAndRename(MergeStep):
 		for f in os.listdir(srcpath):
 			destfile = os.path.join(tree.root, self.dest)
 			destfile = os.path.join(destfile, self.ren_fun(f))
-			await runShell(f"cp -a {srcpath}/{f} {destfile}")
+			runShell(f"cp -a {srcpath}/{f} {destfile}")
 
 
 class SyncFiles(MergeStep):
@@ -224,7 +224,7 @@ class CleanTree(MergeStep):
 				continue
 			if fn in self.exclude:
 				continue
-			await runShell("rm -rf %s/%s" % (tree.root, fn))
+			runShell("rm -rf %s/%s" % (tree.root, fn))
 
 
 class ELTSymlinkWorkaround(MergeStep):
@@ -276,7 +276,7 @@ class InsertFilesFromSubdir(MergeStep):
 				if self.skip.match(e):
 					continue
 			real_dst = os.path.basename(os.path.join(dst, e))
-			await runShell("cp -a %s/%s %s" % (src, e, dst))
+			runShell("cp -a %s/%s %s" % (src, e, dst))
 
 
 class InsertEclasses(InsertFilesFromSubdir):
@@ -343,7 +343,7 @@ class ZapMatchingEbuilds(MergeStep):
 				if not os.path.exists(dest_pkgdir):
 					# don't need to zap as it doesn't exist
 					continue
-				await runShell("rm -rf %s" % dest_pkgdir)
+				runShell("rm -rf %s" % dest_pkgdir)
 
 
 class RecordAllCatPkgs(MergeStep):
@@ -513,8 +513,8 @@ class InsertEbuilds(MergeStep):
 					if not os.path.exists(tcatdir):
 						os.makedirs(tcatdir)
 					if os.path.exists(tpkgdir):
-						await runShell("rm -rf " + tpkgdir)
-					await runShell(["/bin/cp", "-a", pkgdir, tpkgdir])
+						runShell("rm -rf " + tpkgdir)
+					runShell(["/bin/cp", "-a", pkgdir, tpkgdir])
 					copied = True
 				else:
 					if not os.path.exists(tpkgdir):
@@ -522,9 +522,9 @@ class InsertEbuilds(MergeStep):
 					if not os.path.exists(tcatdir):
 						os.makedirs(tcatdir)
 					if not os.path.exists(tpkgdir):
-						await runShell(["/bin/cp", "-a", pkgdir, tpkgdir])
+						runShell(["/bin/cp", "-a", pkgdir, tpkgdir])
 				if os.path.exists("%s/__pycache__" % tpkgdir):
-					await runShell("rm -rf %s/__pycache__" % tpkgdir)
+					runShell("rm -rf %s/__pycache__" % tpkgdir)
 				if copied:
 					# log XML here.
 					if self.hub.CPM_LOGGER:
@@ -557,7 +557,7 @@ class ProfileDepFix(MergeStep):
 				sp = line.split()
 				if len(sp) >= 2:
 					prof_path = sp[1]
-					await runShell("rm -f %s/profiles/%s/deprecated" % (tree.root, prof_path))
+					runShell("rm -f %s/profiles/%s/deprecated" % (tree.root, prof_path))
 
 
 class RunSed(MergeStep):
@@ -576,7 +576,7 @@ class RunSed(MergeStep):
 	async def run(self, tree):
 		commands = list(itertools.chain.from_iterable(("-e", command) for command in self.commands))
 		files = [os.path.join(tree.root, file) for file in self.files]
-		await runShell(["sed"] + commands + ["-i"] + files)
+		runShell(["sed"] + commands + ["-i"] + files)
 
 
 class GenCache(MergeStep):
@@ -637,7 +637,7 @@ class GenCache(MergeStep):
 		while attempt <= attempts:
 			if attempt != 1:
 				print("Restarting egencache -- sometimes it dies... this is expected.")
-			success = await runShell(cmd, abort_on_failure=False)
+			success = runShell(cmd, abort_on_failure=False)
 			if success:
 				break
 			attempt += 1
@@ -659,7 +659,7 @@ class GenUseLocalDesc(MergeStep):
 			repos_conf = (
 				"[DEFAULT]\nmain-repo = core-kit\n\n[core-kit]\nlocation = %s/core-kit\n" % tree.hub.MERGE_CONFIG.kit_dest
 			)
-		await runShell(
+		runShell(
 			[
 				"egencache",
 				"--update-use-local-desc",
@@ -679,7 +679,7 @@ class GitCheckout(MergeStep):
 		self.branch = branch
 
 	async def run(self, tree):
-		await runShell(
+		runShell(
 			"(cd %s && git checkout %s || git checkout -b %s --track origin/%s || git checkout -b %s)"
 			% (tree.root, self.branch, self.branch, self.branch, self.branch)
 		)
@@ -690,15 +690,15 @@ class CreateBranch(MergeStep):
 		self.branch = branch
 
 	async def run(self, tree):
-		await runShell("( cd %s && git checkout -b %s --track origin/%s )" % (tree.root, self.branch, self.branch))
+		runShell("( cd %s && git checkout -b %s --track origin/%s )" % (tree.root, self.branch, self.branch))
 
 
 class Minify(MergeStep):
 	"""Minify removes ChangeLogs and shrinks Manifests."""
 
 	async def run(self, tree):
-		await runShell("( cd %s && find -iname ChangeLog | xargs rm -f )" % tree.root, abort_on_failure=False)
-		await runShell("( cd %s && find -iname Manifest | xargs -i@ sed -ni '/^DIST/p' @ )" % tree.root)
+		runShell("( cd %s && find -iname ChangeLog | xargs rm -f )" % tree.root, abort_on_failure=False)
+		runShell("( cd %s && find -iname Manifest | xargs -i@ sed -ni '/^DIST/p' @ )" % tree.root)
 
 
 # getAllEclasses() and getAllLicenses() uses the function getAllMeta() below to do all heavy lifting.  What getAllMeta() returns
@@ -893,7 +893,7 @@ async def get_python_use_lines(p, catpkg, cur_tree, def_python, bk_python):
 			pkg,
 			pvr,
 		)
-		outp = await run(cmd)
+		outp = run(cmd)
 
 		imps = outp[1].decode("ascii").split()
 		new_imps = []
