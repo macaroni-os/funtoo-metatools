@@ -8,6 +8,19 @@ import sys
 
 from merge.tree import runShell, GitTree
 
+import logging
+import os
+from collections import defaultdict
+
+import portage
+
+from merge.async_engine import AsyncEngine
+from merge.async_portage import async_xmatch
+from merge.tree import getcommandoutput, GitTree
+
+portage._internal_caller = True
+from portage.util.futures.iter_completed import async_iter_completed
+
 
 class MergeStep:
 
@@ -119,6 +132,39 @@ class RemoveFiles(MergeStep):
 			await runShell(cmd)
 
 
+class CopyFiles(MergeStep):
+	"""
+	Copy regular files from source tree `srctree` to destination.
+
+	`file_map_tuples` has the format::
+
+	  [ ( 'path/to/src', 'path/to/dest' ), ... ]
+
+	Source and destination paths are relative paths, relative to `srctree` and `desttree` respectively.
+
+	An assumption is made that we are copying regular files, so that we can properly create source directories
+	if they do not exist.
+
+	"""
+
+	def __init__(self, srctree, file_map_tuples):
+		self.srctree = srctree
+		self.file_map_tuples = file_map_tuples
+
+	async def run(self, desttree):
+		for src_path, dst_path in self.file_map_tuples:
+			f_src_path = os.path.join(self.srctree.root, src_path)
+			if not os.path.exists(f_src_path):
+				raise FileNotFoundError(f"Source file not found: {f_src_path}.")
+			f_dst_path = os.path.join(desttree.root, dst_path)
+			if os.path.exists(f_dst_path):
+				os.unlink(f_dst_path)
+			parent = os.path.dirname(f_dst_path)
+			if not os.path.exists(parent):
+				os.makedirs(parent, exist_ok=True)
+			await runShell(f"cp -a {f_src_path} {f_dst_path}")
+
+
 class CopyAndRename(MergeStep):
 	def __init__(self, src, dest, ren_fun):
 		self.src = src
@@ -131,7 +177,7 @@ class CopyAndRename(MergeStep):
 		for f in os.listdir(srcpath):
 			destfile = os.path.join(tree.root, self.dest)
 			destfile = os.path.join(destfile, self.ren_fun(f))
-			await runShell("( cp -a %s/%s %s )" % (srcpath, f, destfile))
+			await runShell(f"cp -a {srcpath}/{f} {destfile}")
 
 
 class SyncFiles(MergeStep):
@@ -238,9 +284,16 @@ class InsertEclasses(InsertFilesFromSubdir):
 		InsertFilesFromSubdir.__init__(self, srctree, "eclass", ".eclass", select=select, skip=skip)
 
 
-class InsertLicenses(InsertFilesFromSubdir):
-	def __init__(self, srctree, select="all", skip=None):
-		InsertFilesFromSubdir.__init__(self, srctree, "licenses", select=select, skip=skip)
+class PruneLicenses(MergeStep):
+	async def run(self, desttree):
+		if os.path.exists(desttree.root + "/licenses"):
+			used_licenses = await getAllLicenses(desttree, desttree.hub.RELEASE)
+			to_remove = []
+			for license in os.listdir(desttree.root + "/licenses"):
+				if license not in used_licenses["dest_kit"]:
+					to_remove.append(desttree.root + "/licenses/" + license)
+			for file in to_remove:
+				os.unlink(file)
 
 
 class CreateCategories(MergeStep):
@@ -538,7 +591,7 @@ class GenCache(MergeStep):
 		if tree.name != "core-kit":
 			repos_conf = (
 				"[DEFAULT]\nmain-repo = core-kit\n\n[core-kit]\nlocation = %s/core-kit\n\n[%s]\nlocation = %s\n"
-				% (tree.config.kit_dest, tree.reponame if tree.reponame else tree.name, tree.root)
+				% (tree.hub.MERGE_CONFIG.kit_dest, tree.reponame if tree.reponame else tree.name, tree.root)
 			)
 
 			# Perform QA check to ensure all eclasses are in place prior to performing egencache, as not having this can
@@ -549,7 +602,7 @@ class GenCache(MergeStep):
 				missing_eclasses = []
 				for ec in result[None]:
 					# if a missing eclass is not in core-kit, then we'll be concerned:
-					if not os.path.exists("%s/core-kit/eclass/%s" % (tree.config.kit_dest, ec)):
+					if not os.path.exists("%s/core-kit/eclass/%s" % (tree.hub.MERGE_CONFIG.kit_dest, ec)):
 						missing_eclasses.append(ec)
 				if len(missing_eclasses):
 					print("!!! Error: QA check on kit %s failed -- missing eclasses:" % tree.name)
@@ -559,7 +612,9 @@ class GenCache(MergeStep):
 					)
 					sys.exit(1)
 		else:
-			repos_conf = "[DEFAULT]\nmain-repo = core-kit\n\n[core-kit]\nlocation = %s/core-kit\n" % tree.config.kit_dest
+			repos_conf = (
+				"[DEFAULT]\nmain-repo = core-kit\n\n[core-kit]\nlocation = %s/core-kit\n" % tree.hub.MERGE_CONFIG.kit_dest
+			)
 		cmd = [
 			"egencache",
 			"--update",
@@ -598,10 +653,12 @@ class GenUseLocalDesc(MergeStep):
 		if tree.name != "core-kit":
 			repos_conf = (
 				"[DEFAULT]\nmain-repo = core-kit\n\n[core-kit]\nlocation = %s/core-kit\n\n[%s]\nlocation = %s\n"
-				% (tree.config.kit_dest, tree.reponame if tree.reponame else tree.name, tree.root)
+				% (tree.hub.MERGE_CONFIG.kit_dest, tree.reponame if tree.reponame else tree.name, tree.root)
 			)
 		else:
-			repos_conf = "[DEFAULT]\nmain-repo = core-kit\n\n[core-kit]\nlocation = %s/core-kit\n" % tree.config.kit_dest
+			repos_conf = (
+				"[DEFAULT]\nmain-repo = core-kit\n\n[core-kit]\nlocation = %s/core-kit\n" % tree.hub.MERGE_CONFIG.kit_dest
+			)
 		await runShell(
 			[
 				"egencache",
@@ -642,22 +699,6 @@ class Minify(MergeStep):
 	async def run(self, tree):
 		await runShell("( cd %s && find -iname ChangeLog | xargs rm -f )" % tree.root, abort_on_failure=False)
 		await runShell("( cd %s && find -iname Manifest | xargs -i@ sed -ni '/^DIST/p' @ )" % tree.root)
-
-
-#!/usr/bin/env python3
-import logging
-import os
-from collections import defaultdict
-
-import portage
-
-from merge.async_engine import AsyncEngine
-from merge.async_portage import async_xmatch
-from merge.steps import MergeStep
-from merge.tree import getcommandoutput, GitTree
-
-portage._internal_caller = True
-from portage.util.futures.iter_completed import async_iter_completed
 
 
 # getAllEclasses() and getAllLicenses() uses the function getAllMeta() below to do all heavy lifting.  What getAllMeta() returns
@@ -767,7 +808,7 @@ async def getAllMeta(metadata, dest_kit, release):
 	[%s]
 	location = %s
 		""" % (
-			dest_kit.config.kit_dest,
+			dest_kit.hub.MERGE_CONFIG.kit_dest,
 			dest_kit.name,
 			dest_kit.root,
 		)
@@ -935,7 +976,7 @@ aliases = gentoo
 [%s]
 location = %s
 """ % (
-				cur_overlay.config.kit_dest,
+				cur_overlay.hub.MERGE_CONFIG.kit_dest,
 				cur_name,
 				cur_tree,
 			)
@@ -949,7 +990,7 @@ main-repo = core-kit
 location = %s/core-kit
 aliases = gentoo
 """
-				% cur_overlay.config.kit_dest
+				% self.hub.MERGE_CONFIG.kit_dest
 			)
 		p = portage.portdbapi(mysettings=portage.config(env=env, config_profile_path=""))
 
@@ -1057,7 +1098,7 @@ class FastPullScan(MergeStep):
 		[%s]
 		location = %s
 		""" % (
-				cur_overlay.config.kit_dest,
+				self.hub.MERGE_CONFIG.kit_dest,
 				cur_name,
 				cur_tree,
 			)
@@ -1071,7 +1112,7 @@ class FastPullScan(MergeStep):
 		location = %s/core-kit
 		aliases = gentoo
 		"""
-				% cur_overlay.config.kit_dest
+				% self.hub.MERGE_CONFIG.kit_dest
 			)
 		env["ACCEPT_KEYWORDS"] = "~amd64 amd64"
 		p = portage.portdbapi(mysettings=portage.config(env=env, config_profile_path=""))

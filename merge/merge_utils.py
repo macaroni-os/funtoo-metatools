@@ -1250,9 +1250,9 @@ class ApplyPatchSeries(MergeStep):
 				continue
 			if line[0:4] == "EXEC":
 				ls = line.split()
-				runShell("( cd %s && %s/%s )" % (tree.root, self.path, ls[1]))
+				await runShell("( cd %s && %s/%s )" % (tree.root, self.path, ls[1]))
 			else:
-				runShell("( cd %s && git apply %s/%s )" % (tree.root, self.path, line[:-1]))
+				await runShell("( cd %s && git apply %s/%s )" % (tree.root, self.path, line[:-1]))
 
 
 class GenerateRepoMetadata(MergeStep):
@@ -1299,7 +1299,7 @@ class RemoveFiles(MergeStep):
 	async def run(self, tree):
 		for glob in self.globs:
 			cmd = "rm -rf %s/%s" % (tree.root, glob)
-			runShell(cmd)
+			await runShell(cmd)
 
 
 class SyncDir(MergeStep):

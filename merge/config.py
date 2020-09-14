@@ -6,7 +6,8 @@ from configparser import ConfigParser
 
 
 class Configuration:
-	def __init__(self, path=None):
+	def __init__(self, prod=False, path=None):
+		self.prod = prod
 		if path is None:
 			home_dir = os.path.expanduser("~")
 			self.config_path = os.path.join(home_dir, ".merge")
@@ -76,13 +77,6 @@ meta-repo = master
 		return self.get_option("sources", "kit-fixups", "ssh://git@code.funtoo.org:7999/core/kit-fixups.git")
 
 	@property
-	def mirror(self):
-		if self.args.nomirror is True:
-			return None
-		else:
-			return self.get_option("destinations", "mirror", None)
-
-	@property
 	def gentoo_staging(self):
 		return self.get_option("sources", "gentoo-staging", "ssh://git@code.funtoo.org:7999/auto/gentoo-staging.git")
 
@@ -126,7 +120,7 @@ meta-repo = master
 
 	@property
 	def kit_dest(self):
-		if self.args and self.args.prod:
+		if self.prod:
 			return self.dest_trees
 		else:
 			return os.path.join(self.dest_trees, "meta-repo/kits")

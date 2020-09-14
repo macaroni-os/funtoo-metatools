@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from collections import defaultdict
 
 import yaml
 import os
@@ -67,14 +68,45 @@ def get_kit_items(hub, kit_name, section="packages"):
 	fn = f"{hub.FIXUP_REPO.root}/{kit_name}/packages.yaml"
 	with open(fn, "r") as f:
 		pdata = yaml.safe_load(f)
-		for package_set in pdata[section]:
-			repo_name = list(package_set.keys())[0]
-			packages = package_set[repo_name]
-			yield repo_name, packages
+		if section in pdata:
+			for package_set in pdata[section]:
+				repo_name = list(package_set.keys())[0]
+				packages = package_set[repo_name]
+				yield repo_name, packages
+
+
+def get_copyfiles_from_yaml(hub, kit_name):
+	"""
+	Parses the 'eclasses' and 'copyfiles' sections in a kit's YAML and returns a list of files to
+	copy from each source repository in a tuple format.
+	"""
+	eclass_items = list(hub._.get_kit_items(kit_name, section="eclasses"))
+	copyfile_items = list(hub._.get_kit_items(kit_name, section="copyfiles"))
+	copy_tuple_dict = defaultdict(list)
+
+	print(eclass_items)
+	print(copyfile_items)
+	for src_repo, eclasses in eclass_items:
+		for eclass in eclasses:
+			copy_tuple_dict[src_repo].append((f"eclass/{eclass}.eclass", f"eclass/{eclass}.eclass"))
+
+	for src_repo, copyfiles in copyfile_items:
+		for copy_dict in copyfiles:
+			copy_tuple_dict[src_repo].append((copy_dict["src"], copy_dict["dest"] if "dest" in copy_dict else copy_dict["src"]))
+	return copy_tuple_dict
 
 
 def get_kit_packages(hub, kit_name):
 	return hub._.get_kit_items(kit_name)
+
+
+def python_kit_settings(hub):
+	for section in hub.FDATA["python-settings"]:
+		release = list(section.keys())[0]
+		if release != hub.RELEASE:
+			continue
+		return section[release][0]
+	return None
 
 
 def release_exists(hub, release):
@@ -156,6 +188,8 @@ def get_repos(hub, source_name):
 	sdefs = source_defs(hub, source_name)
 
 	for repo_dict in sdefs:
+		if isinstance(repo_dict, str):
+			repo_dict = {"repo": repo_dict}
 		ov_name = repo_dict["repo"]
 		ov_data = get_overlay(hub, ov_name)
 		repo_dict.update(ov_data)
