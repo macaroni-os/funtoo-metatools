@@ -7,33 +7,23 @@ import sys
 debug = True
 
 
-async def getcommandoutput(args, env=None):
-	# Slight modification of the function getstatusoutput present in:
-	# https://docs.python.org/3/library/asyncio-subprocess.html#example
-	if isinstance(args, str):
-		proc = await asyncio.create_subprocess_shell(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+async def run(args, env=None):
+	if env:
+		result = subprocess.run(args, shell=True, env=env)
 	else:
-		proc = await asyncio.create_subprocess_exec(*args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
-	try:
-		stdout, stderr = await proc.communicate()
-	except:
-		proc.kill()
-		await proc.wait()
-		raise
-
-	exitcode = await proc.wait()
-	return exitcode, stdout, stderr
+		result = subprocess.run(args, shell=True)
+	return result
 
 
 async def runShell(cmd_list, abort_on_failure=True, env=None):
 	if debug:
 		print("running: %r" % cmd_list)
-	out = await getcommandoutput(cmd_list, env=env)
-	if out[0] != 0:
+	result: subprocess.CompletedProcess = await run(cmd_list, env=env)
+	if result.returncode != 0:
 		print("Error executing %r" % cmd_list)
 		print()
 		print("output:")
-		print(out[1].decode("utf-8"))
+		print(result.stdout)
 		if abort_on_failure:
 			sys.exit(1)
 		else:

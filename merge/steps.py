@@ -16,7 +16,7 @@ import portage
 
 from merge.async_engine import AsyncEngine
 from merge.async_portage import async_xmatch
-from merge.tree import getcommandoutput, GitTree
+from merge.tree import run, GitTree
 
 portage._internal_caller = True
 from portage.util.futures.iter_completed import async_iter_completed
@@ -893,7 +893,7 @@ async def get_python_use_lines(p, catpkg, cur_tree, def_python, bk_python):
 			pkg,
 			pvr,
 		)
-		outp = await getcommandoutput(cmd)
+		outp = await run(cmd)
 
 		imps = outp[1].decode("ascii").split()
 		new_imps = []

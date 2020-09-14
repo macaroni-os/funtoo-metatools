@@ -10,7 +10,7 @@ import pop.hub
 import logging
 
 from merge.config import Configuration
-from merge.steps import GenPythonUse, InsertFilesFromSubdir, PruneLicenses, InsertEclasses, CopyFiles
+from merge.steps import GenPythonUse, InsertFilesFromSubdir, PruneLicenses, CopyFiles
 from merge.steps import (
 	InsertEbuilds,
 	GitCheckout,
@@ -20,11 +20,8 @@ from merge.steps import (
 	Minify,
 	GenUseLocalDesc,
 	GenCache,
-	RunSed,
 	SyncDir,
-	ThirdPartyMirrors,
 	SyncFiles,
-	GenerateRepoMetadata,
 )
 from merge.tree import GitTree, AutoCreatedGitTree
 
@@ -94,7 +91,8 @@ def copyFromFixupsSteps(kit_dict=None):
 
 
 async def auto_kit_gen(kit_dict=None):
-
+	await hub.merge.metadata.gen_metadata()
+	sys.exit(0)
 	await hub.merge.sources.initialize_sources(kit_dict=kit_dict)
 
 	if hub.GIT_CLASS_KWARGS_FN:
