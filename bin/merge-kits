@@ -12,7 +12,6 @@ import pop.hub
 import logging
 
 from merge_utils.config import Configuration
-from merge_utils.metadata import get_md5, gen_metadata
 from merge_utils.steps import GenPythonUse, InsertFilesFromSubdir, PruneLicenses, CopyFiles
 from merge_utils.steps import (
 	InsertEbuilds,
@@ -122,23 +121,26 @@ def get_eclass_hashes(eclass_sourcedir):
 			continue
 		eclass_path = os.path.join(ecrap, eclass)
 		eclass_name = eclass[:-7]
-		eclass_hashes.hashes[eclass_name] = get_md5(eclass_path)
+		eclass_hashes.hashes[eclass_name] = hub.merge.metadata.get_md5(eclass_path)
 	return eclass_hashes
 
 
 async def auto_kit_gen(kit_dict=None):
-
+	os.makedirs("/var/tmp/empty", exist_ok=True)
+	os.chdir("/var/tmp/empty")
 	with ThreadPoolExecutor(max_workers=24) as executor:
 		count = 0
 		futures = []
 		fut_map = {}
 
 		eclass_hashes = get_eclass_hashes("/var/git/meta-repo/kits/core-kit")
-		print(eclass_hashes.hashes)
 
 		for ebpath in ebuild_generator(kit="nokit"):
 			future = executor.submit(
-				gen_metadata, ebuild_path=ebpath, metadata_outpath="/var/tmp/metadata", eclass_hashes=eclass_hashes
+				hub.merge.metadata.gen_metadata,
+				ebuild_path=ebpath,
+				metadata_outpath="/var/tmp/metadata",
+				eclass_hashes=eclass_hashes,
 			)
 			fut_map[future] = ebpath
 			futures.append(future)
