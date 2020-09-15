@@ -9,9 +9,9 @@ debug = False
 
 def run(args, env=None):
 	if env:
-		result = subprocess.run(args, shell=True, env=env, capture_output=True)
+		result = subprocess.run(args, shell=True, env=env, capture_output=True, encoding="utf-8")
 	else:
-		result = subprocess.run(args, shell=True, capture_output=True)
+		result = subprocess.run(args, shell=True, capture_output=True, encoding="utf-8")
 	return result
 
 

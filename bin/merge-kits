@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 
 import asyncio
-from concurrent.futures import as_completed
 import os
 import sys
 from collections import defaultdict
-from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime
 
 import pop.hub
@@ -92,71 +90,15 @@ def copyFromFixupsSteps(kit_dict=None):
 	return steps
 
 
-def ebuild_generator(kit="core-kit"):
-	basepath = f"/var/git/meta-repo/kits/{kit}"
-	for catdir in os.listdir(basepath):
-		catpath = os.path.join(basepath, catdir)
-		if not os.path.isdir(catpath):
-			continue
-		for pkgdir in os.listdir(catpath):
-			pkgpath = os.path.join(catpath, pkgdir)
-			if not os.path.isdir(pkgpath):
-				continue
-			for ebfile in os.listdir(pkgpath):
-				if ebfile.endswith(".ebuild"):
-					yield os.path.join(pkgpath, ebfile)
-
-
-class EclassHashCollection:
-	def __init__(self, path):
-		self.path = path
-		self.hashes = {}
-
-
-def get_eclass_hashes(eclass_sourcedir):
-	eclass_hashes = EclassHashCollection(eclass_sourcedir)
-	ecrap = os.path.join(eclass_sourcedir, "eclass")
-	for eclass in os.listdir(ecrap):
-		if not eclass.endswith(".eclass"):
-			continue
-		eclass_path = os.path.join(ecrap, eclass)
-		eclass_name = eclass[:-7]
-		eclass_hashes.hashes[eclass_name] = hub.merge.metadata.get_md5(eclass_path)
-	return eclass_hashes
-
-
 async def auto_kit_gen(kit_dict=None):
-	os.makedirs("/var/tmp/empty", exist_ok=True)
-	os.chdir("/var/tmp/empty")
-	with ThreadPoolExecutor(max_workers=24) as executor:
-		count = 0
-		futures = []
-		fut_map = {}
 
-		eclass_hashes = get_eclass_hashes("/var/git/meta-repo/kits/core-kit")
-
-		for ebpath in ebuild_generator(kit="nokit"):
-			future = executor.submit(
-				hub.merge.metadata.gen_metadata,
-				ebuild_path=ebpath,
-				metadata_outpath="/var/tmp/metadata",
-				eclass_hashes=eclass_hashes,
-			)
-			fut_map[future] = ebpath
-			futures.append(future)
-
-		baddies = []
-		for future in as_completed(futures):
-			count += 1
-			result, data, out = future.result()
-			if result != "OK":
-				baddies.append((fut_map[future], result, out.decode("utf-8") if isinstance(out, bytes) else out))
-			sys.stdout.write(".")
-			sys.stdout.flush()
-		for foo in sorted(baddies):
-			print("!", foo)
-		print(f"{count} ebuilds processed.")
+	hub.merge.metadata.gen_cache(
+		eclass_src="/var/git/meta-repo/kits/core-kit",
+		ebuild_src="/var/git/meta-repo/kits/nokit",
+		metadata_out="/var/tmp/metadata",
+	)
 	sys.exit(0)
+
 	await hub.merge.sources.initialize_sources(kit_dict=kit_dict)
 
 	if hub.GIT_CLASS_KWARGS_FN:
