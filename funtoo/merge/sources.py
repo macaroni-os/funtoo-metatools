@@ -4,13 +4,17 @@ from merge_utils.tree import GitTree
 
 
 def __init__(hub):
+	hub.CURRENT_SOURCE_DEF = None
 	hub.SOURCE_REPOS = {}
 
 
 async def initialize_sources(hub, kit_dict=None):
-	repos = list(hub.merge.foundations.get_repos(kit_dict["source"]))
-	print("GOT REPOS", repos)
+	source = kit_dict["source"]
+	if hub.CURRENT_SOURCE_DEF == source:
+		return
+	repos = list(hub.merge.foundations.get_repos(source))
 	for repo_dict in repos:
+		print("Going to initialize", repo_dict)
 		repo_name = repo_dict["name"]
 		repo_url = repo_dict["url"]
 		repo_key = repo_name
@@ -36,3 +40,4 @@ async def initialize_sources(hub, kit_dict=None):
 			)
 			await repo_obj.initialize()
 			hub.SOURCE_REPOS[repo_key] = repo_obj
+	hub.CURRENT_SOURCE_DEF = source

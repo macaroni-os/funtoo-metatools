@@ -88,7 +88,7 @@ def get_md5(filename):
 	return h.hexdigest()
 
 
-def strip_rev(s):
+def strip_rev(hub, s):
 
 	"""
 	A short function to strip the revision from the end of an ebuild, returning either
@@ -184,7 +184,7 @@ def gen_cache_entry(hub, ebuild_path, metadata_outpath=None, eclass_hashes: Ecla
 	env["PF"] = os.path.basename(ebuild_path)[:-7]
 	env["CATEGORY"] = ebuild_path.split("/")[-3]
 	pkg_only = ebuild_path.split("/")[-2]  # JUST the pkg name "foobar"
-	reduced, rev = strip_rev(env["PF"])
+	reduced, rev = hub._.strip_rev(env["PF"])
 	if rev is None:
 		env["PR"] = "r0"
 		pkg_and_ver = env["PF"]
@@ -206,9 +206,9 @@ def gen_cache_entry(hub, ebuild_path, metadata_outpath=None, eclass_hashes: Ecla
 		while line < len(METADATA_LINES):
 			infos[METADATA_LINES[line]] = lines[line]
 			line += 1
+		basespl = ebuild_path.split("/")
+		infos["HASH_KEY"] = metapath = basespl[-3] + "/" + basespl[-1][:-7]
 		if metadata_outpath:
-			basespl = ebuild_path.split("/")
-			metapath = basespl[-3] + "/" + basespl[-1][:-7]
 			final_md5_outpath = os.path.join(metadata_outpath, metapath)
 			os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
 			with open(os.path.join(metadata_outpath, metapath), "w") as f:
@@ -267,7 +267,7 @@ def ebuild_generator(ebuild_src=None):
 					yield os.path.join(pkgpath, ebfile)
 
 
-def get_eclass_hashes(eclass_sourcedir):
+def get_eclass_hashes(hub, eclass_sourcedir):
 
 	"""
 
@@ -304,13 +304,14 @@ def gen_cache(hub, eclass_src=None, metadata_out=None, ebuild_src=None):
 	just point to the root of the kit and all eclasses are found and metadata is generated.
 
 	"""
+	hub.METADATA_ENTRIES = {}
 
 	with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
 		count = 0
 		futures = []
 		fut_map = {}
 
-		eclass_hashes = get_eclass_hashes(eclass_src)
+		eclass_hashes = hub.ECLASS_HASHES
 		for ebpath in ebuild_generator(ebuild_src=ebuild_src):
 			future = executor.submit(
 				hub._.gen_cache_entry, ebuild_path=ebpath, metadata_outpath=metadata_out, eclass_hashes=eclass_hashes,
@@ -324,6 +325,11 @@ def gen_cache(hub, eclass_src=None, metadata_out=None, ebuild_src=None):
 			if data is None:
 				sys.stdout.write("!")
 			else:
+				# Record all metadata in-memory so it's available later.
+
+				hash_key = data["HASH_KEY"]
+				hub.METADATA_ENTRIES[hash_key] = data
+
 				sys.stdout.write(".")
 			sys.stdout.flush()
 

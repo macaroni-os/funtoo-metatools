@@ -18,9 +18,13 @@ def run(args, env=None):
 def runShell(cmd_list, abort_on_failure=True, env=None):
 	if debug:
 		print("running: %r" % cmd_list)
-	result: subprocess.CompletedProcess = run(cmd_list, env=env)
+	if isinstance(cmd_list, list):
+		cmd_str = " ".join(cmd_list)
+	else:
+		cmd_str = cmd_list
+	result: subprocess.CompletedProcess = run(cmd_str, env=env)
 	if result.returncode != 0:
-		print("Error executing %r" % cmd_list)
+		print("Error executing %r" % cmd_str)
 		print()
 		print("output:")
 		print(result.stdout)

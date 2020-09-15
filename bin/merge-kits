@@ -1,28 +1,15 @@
 #!/usr/bin/env python3
 
 import asyncio
+import logging
 import os
 import sys
 from collections import defaultdict
 from datetime import datetime
 
 import pop.hub
-import logging
 
 from merge_utils.config import Configuration
-from merge_utils.steps import GenPythonUse, InsertFilesFromSubdir, PruneLicenses, CopyFiles
-from merge_utils.steps import (
-	InsertEbuilds,
-	GitCheckout,
-	CleanTree,
-	ELTSymlinkWorkaround,
-	CreateCategories,
-	Minify,
-	GenUseLocalDesc,
-	GenCache,
-	SyncDir,
-	SyncFiles,
-)
 from merge_utils.tree import GitTree, AutoCreatedGitTree
 
 hub_logger = logging.getLogger("pop.hub")
@@ -30,161 +17,8 @@ hub_logger.setLevel(logging.DEBUG)
 hub = pop.hub.Hub()
 
 
-def copyFromFixupsSteps(kit_dict=None):
-
-	# Phase 3: copy eclasses, licenses, profile info, and ebuild/eclass fixups from the kit-fixups repository.
-
-	# First, we are going to process the kit-fixups repository and look for ebuilds and eclasses to replace. Eclasses can be
-	# overridden by using the following paths inside kit-fixups:
-
-	# kit-fixups/eclass/1.2-release <--------- global eclasses, get installed to all kits unconditionally for release (overrides those above)
-	# kit-fixups/<kit>/global/eclass <-------- global eclasses for a particular kit, goes in all branches (overrides those above)
-	# kit-fixups/<kit>/global/profiles <------ global profile info for a particular kit, goes in all branches (overrides those above)
-	# kit-fixups/<kit>/<branch>/eclass <------ eclasses to install in just a specific branch of a specific kit (overrides those above)
-	# kit-fixups/<kit>/<branch>/profiles <---- profile info to install in just a specific branch of a specific kit (overrides those above)
-
-	# Note that profile repo_name and categories files are excluded from any copying.
-
-	# Ebuilds can be installed to kits by putting them in the following location(s):
-
-	# kit-fixups/<kit>/global/cat/pkg <------- install cat/pkg into all branches of a particular kit
-	# kit-fixups/<kit>/<branch>/cat/pkg <----- install cat/pkg into a particular branch of a kit
-
-	# Remember that at this point, we may be missing a lot of eclasses and licenses from Gentoo. We will then perform a final sweep
-	# of all catpkgs in the dest_kit and auto-detect missing eclasses from Gentoo and copy them to our dest_kit. Remember that if you
-	# need a custom eclass from a third-party overlay, you will need to specify it in the overlay's overlays["ov_name"]["eclasses"]
-	# list. Or alternatively you can copy the eclasses you need to kit-fixups and maintain them there :)
-
-	steps = []
-	# Here is the core logic that copies all the fix-ups from kit-fixups (eclasses and ebuilds) into place:
-	eclass_release_path = "eclass/%s" % hub.RELEASE
-	if os.path.exists(os.path.join(hub.FIXUP_REPO.root, eclass_release_path)):
-		steps += [SyncDir(hub.FIXUP_REPO.root, eclass_release_path, "eclass")]
-	fixup_dirs = ["global", "curated", kit_dict["branch"]]
-	for fixup_dir in fixup_dirs:
-		fixup_path = kit_dict["name"] + "/" + fixup_dir
-
-		if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path):
-			if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path + "/eclass"):
-				steps += [
-					InsertFilesFromSubdir(hub.FIXUP_REPO, "eclass", ".eclass", select="all", skip=None, src_offset=fixup_path)
-				]
-			if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path + "/licenses"):
-				steps += [InsertFilesFromSubdir(hub.FIXUP_REPO, "licenses", None, select="all", skip=None, src_offset=fixup_path)]
-			if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path + "/profiles"):
-				steps += [
-					InsertFilesFromSubdir(
-						hub.FIXUP_REPO, "profiles", None, select="all", skip=["repo_name", "categories"], src_offset=fixup_path
-					)
-				]
-			# copy appropriate kit readme into place:
-			readme_path = fixup_path + "/README.rst"
-			if os.path.exists(hub.FIXUP_REPO.root + "/" + readme_path):
-				steps += [SyncFiles(hub.FIXUP_REPO.root, {readme_path: "README.rst"})]
-
-			# We now add a step to insert the fixups, and we want to record them as being copied so successive kits
-			# don't get this particular catpkg. Assume we may not have all these catpkgs listed in our package-set
-			# file...
-
-			steps += [InsertEbuilds(hub, hub.FIXUP_REPO, ebuildloc=fixup_path, select="all", skip=None, replace=True)]
-	return steps
-
-
-async def auto_kit_gen(kit_dict=None):
-
-	hub.merge.metadata.gen_cache(
-		eclass_src="/var/git/meta-repo/kits/core-kit",
-		ebuild_src="/var/git/meta-repo/kits/nokit",
-		metadata_out="/var/tmp/metadata",
-	)
-	sys.exit(0)
-
-	await hub.merge.sources.initialize_sources(kit_dict=kit_dict)
-
-	if hub.GIT_CLASS_KWARGS_FN:
-		kwargs = hub.GIT_CLASS_KWARGS_FN()
-	else:
-		kwargs = {}
-
-	branch = kit_dict["branch"]
-	out_tree = hub.GIT_CLASS(
-		hub, kit_dict["name"], branch=branch, root=hub.MERGE_CONFIG.dest_trees + "/" + kit_dict["name"], **kwargs
-	)
-	await out_tree.initialize()
-
-	# Phase 1: prep the kit
-	steps = [GitCheckout(branch), CleanTree()]
-
-	pre_steps, post_steps = hub.merge.foundations.get_kit_pre_post_steps(kit_dict)
-
-	steps += pre_steps
-
-	# Copy files specified in 'eclasses' and 'copyfiles' sections in the kit's YAML:
-	for repo_name, copyfile_tuples in hub.merge.foundations.get_copyfiles_from_yaml(kit_dict["name"]).items():
-		steps += [CopyFiles(hub.SOURCE_REPOS[repo_name], copyfile_tuples)]
-
-	# Copy over catpkgs listed in 'packages' section:
-	for repo_name, packages in hub.merge.foundations.get_kit_packages(kit_dict["name"]):
-		from_tree = hub.SOURCE_REPOS[repo_name]
-		# TODO: add move maps below
-		steps += [InsertEbuilds(hub, from_tree, skip=None, replace=True, move_maps=None, select=packages)]
-
-	# If an autogenerated kit, we also want to copy various things (catpkgs, eclasses, profiles) from kit-fixups:
-	if kit_dict["kind"] == "autogenerated":
-		steps += copyFromFixupsSteps(kit_dict)
-
-	# Copy over all licenses and then prune what we don't use:
-	steps.append(SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "licenses"))
-	steps.append(PruneLicenses())
-
-	steps += [
-		ELTSymlinkWorkaround(),
-		CreateCategories(),
-	]
-
-	python_settings = hub.merge.foundations.python_kit_settings()
-
-	for py_branch, py_settings in python_settings.items():
-		steps += [GenPythonUse(hub, py_settings, "funtoo/kits/python-kit/%s" % py_branch, release=hub.RELEASE)]
-
-	steps += post_steps + [
-		Minify(),
-		GenUseLocalDesc(),
-		GenCache(
-			cache_dir=config.metadata_cache + "/%s-%s-%s" % (hub.RELEASE, kit_dict["name"], branch), release=hub.RELEASE
-		),
-	]
-
-	# post_steps += [
-	# 	FastPullScan(now=hub.START_TIME)
-	# ]
-
-	await out_tree.run(steps)
-	# push is ignored if we are using local AutoCreatedGitTrees.
-	await out_tree.gitCommit(message="updates", push=push)
-	return kit_dict, out_tree, out_tree.head()
-
-
-"""
-async def indy_kit_gen(kit_dict, release):
-	name = kit_dict['name']
-	tree = mu.AutoCreatedGitTree(name=name, root=path, config=config, branch=kit_dict["branch"])
-	await tree.gitCheckout(branch=kit_dict["branch"])
-	post_steps = []
-	python_settings = foundation.python_kit_settings[release]
-
-	for py_branch, py_settings in python_settings.items():
-		post_steps += [mu.GenPythonUse(hub, py_settings, "funtoo/kits/python-kit/%s" % py_branch, release=release)]
-
-	post_steps += [
-		mu.Minify(),
-		mu.GenUseLocalDesc(),
-		mu.GenCache(cache_dir=config.metadata_cache + "/%s-%s-%s" % (release, kit_dict['name'], branch),
-		            release=release),
-	]
-	await tree.run(post_steps)
-	await tree.gitCommit(message="python USE setting and metadata cache updates")
-"""
+class MergeError(Exception):
+	pass
 
 
 async def main_thread():
@@ -196,50 +30,39 @@ async def main_thread():
 	await hub.FIXUP_REPO.initialize()
 	await hub.META_REPO.initialize()
 
+	core_kit = None
 	thread_groups = defaultdict(list)
 	indy_kits = []
 
 	for kit in hub.merge.foundations.kit_groups():
 		kind = kit["kind"]
-		if kind == "autogenerated":
-			source = kit["source"]
-			thread_groups[source].append(kit)
+
+		# core-kit is special, and we want to grab it because we need to do special initialization with eclasses,
+		# etc. since these eclasses get used for metadata cache generation for successive kits.
+
+		if kit["name"] == "core-kit":
+			core_kit = kit
+		elif kind == "autogenerated":
+
+			# thread_groups is a collection of kits that are all using the same source repos. They can in theory
+			# be processed in parallel, thus the name 'thread groups'.
+
+			thread_groups[kit["source"]].append(kit)
 		else:
+
+			# Independent kits in theory need no processing, though we may add some good-to-have processing like
+			# ensuring all metadata cache is up-to-date. This would be a good thing, actually.
+
 			indy_kits.append(kit)
 
+	if core_kit is None:
+		raise MergeError(f"Unable to find core-kit in source definitions for release {hub.RELEASE}.")
+
+	await hub.merge.kit.generate_autogenerated_kit(core_kit)
+
 	for gr_name, gr_list in thread_groups.items():
-		print(gr_name)
 		for kit in gr_list:
-			print("  ", kit)
-
-	for kit_dict in thread_groups["funtoo_release_1.4"]:
-		await auto_kit_gen(kit_dict=kit_dict)
-
-	"""
-
-			for kit_dict in release_kits:
-
-				# Don't process kits that don't match:
-				kit_branch = kit_dict["branch"]
-				if "type" not in kit_dict or kit_dict["type"] != KitType.INDEPENDENTLY_MAINTAINED:
-					continue
-				if "name" not in kit_dict or kit_dict["name"] != kit_name:
-					continue
-
-				# Don't repeatedly process the same kit (can be defined in multiple releases)
-				kit_key = "%s/%s" % (kit_name, kit_branch)
-				if kit_key in already_processed_kit_keys:
-					continue
-				else:
-					already_processed_kit_keys.add(kit_key)
-
-				# OK, if we got here, we have something to process --
-				print("Processing branch %s" % kit_dict["branch"])
-				branch = kit_dict["branch"]
-				indy_kit = 'type' in kit_dict and kit_dict['type'] == KitType.INDEPENDENTLY_MAINTAINED
-
-
-"""
+			await hub.merge.kit.generate_autogenerated_kit(kit)
 
 
 if __name__ == "__main__":
@@ -248,13 +71,13 @@ if __name__ == "__main__":
 
 	hub.pop.conf.integrate(int_g, cli=sub_name, roots=True, loader="yaml", logs=False)
 
-	print("Why hello there.")
+	# Parse options:
+
 	push = not hub.OPT["merge-kits"]["nopush"]
 	prod = hub.OPT["merge-kits"]["prod"]
 	forcepush = hub.OPT["merge-kits"]["force"]
-	print(hub.OPT["merge-kits"]["release"])
-	print("prod:", prod)
-	print("push:", push)
+
+	# Initialize internal pop globals that are expected to be in place when the merge sub gets added:
 
 	hub.MERGE_CONFIG = config = Configuration(prod=prod)
 	hub.RELEASE = hub.OPT["merge-kits"]["release"]
@@ -275,7 +98,6 @@ if __name__ == "__main__":
 		def get_git_class_kwargs(kit_dict):
 			return {
 				"url": hub.MERGE_CONFIG.base_url(kit_dict["name"]),
-				"mirror": hub.MERGE_CONFIG.mirror.rstrip("/") + "/" + kit_dict["name"] if hub.MERGE_CONFIG.mirror else None,
 				"origin_check": True,
 				"destfix": False,
 				"forcepush": forcepush,
@@ -283,6 +105,7 @@ if __name__ == "__main__":
 
 		# In this mode, we're actually wanting to update real kits, and likely are going to push our updates to remotes (unless --nopush is specified as an arg.)
 		# This might be used by people generating their own custom kits for use on other systems, or by Funtoo itself for updating official kits and meta-repo.
+
 		hub.GIT_CLASS = GitTree
 		hub.GIT_CLASS_KWARGS_FN = get_git_class_kwargs
 		hub.META_REPO = meta_repo = GitTree(
@@ -291,7 +114,6 @@ if __name__ == "__main__":
 			config.branch("meta-repo"),
 			url=config.base_url("meta-repo"),
 			root=config.dest_trees + "/meta-repo",
-			mirror=config.mirror.rstrip("/") + "/meta-repo" if config.mirror else None,
 			origin_check=True,
 		)
 		hub.NEST_KITS = False
@@ -310,6 +132,10 @@ if __name__ == "__main__":
 
 	# TODO: hook into fastpull
 	hub.CPM_LOGGER = None
+
+	# Our autogen scripts will call "doit" (which actually hits this code base again, but as a separate process) and
+	# AUTOGEN_OPTS is used to define the correct arguments to supply to the "doit" call depending on what behavior
+	# we want:
 
 	hub.AUTOGEN_OPTS = [f"--temp-path={os.path.join(config.work_path, 'autogen')}"]
 	if prod:

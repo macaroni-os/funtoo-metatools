@@ -70,7 +70,6 @@ async def generate_individual_autogens(hub):
 		pkg_name = file.split("/")[-2]
 		pkg_cat = file.split("/")[-3]
 		try:
-			print(f"autogen: {pkg_name}/{pkg_cat}")
 			await hub.my_catpkg.autogen.generate(name=pkg_name, cat=pkg_cat, path=subpath)
 		except hub.pkgtools.fetch.FetchError as fe:
 			log.error(repr(fe))
