@@ -4,7 +4,6 @@ import hashlib
 import logging
 import os
 import sys
-from collections import defaultdict
 from subprocess import getstatusoutput
 
 

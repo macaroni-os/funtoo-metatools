@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from merge.tree import GitTree
+from merge_utils.tree import GitTree
 
 
 def __init__(hub):

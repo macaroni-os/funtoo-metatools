@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import sys
-from merge.config import Configuration
+from merge_utils.config import Configuration
 from contextlib import contextmanager
 from sqlalchemy import create_engine, Integer, Boolean, Column, String, BigInteger, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base

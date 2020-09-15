@@ -6,7 +6,7 @@ import re
 import shutil
 import sys
 
-from merge.tree import runShell, GitTree
+from merge_utils.tree import runShell, GitTree
 
 import logging
 import os
@@ -14,9 +14,8 @@ from collections import defaultdict
 
 import portage
 
-from merge.async_engine import AsyncEngine
-from merge.async_portage import async_xmatch
-from merge.tree import run, GitTree
+from merge_utils.async_portage import async_xmatch
+from merge_utils.tree import run, GitTree
 
 portage._internal_caller = True
 from portage.util.futures.iter_completed import async_iter_completed
@@ -1070,7 +1069,7 @@ def extract_uris(src_uri):
 
 
 class FastPullScan(MergeStep):
-	def __init__(self, now, engine: AsyncEngine = None):
+	def __init__(self, now, engine=None):
 		self.now = now
 		self.engine = engine
 

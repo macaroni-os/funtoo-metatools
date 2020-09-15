@@ -18,7 +18,7 @@ import grp
 import multiprocessing
 from collections import defaultdict
 from portage.util.futures.iter_completed import async_iter_completed
-from merge.async_portage import async_xmatch
+from merge_utils.async_portage import async_xmatch
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import cpu_count
@@ -26,8 +26,8 @@ import jinja2
 
 debug = False
 
-from merge.async_engine import AsyncEngine
-from merge.constants import KitStabilityRating, KitType
+from merge_utils.async_engine import AsyncEngine
+from merge_utils.constants import KitStabilityRating, KitType
 
 # These should be kept in-sync with definitions that are in foundations.py.
 
@@ -55,7 +55,7 @@ class AsyncMergeAllKits(AsyncEngine):
 	@property
 	def db(self):
 		if self._db is None:
-			from merge.db_core import FastPullDatabase
+			from merge_utils.db_core import FastPullDatabase
 
 			self._db = FastPullDatabase()
 		return self._db

@@ -4,7 +4,7 @@ from collections import defaultdict
 import yaml
 import os
 
-from merge.steps import GenerateRepoMetadata, SyncDir, ThirdPartyMirrors, RunSed, SyncFiles
+from merge_utils.steps import GenerateRepoMetadata, SyncDir, ThirdPartyMirrors, RunSed, SyncFiles
 
 
 def __init__(hub):

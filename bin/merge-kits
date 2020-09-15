@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import as_completed
 import os
 import sys
 from collections import defaultdict
@@ -11,10 +11,10 @@ from datetime import datetime
 import pop.hub
 import logging
 
-from merge.async_engine import AsyncEngine
-from merge.config import Configuration
-from merge.steps import GenPythonUse, InsertFilesFromSubdir, PruneLicenses, CopyFiles
-from merge.steps import (
+from merge_utils.config import Configuration
+from merge_utils.metadata import get_md5, gen_metadata
+from merge_utils.steps import GenPythonUse, InsertFilesFromSubdir, PruneLicenses, CopyFiles
+from merge_utils.steps import (
 	InsertEbuilds,
 	GitCheckout,
 	CleanTree,
@@ -26,7 +26,7 @@ from merge.steps import (
 	SyncDir,
 	SyncFiles,
 )
-from merge.tree import GitTree, AutoCreatedGitTree
+from merge_utils.tree import GitTree, AutoCreatedGitTree
 
 hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
@@ -93,15 +93,8 @@ def copyFromFixupsSteps(kit_dict=None):
 	return steps
 
 
-class MetadataEngine(AsyncEngine):
-	def worker_thread(self, **kwargs):
-		if not kwargs["ebuild"].endswith(".ebuild"):
-			print(f"PROBLMEATIC {kwargs['ebuild']}")
-		hub.merge.metadata.gen_metadata(kwargs["ebuild"])
-
-
-def ebuild_generator():
-	basepath = "/var/git/meta-repo/kits/core-kit"
+def ebuild_generator(kit="core-kit"):
+	basepath = f"/var/git/meta-repo/kits/{kit}"
 	for catdir in os.listdir(basepath):
 		catpath = os.path.join(basepath, catdir)
 		if not os.path.isdir(catpath):
@@ -115,6 +108,24 @@ def ebuild_generator():
 					yield os.path.join(pkgpath, ebfile)
 
 
+class EclassHashCollection:
+	def __init__(self, path):
+		self.path = path
+		self.hashes = {}
+
+
+def get_eclass_hashes(eclass_sourcedir):
+	eclass_hashes = EclassHashCollection(eclass_sourcedir)
+	ecrap = os.path.join(eclass_sourcedir, "eclass")
+	for eclass in os.listdir(ecrap):
+		if not eclass.endswith(".eclass"):
+			continue
+		eclass_path = os.path.join(ecrap, eclass)
+		eclass_name = eclass[:-7]
+		eclass_hashes.hashes[eclass_name] = get_md5(eclass_path)
+	return eclass_hashes
+
+
 async def auto_kit_gen(kit_dict=None):
 
 	with ThreadPoolExecutor(max_workers=24) as executor:
@@ -122,8 +133,13 @@ async def auto_kit_gen(kit_dict=None):
 		futures = []
 		fut_map = {}
 
-		for ebpath in ebuild_generator():
-			future = executor.submit(hub.merge.metadata.gen_metadata, ebpath, "/var/tmp/metadata")
+		eclass_hashes = get_eclass_hashes("/var/git/meta-repo/kits/core-kit")
+		print(eclass_hashes.hashes)
+
+		for ebpath in ebuild_generator(kit="nokit"):
+			future = executor.submit(
+				gen_metadata, ebuild_path=ebpath, metadata_outpath="/var/tmp/metadata", eclass_hashes=eclass_hashes
+			)
 			fut_map[future] = ebpath
 			futures.append(future)
 
