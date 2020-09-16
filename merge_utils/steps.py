@@ -1,17 +1,11 @@
 #!/usr/bin/python3
-import grp
 import itertools
-import multiprocessing
+import os
 import re
 import shutil
-import sys
-import os
 
+from merge_utils.tree import GitTree
 from merge_utils.tree import runShell
-from collections import defaultdict
-
-from merge_utils.async_portage import async_xmatch
-from merge_utils.tree import run, GitTree
 
 
 class MergeStep:
@@ -624,19 +618,6 @@ class Minify(MergeStep):
 		runShell("( cd %s && find -iname Manifest | xargs -i@ sed -ni '/^DIST/p' @ )" % tree.root)
 
 
-def get_catpkg_from_cpvs(cpv_list):
-	"""
-	This function takes a list of things that look like 'sys-apps/foboar-1.2.0-r1' and returns a dict of
-	unique catpkgs found and their exact matches.
-	"""
-	catpkgs = defaultdict(set)
-	for cpv in cpv_list:
-		last_hyphen = cpv.rfind("-")
-		cp = cpv[:last_hyphen]
-		catpkgs[cp].add(cpv)
-	return catpkgs
-
-
 class GenPythonUse(MergeStep):
 	def __init__(self, hub, py_settings, out_subpath):
 		self.hub = hub
@@ -646,18 +627,18 @@ class GenPythonUse(MergeStep):
 		self.out_subpath = out_subpath
 
 	async def run(self, cur_overlay):
-		cur_tree = cur_overlay.root
 		all_lines = []
-		for catpkg, cpv_list in get_catpkg_from_cpvs(cur_overlay.hub.METADATA_ENTRIES.keys()).items():
-			result = await cur_overlay.hub.merge.python.get_python_use_lines(
-				catpkg, cpv_list, cur_tree, self.def_python, self.bk_python
+		for catpkg, cpv_list in self.hub.merge.metadata.get_catpkg_from_cpvs(
+			cur_overlay.hub.METADATA_ENTRIES.keys()
+		).items():
+			result = await cur_overlay.hub.merge.metadata.get_python_use_lines(
+				catpkg, cpv_list, cur_overlay.root, self.def_python, self.bk_python
 			)
 			if result is not None:
 				all_lines += result
 
 		all_lines = sorted(all_lines)
-
-		outpath = cur_tree + "/profiles/" + self.out_subpath + "/package.use"
+		outpath = cur_overlay.root + "/profiles/" + self.out_subpath + "/package.use"
 		if not os.path.exists(outpath):
 			os.makedirs(outpath)
 		with open(outpath + "/python-use", "w") as f:
@@ -665,13 +646,13 @@ class GenPythonUse(MergeStep):
 				f.write(l + "\n")
 		# for core-kit, set good defaults as well.
 		if cur_overlay.name == "core-kit":
-			outpath = cur_tree + "/profiles/" + self.out_subpath + "/make.defaults"
+			outpath = cur_overlay.root + "/profiles/" + self.out_subpath + "/make.defaults"
 			a = open(outpath, "w")
 			a.write('PYTHON_TARGETS="%s %s"\n' % (self.def_python, self.bk_python))
 			a.write('PYTHON_SINGLE_TARGET="%s"\n' % self.def_python)
 			a.close()
 			if self.mask:
-				outpath = cur_tree + "/profiles/" + self.out_subpath + "/package.mask/funtoo-kit-python"
+				outpath = cur_overlay.root + "/profiles/" + self.out_subpath + "/package.mask/funtoo-kit-python"
 				if not os.path.exists(os.path.dirname(outpath)):
 					os.makedirs(os.path.dirname(outpath))
 				a = open(outpath, "w")

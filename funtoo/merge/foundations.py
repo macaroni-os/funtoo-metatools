@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import sys
 from collections import defaultdict
 
 import yaml
@@ -201,3 +202,20 @@ def get_repos(hub, source_name):
 			else:
 				repo_dict["branch"] = "master"
 		yield repo_dict
+
+
+def release_info(hub):
+	release_out = {}
+	for release_dict in hub.FDATA["metadata"]:
+		release = list(release_dict.keys())[0]
+		if release != hub.RELEASE:
+			continue
+		release_info = release_dict[release]
+		# We now need to de-listify any lists
+		for key, val in release_info.items():
+			if not isinstance(val, list):
+				release_out[key] = val
+			else:
+				release_out[key] = val[0]
+		break
+	return release_out

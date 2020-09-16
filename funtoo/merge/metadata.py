@@ -4,6 +4,7 @@ import hashlib
 import os
 import re
 import sys
+from collections import defaultdict
 from concurrent.futures.thread import ThreadPoolExecutor
 from enum import Enum
 from multiprocessing import cpu_count
@@ -52,6 +53,8 @@ METADATA_LINES = [
 	"EAPI",
 	"PROPERTIES",
 	"DEFINED_PHASES",
+	"HDEPEND",
+	"PYTHON_COMPAT",
 ]
 
 AUXDB_LINES = sorted(
@@ -102,6 +105,20 @@ def strip_rev(hub, s):
 		rev = s[len(num_strip) :]
 		return rev_strip, rev
 	return s, None
+
+
+def get_catpkg_from_cpvs(hub, cpv_list):
+	"""
+	This function takes a list of things that look like 'sys-apps/foboar-1.2.0-r1' and returns a dict of
+	unique catpkgs found and their exact matches.
+	"""
+	catpkgs = defaultdict(set)
+	for cpv in cpv_list:
+		reduced, rev = hub._.strip_rev(cpv)
+		last_hyphen = reduced.rfind("-")
+		cp = cpv[:last_hyphen]
+		catpkgs[cp].add(cpv)
+	return catpkgs
 
 
 def get_eapi_of_ebuild(hub, ebuild_path):
@@ -366,3 +383,66 @@ def gen_cache(hub, repo):
 				sys.stdout.flush()
 
 		print(f"{count} ebuilds processed.")
+
+
+async def get_python_use_lines(hub, catpkg, cpv_list, cur_tree, def_python, bk_python):
+	ebs = {}
+	for cpv in cpv_list:
+		imps = hub.METADATA_ENTRIES[cpv]["PYTHON_COMPAT"].split()
+
+		# Tweak PYTHON_COMPAT just like we now do in the eclass, since we don't extract the data by pumping thru the eclass:
+
+		for imp in imps:
+			if imp in ["python3_5", "python3_6"]:
+				hub.METADATA_ERRORS.append(
+					MetadataError(
+						severity=Severity.SHOULDFIX,
+						ebuild_path=f"{cur_tree.root}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
+						msg=f"Old {imp} referenced in PYTHON_COMPAT (upgraded to python3_7)",
+					)
+				)
+			elif imp in ["python2_4", "python2_5", "python2_6"]:
+				hub.METADATA_ERRORS.append(
+					MetadataError(
+						severity=Severity.SHOULDFIX,
+						ebuild_path=f"{cur_tree.root}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
+						msg=f"Old {imp} referenced in PYTHON_COMPAT (upgraded to python2_7)",
+					)
+				)
+		if len(imps):
+			ebs[cpv] = imps
+
+	# ebs now is a dict containing catpkg -> PYTHON_COMPAT settings for each ebuild in the catpkg. We want to see if they are identical
+	# if split == False, then we will do one global setting for the catpkg. If split == True, we will do individual settings for each version
+	# of the catpkg, since there are differences. This saves space in our python-use file while keeping everything correct.
+
+	oldval = None
+	split = False
+	for key, val in ebs.items():
+		if oldval is None:
+			oldval = val
+		else:
+			if oldval != val:
+				split = True
+				break
+	lines = []
+	if len(ebs.keys()):
+		if not split:
+			line = hub._.do_package_use_line(catpkg, def_python, bk_python, oldval)
+			if line is not None:
+				lines.append(line)
+		else:
+			for key, val in ebs.items():
+				line = hub._.do_package_use_line("=%s" % key, def_python, bk_python, val)
+				if line is not None:
+					lines.append(line)
+	return lines
+
+
+def do_package_use_line(hub, pkg, def_python, bk_python, imps):
+	if def_python not in imps:
+		if bk_python in imps:
+			return "%s python_single_target_%s" % (pkg, bk_python)
+		else:
+			return "%s python_single_target_%s python_targets_%s" % (pkg, imps[0], imps[0])
+	return None
