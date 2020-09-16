@@ -8,8 +8,7 @@ def __init__(hub):
 	hub.SOURCE_REPOS = {}
 
 
-async def initialize_sources(hub, kit_dict=None):
-	source = kit_dict["source"]
+async def initialize_sources(hub, source):
 	if hub.CURRENT_SOURCE_DEF == source:
 		return
 	repos = list(hub.merge.foundations.get_repos(source))

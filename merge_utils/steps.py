@@ -594,9 +594,7 @@ class GenCache(MergeStep):
 		self.release = release
 
 	async def run(self, tree):
-		tree.hub.merge.metadata.gen_cache(
-			eclass_src=tree.hub.ECLASS_ROOT, ebuild_src=tree.root, metadata_out=os.path.join(tree.root, "metadata/md5-cache"),
-		)
+		tree.hub.merge.metadata.gen_cache(tree)
 
 
 class GitCheckout(MergeStep):

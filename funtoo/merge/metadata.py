@@ -146,8 +146,13 @@ class EclassHashCollection:
 		self.path = path
 		self.hashes = {}
 
+	def copy(self):
+		new_obj = EclassHashCollection(self.path)
+		new_obj.hashes = self.hashes.copy()
+		return new_obj
 
-def gen_cache_entry(hub, ebuild_path, metadata_outpath=None, eclass_hashes: EclassHashCollection = None):
+
+def gen_cache_entry(hub, repo, ebuild_path, eclass_hashes: dict, eclass_paths):
 
 	"""
 	This function will grab metadata from a single ebuild pointed to by `ebuild_path`.
@@ -169,6 +174,8 @@ def gen_cache_entry(hub, ebuild_path, metadata_outpath=None, eclass_hashes: Ecla
 	env["LC_COLLATE"] = "POSIX"
 	env["LANG"] = "en_US.UTF-8"
 
+	metadata_outpath = os.path.join(repo.root, "metadata/md5-cache")
+
 	# For things to work correctly, the EAPI of the ebuild has to be manually extracted:
 	eapi, lineno = hub._.get_eapi_of_ebuild(ebuild_path)
 	if eapi is not None and eapi in "01234567":
@@ -178,7 +185,7 @@ def gen_cache_entry(hub, ebuild_path, metadata_outpath=None, eclass_hashes: Ecla
 
 	env["PORTAGE_GID"] = "250"
 	env["PORTAGE_BIN_PATH"] = "/usr/lib/portage/python3.7"
-	env["PORTAGE_ECLASS_LOCATIONS"] = eclass_hashes.path
+	env["PORTAGE_ECLASS_LOCATIONS"] = " ".join(eclass_paths)
 	env["EBUILD"] = ebuild_path
 	env["EBUILD_PHASE"] = "depend"
 	env["PF"] = os.path.basename(ebuild_path)[:-7]
@@ -203,11 +210,24 @@ def gen_cache_entry(hub, ebuild_path, metadata_outpath=None, eclass_hashes: Ecla
 	try:
 		lines = result.stdout.split("\n")
 		line = 0
-		while line < len(METADATA_LINES):
-			infos[METADATA_LINES[line]] = lines[line]
-			line += 1
+		found = set()
 		basespl = ebuild_path.split("/")
 		infos["HASH_KEY"] = metapath = basespl[-3] + "/" + basespl[-1][:-7]
+		while line < len(METADATA_LINES) and line < len(lines):
+			found.add(METADATA_LINES[line])
+			infos[METADATA_LINES[line]] = lines[line]
+			line += 1
+		if line != len(METADATA_LINES):
+			missing = set(METADATA_LINES) - found
+			hub.METADATA_ERRORS.append(
+				MetadataError(
+					Severity.FATAL,
+					msg=f"Could not extract all metadata. Missing: {missing}",
+					ebuild_path=ebuild_path,
+					output=result.stderr,
+				)
+			)
+			return infos
 		if metadata_outpath:
 			final_md5_outpath = os.path.join(metadata_outpath, metapath)
 			os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
@@ -219,18 +239,24 @@ def gen_cache_entry(hub, ebuild_path, metadata_outpath=None, eclass_hashes: Ecla
 				if infos["INHERITED"] != "":
 					eclass_out = ""
 					for eclass_name in sorted(infos["INHERITED"].split()):
+						if eclass_name not in eclass_hashes:
+							hub.METADATA_ERRORS.append(
+								MetadataError(Severity.SHOULDFIX, msg=f"Can't find eclass hash for {eclass_name}", ebuild_path=ebuild_path)
+							)
+							continue
 						try:
-							eclass_out += f"\t{eclass_name}\t{eclass_hashes.hashes[eclass_name]}"
+							eclass_out += f"\t{eclass_name}\t{eclass_hashes[eclass_name]}"
 						except KeyError as ke:
 							print(f"When processing {ebuild_path}:")
 							print(f"Could not find eclass '{eclass_name}' (from '{infos['INHERITED']}')")
 							sys.exit(1)
-					f.write("_eclasses_=" + eclass_out[1:] + "\n")
+					if len(eclass_out):
+						f.write("_eclasses_=" + eclass_out[1:] + "\n")
 				# final line is the md5sum of the ebuild itself:
 				f.write("_md5_=" + get_md5(ebuild_path) + "\n")
 	except (FileNotFoundError, IndexError) as e:
 		hub.METADATA_ERRORS.append(
-			MetadataError(severity=Severity.FATAL, msg="Ebuild triggered exception {e}", ebuild_path=ebuild_path)
+			MetadataError(severity=Severity.FATAL, msg=f"Exception: {str(e)}", ebuild_path=ebuild_path)
 		)
 		return None
 	if result.returncode != 0:
@@ -288,7 +314,7 @@ def get_eclass_hashes(hub, eclass_sourcedir):
 	return eclass_hashes
 
 
-def gen_cache(hub, eclass_src=None, metadata_out=None, ebuild_src=None):
+def gen_cache(hub, repo):
 
 	"""
 
@@ -311,10 +337,18 @@ def gen_cache(hub, eclass_src=None, metadata_out=None, ebuild_src=None):
 		futures = []
 		fut_map = {}
 
-		eclass_hashes = hub.ECLASS_HASHES
-		for ebpath in ebuild_generator(ebuild_src=ebuild_src):
+		eclass_hashes = hub.ECLASS_HASHES.hashes.copy()
+		eclass_paths = [hub.ECLASS_HASHES.path]
+
+		if repo.name != "core-kit":
+			# Add in any eclasses that exist local to the kit.
+			local_eclass_hashes = hub._.get_eclass_hashes(repo.root)
+			eclass_hashes.update(local_eclass_hashes.hashes)
+			eclass_paths = [local_eclass_hashes.path] + eclass_paths  # give local eclasses priority
+
+		for ebpath in ebuild_generator(ebuild_src=repo.root):
 			future = executor.submit(
-				hub._.gen_cache_entry, ebuild_path=ebpath, metadata_outpath=metadata_out, eclass_hashes=eclass_hashes,
+				hub._.gen_cache_entry, repo, ebpath, eclass_hashes=eclass_hashes, eclass_paths=eclass_paths
 			)
 			fut_map[future] = ebpath
 			futures.append(future)
@@ -326,11 +360,9 @@ def gen_cache(hub, eclass_src=None, metadata_out=None, ebuild_src=None):
 				sys.stdout.write("!")
 			else:
 				# Record all metadata in-memory so it's available later.
-
 				hash_key = data["HASH_KEY"]
 				hub.METADATA_ENTRIES[hash_key] = data
-
 				sys.stdout.write(".")
-			sys.stdout.flush()
+				sys.stdout.flush()
 
 		print(f"{count} ebuilds processed.")

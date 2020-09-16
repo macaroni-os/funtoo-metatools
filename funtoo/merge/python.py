@@ -24,7 +24,7 @@ async def get_python_use_lines(hub, catpkg, cpv_list, cur_tree, def_python, bk_p
 		)
 		outp = run(cmd)
 
-		imps = outp[1].decode("ascii").split()
+		imps = outp.stdout
 		new_imps = []
 
 		# Tweak PYTHON_COMPAT just like we now do in the eclass, since we don't extract the data by pumping thru the eclass:

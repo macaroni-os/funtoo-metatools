@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 
-debug = False
+debug = True
 
 
 def run(args, env=None):
