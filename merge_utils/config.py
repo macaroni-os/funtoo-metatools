@@ -20,7 +20,7 @@ class Configuration:
 					"kit-fixups": "https://code.funtoo.org/bitbucket/scm/core/kit-fixups.git",
 					"gentoo-staging": "https://code.funtoo.org/bitbucket/scm/auto/gentoo-staging.git",
 				},
-				"destinations": {"auto": "", "indy": "", "meta-repo": ""},
+				"destinations": {"auto": "", "indy": "", "meta-repo": "", "mirror": ""},
 			}
 		else:
 			self.defaults = {
@@ -33,6 +33,7 @@ class Configuration:
 					"auto": "ssh://git@code.funtoo.org:7999/auto/",
 					"indy": "ssh://git@code.funtoo.org:7999/indy/",
 					"meta-repo": "ssh://git@code.funtoo.org:7999/auto/meta-repo.git",
+					"mirror": "git@github.com:funtoo/",
 				},
 			}
 		self.config = ConfigParser()
@@ -55,7 +56,7 @@ class Configuration:
 						print("Error: ~/.merge [%s] option %s is invalid." % (section, opt))
 						sys.exit(1)
 
-	def get_option(self, section, key, default=None):
+	def get_option(self, section, key):
 		if self.config.has_section(section) and key in self.config[section]:
 			my_path = self.config[section][key]
 		elif section in self.defaults and key in self.defaults[section]:
@@ -66,22 +67,26 @@ class Configuration:
 
 	@property
 	def flora(self):
-		return self.get_option("sources", "flora", self.defaults["sources"]["flora"])
+		return self.get_option("sources", "flora")
 
 	@property
 	def kit_fixups(self):
-		return self.get_option("sources", "kit-fixups", self.defaults["sources"]["kit-fixups"])
+		return self.get_option("sources", "kit-fixups")
 
 	@property
 	def meta_repo(self):
-		return self.get_option("destinations", "meta-repo", self.defaults["destinations"]["meta-repo"])
+		return self.get_option("destinations", "meta-repo")
+
+	@property
+	def mirror(self):
+		return self.get_option("destinations", "mirror")
 
 	@property
 	def gentoo_staging(self):
-		return self.get_option("sources", "gentoo-staging", self.defaults["sources"]["gentoo-staging"])
+		return self.get_option("sources", "gentoo-staging")
 
 	def url(self, repo, kind="auto"):
-		base = self.get_option("destinations", kind, self.defaults["destinations"][kind])
+		base = self.get_option("destinations", kind)
 		if not base.endswith("/"):
 			base += "/"
 		if not repo.endswith(".git"):
@@ -89,7 +94,7 @@ class Configuration:
 		return base + repo
 
 	def branch(self, key):
-		return self.get_option("branches", key, "master")
+		return self.get_option("branches", key)
 
 	@property
 	def work_path(self):

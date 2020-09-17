@@ -106,6 +106,9 @@ async def generate_kit(hub, kit_dict=None):
 		git_class = hub.GIT_CLASS
 		kwargs["url"] = hub.MERGE_CONFIG.url(kit_dict["name"], kind="auto")
 
+	if hub.MIRROR:
+		kwargs["mirror"] = hub.MERGE_CONFIG.mirror.rstrip("/") + "/" + kit_dict["name"]
+
 	if hub.NEST_KITS:
 		root = os.path.join(hub.MERGE_CONFIG.dest_trees, "meta-repo/kits", kit_dict["name"])
 	else:

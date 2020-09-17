@@ -110,6 +110,13 @@ async def main_thread():
 	hub.merge.kit.generate_metarepo_metadata(kit_sha1s)
 	await hub.META_REPO.gitCommit(message="kit updates", skip=["kits"], push=False)
 
+	if hub.PUSH:
+		# Push all kits, then push meta-repo.
+		for kit_name, kit_tuple in kit_results.items():
+			kit_dict, tree_obj, tree_sha1 = kit_tuple
+			await tree_obj.gitMirrorPush()
+		await hub.META_REPO.gitMirrorPush()
+
 
 if __name__ == "__main__":
 	sub_name = os.path.basename(sys.argv[0])
@@ -128,13 +135,13 @@ if __name__ == "__main__":
 	hub.MERGE_CONFIG = config = Configuration(prod=prod)
 	hub.RELEASE = hub.OPT["merge-kits"]["release"]
 
-	local_merge = not prod
-	if local_merge is True:
+	if not prod:
 		# This means we'll just generate our own local git trees for the purposes of generating kits. This is generally used by developers to see what
 		# would end up in kits, when you don't really need to create any kits that will be used anywhere else.
 		hub.GIT_CLASS = AutoCreatedGitTree
 		hub.GIT_CLASS_KWARGS_FN = None
 		hub.PUSH = False
+		hub.MIRROR = False
 		hub.META_REPO = meta_repo = hub.GIT_CLASS(
 			hub, name="meta-repo", branch=config.branch("meta-repo"), root=config.dest_trees + "/meta-repo"
 		)
@@ -152,11 +159,11 @@ if __name__ == "__main__":
 			url=config.meta_repo,
 			root=config.dest_trees + "/meta-repo",
 			origin_check=True,
+			mirror=hub.MERGE_CONFIG.mirror.rstrip("/") + "/meta-repo" if hub.MIRROR else None,
 		)
 		hub.NEST_KITS = False
-		# TODO: turn this on:
-		# hub.PUSH = True if nopush is False else False
-		hub.PUSH = False
+		hub.PUSH = push
+		hub.MIRROR = push
 
 	hub.START_TIME = datetime.utcnow()
 	hub.FIXUP_REPO = GitTree(
