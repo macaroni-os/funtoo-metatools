@@ -307,7 +307,7 @@ class GitTree(Tree):
 				% (self.root, self.forcepush)
 			)
 			runShell(f"(cd {self.root} && git branch -r | grep -v /HEAD)")
-		for branch in result.output.split():
+		for branch in result.stdout.split():
 			branch = branch.split("/")[-1]
 			if not self.localBranchExists(branch):
 				runShell(f"( cd {self.root} && git checkout {branch})")
