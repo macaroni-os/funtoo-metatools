@@ -151,6 +151,9 @@ if __name__ == "__main__":
 		# In this mode, we're actually wanting to update real kits, and likely are going to push our updates to remotes (unless --nopush is specified as an arg.)
 		# This might be used by people generating their own custom kits for use on other systems, or by Funtoo itself for updating official kits and meta-repo.
 
+		hub.NEST_KITS = False
+		hub.PUSH = push
+		hub.MIRROR = push
 		hub.GIT_CLASS = GitTree
 		hub.META_REPO = meta_repo = GitTree(
 			hub,
@@ -161,9 +164,6 @@ if __name__ == "__main__":
 			origin_check=True,
 			mirror=hub.MERGE_CONFIG.mirror.rstrip("/") + "/meta-repo" if hub.MIRROR else None,
 		)
-		hub.NEST_KITS = False
-		hub.PUSH = push
-		hub.MIRROR = push
 
 	hub.START_TIME = datetime.utcnow()
 	hub.FIXUP_REPO = GitTree(
