@@ -317,7 +317,8 @@ class GitTree(Tree):
 
 		# if we've gotten here, we can assume that the repo exists at self.root.
 		if self.url is not None and self.origin_check:
-			retval, out = subprocess.getstatusoutput("(cd %s && git remote get-url origin)" % self.root)
+			result = run("(cd %s && git remote get-url origin)" % self.root)
+			out = result.stdout
 			my_url = self.url
 			if my_url.endswith(".git"):
 				my_url = my_url[:-4]
