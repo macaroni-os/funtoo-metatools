@@ -56,13 +56,13 @@ class Configuration:
 						print("Error: ~/.merge [%s] option %s is invalid." % (section, opt))
 						sys.exit(1)
 
-	def get_option(self, section, key):
+	def get_option(self, section, key, default=None):
 		if self.config.has_section(section) and key in self.config[section]:
 			my_path = self.config[section][key]
 		elif section in self.defaults and key in self.defaults[section]:
 			my_path = self.defaults[section][key]
 		else:
-			my_path = None
+			my_path = default
 		return my_path
 
 	@property
@@ -94,7 +94,7 @@ class Configuration:
 		return base + repo
 
 	def branch(self, key):
-		return self.get_option("branches", key)
+		return self.get_option("branches", key, default="master")
 
 	@property
 	def work_path(self):
