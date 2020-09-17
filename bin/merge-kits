@@ -49,6 +49,13 @@ def run_async_adapter(corofn, *args):
 
 async def main_thread():
 
+	# Before we start looking at YAML, we need to ensure our two critical source repos are checked out
+
+	await hub.META_REPO.initialize()
+	await hub.FIXUP_REPO.initialize()
+
+	hub.KIT_GROUPS = list(hub.merge.foundations.kit_groups())
+
 	if not hub.merge.foundations.release_exists(hub.RELEASE):
 		print(f"Release not found: {hub.RELEASE}.")
 		sys.exit(1)
@@ -167,13 +174,6 @@ if __name__ == "__main__":
 
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools")
-
-	# Before we start looking at YAML, we need to ensure our two critical source repos are checked out
-
-	await hub.META_REPO.initialize()
-	await hub.FIXUP_REPO.initialize()
-
-	hub.KIT_GROUPS = list(hub.merge.foundations.kit_groups())
 
 	# TODO: hook into fastpull
 	hub.CPM_LOGGER = None
