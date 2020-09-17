@@ -397,7 +397,7 @@ async def get_python_use_lines(hub, catpkg, cpv_list, cur_tree, def_python, bk_p
 				hub.METADATA_ERRORS.append(
 					MetadataError(
 						severity=Severity.SHOULDFIX,
-						ebuild_path=f"{cur_tree.root}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
+						ebuild_path=f"{cur_tree}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
 						msg=f"Old {imp} referenced in PYTHON_COMPAT (upgraded to python3_7)",
 					)
 				)
@@ -405,7 +405,7 @@ async def get_python_use_lines(hub, catpkg, cpv_list, cur_tree, def_python, bk_p
 				hub.METADATA_ERRORS.append(
 					MetadataError(
 						severity=Severity.SHOULDFIX,
-						ebuild_path=f"{cur_tree.root}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
+						ebuild_path=f"{cur_tree}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
 						msg=f"Old {imp} referenced in PYTHON_COMPAT (upgraded to python2_7)",
 					)
 				)
@@ -440,9 +440,16 @@ async def get_python_use_lines(hub, catpkg, cpv_list, cur_tree, def_python, bk_p
 
 
 def do_package_use_line(hub, pkg, def_python, bk_python, imps):
+	print("PKG", pkg)
+	print("DEF_PYTHON", def_python)
+	print("BK_PYTHON", bk_python)
+	print("IMPS", imps)
+	out = None
 	if def_python not in imps:
 		if bk_python in imps:
-			return "%s python_single_target_%s" % (pkg, bk_python)
+			out = "%s python_single_target_%s" % (pkg, bk_python)
 		else:
-			return "%s python_single_target_%s python_targets_%s" % (pkg, imps[0], imps[0])
-	return None
+			out = "%s python_single_target_%s python_targets_%s" % (pkg, imps[0], imps[0])
+	print("OUT", out)
+	print()
+	return out
