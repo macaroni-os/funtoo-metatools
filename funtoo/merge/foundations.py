@@ -191,7 +191,7 @@ def get_overlay(hub, name):
 		if ov_name != name:
 			continue
 
-		url = hub.MERGE_CONFIG.get_option("sources", ov_name, None)
+		url = hub.MERGE_CONFIG.get_option("sources", ov_name)
 		if url is not None:
 			ov_data["url"] = url
 
@@ -218,7 +218,7 @@ def get_repos(hub, source_name):
 		repo_dict.update(ov_data)
 
 		if "src_sha1" not in repo_dict:
-			branch = hub.MERGE_CONFIG.get_option("branches", ov_name, None)
+			branch = hub.MERGE_CONFIG.get_option("branches", ov_name)
 			if branch is not None:
 				repo_dict["branch"] = branch
 			else:
