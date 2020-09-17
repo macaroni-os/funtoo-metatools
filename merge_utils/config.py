@@ -26,7 +26,7 @@ class Configuration:
 			self.defaults = {
 				"sources": {
 					"flora": "ssh://git@code.funtoo.org:7999/co/flora.git",
-					"kit-fixups": "ssh://git@code.funtoo.org:7999/coore/kit-fixups.git",
+					"kit-fixups": "ssh://git@code.funtoo.org:7999/core/kit-fixups.git",
 					"gentoo-staging": "ssh://git@code.funtoo.org:7999/auto/gentoo-staging.git",
 				},
 				"destinations": {
