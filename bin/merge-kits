@@ -5,8 +5,6 @@ import logging
 import os
 import sys
 from collections import defaultdict, OrderedDict
-from concurrent.futures import as_completed
-from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime
 
 import pop.hub
