@@ -106,6 +106,18 @@ cache-formats = md5-dict
 		a.close()
 
 
+class FindAndRemove(MergeStep):
+	def __init__(self, globs=None):
+		if globs is None:
+			globs = []
+		self.globs = globs
+
+	async def run(self, tree):
+		for glob in self.globs:
+			cmd = f"find {tree.root} -name {glob} -exec rm -rf {{}} \\;"
+			runShell(cmd, abort_on_failure=False)
+
+
 class RemoveFiles(MergeStep):
 	def __init__(self, globs=None):
 		if globs is None:

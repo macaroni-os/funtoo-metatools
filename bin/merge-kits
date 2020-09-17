@@ -149,20 +149,18 @@ if __name__ == "__main__":
 			hub,
 			"meta-repo",
 			config.branch("meta-repo"),
-			url=config.base_url("meta-repo"),
+			url=config.meta_repo,
 			root=config.dest_trees + "/meta-repo",
 			origin_check=True,
 		)
 		hub.NEST_KITS = False
-		hub.PUSH = push
+		# TODO: turn this on:
+		# hub.PUSH = True if nopush is False else False
+		hub.PUSH = False
 
 	hub.START_TIME = datetime.utcnow()
 	hub.FIXUP_REPO = GitTree(
-		hub,
-		"kit-fixups",
-		hub.MERGE_CONFIG.branch("kit-fixups"),
-		url=hub.MERGE_CONFIG.kit_fixups,
-		root=hub.MERGE_CONFIG.source_trees + "/kit-fixups",
+		hub, "kit-fixups", config.branch("kit-fixups"), url=config.kit_fixups, root=config.source_trees + "/kit-fixups",
 	)
 
 	hub.pop.sub.add("funtoo.merge")

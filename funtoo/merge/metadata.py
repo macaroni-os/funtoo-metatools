@@ -244,7 +244,7 @@ def gen_cache_entry(hub, repo, ebuild_path, eclass_hashes: dict, eclass_paths):
 					output=result.stderr,
 				)
 			)
-			return infos
+			return None
 		if metadata_outpath:
 			final_md5_outpath = os.path.join(metadata_outpath, metapath)
 			os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
@@ -390,25 +390,42 @@ async def get_python_use_lines(hub, catpkg, cpv_list, cur_tree, def_python, bk_p
 	for cpv in cpv_list:
 		imps = hub.METADATA_ENTRIES[cpv]["PYTHON_COMPAT"].split()
 
-		# Tweak PYTHON_COMPAT just like we now do in the eclass, since we don't extract the data by pumping thru the eclass:
+		# For anything in PYTHON_COMPAT that we would consider equivalent to python3_7, we want to
+		# set python3_7 instead. This is so we match the primary python implementation correctly
+		# so we don't incorrectly enable the backup python implementation. We basically have to
+		# mirror the exact mapping logic in python-utils-r1.eclass.
 
+		new_imps = set()
 		for imp in imps:
 			if imp in ["python3_5", "python3_6"]:
 				hub.METADATA_ERRORS.append(
 					MetadataError(
 						severity=Severity.SHOULDFIX,
 						ebuild_path=f"{cur_tree}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
-						msg=f"Old {imp} referenced in PYTHON_COMPAT (upgraded to python3_7)",
+						msg=f"Old {imp} referenced in PYTHON_COMPAT",
 					)
 				)
-			elif imp in ["python2_4", "python2_5", "python2_6"]:
-				hub.METADATA_ERRORS.append(
-					MetadataError(
-						severity=Severity.SHOULDFIX,
-						ebuild_path=f"{cur_tree}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
-						msg=f"Old {imp} referenced in PYTHON_COMPAT (upgraded to python2_7)",
+				# The eclass bumps these to python3_7. We do the same to get correct results:
+				new_imps.add(def_python)
+			elif imp in ["python3+", "python3_7+"]:
+				new_imps.update(["python3_7", "python3_8", "python3_9"])
+			elif imp == "python3.8+":
+				new_imps.update(["python3_8", "python3_9"])
+			elif imp == "python3.9+":
+				new_imps.add("python3_9")
+			elif imp == "python2+":
+				new_imps.update(["python2_7", "python3_7", "python3_8", "python3_9"])
+			else:
+				new_imps.add(imp)
+				if imp in ["python2_4", "python2_5", "python2_6"]:
+					hub.METADATA_ERRORS.append(
+						MetadataError(
+							severity=Severity.SHOULDFIX,
+							ebuild_path=f"{cur_tree}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
+							msg=f"Old {imp} referenced in PYTHON_COMPAT",
+						)
 					)
-				)
+		imps = list(new_imps)
 		if len(imps):
 			ebs[cpv] = imps
 
@@ -440,16 +457,10 @@ async def get_python_use_lines(hub, catpkg, cpv_list, cur_tree, def_python, bk_p
 
 
 def do_package_use_line(hub, pkg, def_python, bk_python, imps):
-	print("PKG", pkg)
-	print("DEF_PYTHON", def_python)
-	print("BK_PYTHON", bk_python)
-	print("IMPS", imps)
 	out = None
 	if def_python not in imps:
 		if bk_python in imps:
 			out = "%s python_single_target_%s" % (pkg, bk_python)
 		else:
 			out = "%s python_single_target_%s python_targets_%s" % (pkg, imps[0], imps[0])
-	print("OUT", out)
-	print()
 	return out

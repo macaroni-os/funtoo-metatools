@@ -13,32 +13,31 @@ class Configuration:
 			self.config_path = os.path.join(home_dir, ".merge")
 		else:
 			self.config_path = path
-		if not os.path.exists(self.config_path):
-			print(
-				"""
-Merge scripts now use a configuration file. Create a ~/.merge file with the following format. Note that
-while the config file must exist, it may be empty, in which case, the following settings will be used.
-These are the recommended 'starter' settings for use as an individual developer:
-
-[sources]
-
-flora = https://code.funtoo.org/bitbucket/scm/co/flora.git
-kit-fixups = https://code.funtoo.org/bitbucket/scm/core/kit-fixups.git
-gentoo-staging = https://code.funtoo.org/bitbucket/scm/auto/gentoo-staging.git
-
-[branches]
-
-flora = master
-kit-fixups = master
-meta-repo = master
-
-
-"""
-			)
-			sys.exit(1)
-		self.defaults = {"sources": {"flora": "ssh://git@code.funtoo.org:7999/co/flora.git"}}
+		if not prod:
+			self.defaults = {
+				"sources": {
+					"flora": "https://code.funtoo.org/bitbucket/scm/co/flora.git",
+					"kit-fixups": "https://code.funtoo.org/bitbucket/scm/core/kit-fixups.git",
+					"gentoo-staging": "https://code.funtoo.org/bitbucket/scm/auto/gentoo-staging.git",
+				},
+				"destinations": {"auto": "", "indy": "", "meta-repo": ""},
+			}
+		else:
+			self.defaults = {
+				"sources": {
+					"flora": "ssh://git@code.funtoo.org:7999/co/flora.git",
+					"kit-fixups": "ssh://git@code.funtoo.org:7999/coore/kit-fixups.git",
+					"gentoo-staging": "ssh://git@code.funtoo.org:7999/auto/gentoo-staging.git",
+				},
+				"destinations": {
+					"auto": "ssh://git@code.funtoo.org:7999/auto/",
+					"indy": "ssh://git@code.funtoo.org:7999/indy/",
+					"meta-repo": "ssh://git@code.funtoo.org:7999/auto/meta-repo.git",
+				},
+			}
 		self.config = ConfigParser()
-		self.config.read(self.config_path)
+		if os.path.exists(self.config_path):
+			self.config.read(self.config_path)
 
 		valids = {
 			"sources": ["flora", "kit-fixups", "gentoo-staging"],
@@ -65,31 +64,24 @@ meta-repo = master
 			my_path = None
 		return my_path
 
-	def db_connection(self, dbname):
-		return self.get_option("database", dbname)
-
 	@property
 	def flora(self):
-		return self.get_option("sources", "flora", "ssh://git@code.funtoo.org:7999/co/flora.git")
+		return self.get_option("sources", "flora", self.defaults["sources"]["flora"])
 
 	@property
 	def kit_fixups(self):
-		return self.get_option("sources", "kit-fixups", "ssh://git@code.funtoo.org:7999/core/kit-fixups.git")
+		return self.get_option("sources", "kit-fixups", self.defaults["sources"]["kit-fixups"])
+
+	@property
+	def meta_repo(self):
+		return self.get_option("destinations", "meta-repo", self.defaults["destinations"]["meta-repo"])
 
 	@property
 	def gentoo_staging(self):
-		return self.get_option("sources", "gentoo-staging", "ssh://git@code.funtoo.org:7999/auto/gentoo-staging.git")
+		return self.get_option("sources", "gentoo-staging", self.defaults["sources"]["gentoo-staging"])
 
-	def base_url(self, repo):
-		base = self.get_option("destinations", "base_url", "ssh://git@code.funtoo.org:7999/auto/")
-		if not base.endswith("/"):
-			base += "/"
-		if not repo.endswith(".git"):
-			repo += ".git"
-		return base + repo
-
-	def indy_url(self, repo):
-		base = self.get_option("destinations", "indy_url", "ssh://git@code.funtoo.org:7999/indy/")
+	def url(self, repo, kind="auto"):
+		base = self.get_option("destinations", kind, self.defaults["destinations"][kind])
 		if not base.endswith("/"):
 			base += "/"
 		if not repo.endswith(".git"):

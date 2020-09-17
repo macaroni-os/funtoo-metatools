@@ -11,6 +11,9 @@ from merge_utils.steps import GenerateRepoMetadata, SyncDir, ThirdPartyMirrors, 
 def __init__(hub):
 	with open(os.path.join(hub.FIXUP_REPO.root, "foundations.yaml"), "r") as f:
 		hub.FDATA = yaml.safe_load(f)
+	# Packages.yaml, which is specific to each kit. This is used so we only need to read it once:
+	hub.PDATA_NAME = None
+	hub.PDATA = None
 
 
 def get_kit_pre_post_steps(hub, kit_dict):
@@ -65,15 +68,34 @@ def get_kit_pre_post_steps(hub, kit_dict):
 	return out_pre_steps, out_post_steps
 
 
+def grab_pdata(hub, kit_name):
+	if hub.PDATA is None or hub.PDATA_NAME != kit_name:
+		fn = f"{hub.FIXUP_REPO.root}/{kit_name}/packages.yaml"
+		with open(fn, "r") as f:
+			hub.PDATA = yaml.safe_load(f)
+		hub.PDATA_NAME = kit_name
+
+
 def get_kit_items(hub, kit_name, section="packages"):
-	fn = f"{hub.FIXUP_REPO.root}/{kit_name}/packages.yaml"
-	with open(fn, "r") as f:
-		pdata = yaml.safe_load(f)
-		if section in pdata:
-			for package_set in pdata[section]:
-				repo_name = list(package_set.keys())[0]
-				packages = package_set[repo_name]
-				yield repo_name, packages
+	hub.merge.foundations.grab_pdata(kit_name)
+	if section in hub.PDATA:
+		for package_set in hub.PDATA[section]:
+			repo_name = list(package_set.keys())[0]
+			packages = package_set[repo_name]
+			yield repo_name, packages
+
+
+def get_excludes_from_yaml(hub, kit_name):
+	"""
+	Grabs the excludes: section from packages.yaml, which is used to remove stuff from the resultant
+	kit that accidentally got copied by merge scripts (due to a directory looking like an ebuild
+	directory, for example.)
+	"""
+	hub.merge.foundations.grab_pdata(kit_name)
+	if "exclude" in hub.PDATA:
+		return hub.PDATA["exclude"]
+	else:
+		return []
 
 
 def get_copyfiles_from_yaml(hub, kit_name):
