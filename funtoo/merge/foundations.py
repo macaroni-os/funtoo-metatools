@@ -129,7 +129,7 @@ def get_kit_packages(hub, kit_name):
 
 
 def python_kit_settings(hub):
-	hub._.grab_fdata()
+	hub.merge.foundations.grab_fdata()
 	for section in hub.FDATA["python-settings"]:
 		release = list(section.keys())[0]
 		if release != hub.RELEASE:
@@ -139,7 +139,7 @@ def python_kit_settings(hub):
 
 
 def release_exists(hub, release):
-	hub._.grab_fdata()
+	hub.merge.foundations.grab_fdata()
 	for release_dict in hub.FDATA["kit-groups"]["releases"]:
 		cur_release = list(release_dict.keys())[0]
 		if cur_release == release:
@@ -148,7 +148,7 @@ def release_exists(hub, release):
 
 
 def kit_groups(hub):
-	hub._.grab_fdata()
+	hub.merge.foundations.grab_fdata()
 	defaults = hub.FDATA["kit-groups"]["defaults"] if "defaults" in hub.FDATA["kit-groups"] else {}
 	for release_dict in hub.FDATA["kit-groups"]["releases"]:
 
@@ -171,7 +171,7 @@ def kit_groups(hub):
 
 
 def source_defs(hub, name):
-	hub._.grab_fdata()
+	hub.merge.foundations.grab_fdata()
 	for sdef in hub.FDATA["source-defs"]:
 		sdef_name = list(sdef.keys())[0]
 		if sdef_name != name:
@@ -185,7 +185,7 @@ def get_overlay(hub, name):
 	"""
 	Gets data on a specific overlay
 	"""
-	hub._.grab_fdata()
+	hub.merge.foundations.grab_fdata()
 	for ov_dict in hub.FDATA["overlays"]:
 
 		if isinstance(ov_dict, str):
@@ -237,7 +237,7 @@ def get_repos(hub, source_name):
 
 
 def release_info(hub):
-	hub._.grab_fdata()
+	hub.merge.foundations.grab_fdata()
 	release_out = {}
 	for release_dict in hub.FDATA["metadata"]:
 		release = list(release_dict.keys())[0]
