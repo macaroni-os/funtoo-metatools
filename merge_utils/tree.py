@@ -244,7 +244,7 @@ class GitTree(Tree):
 		reponame: str = None,
 		mirror: str = None,
 		forcepush: bool = False,
-		origin_check: bool = True,
+		origin_check: bool = False,
 		destfix: bool = False,
 		reclone: bool = False,
 	):
