@@ -151,7 +151,7 @@ class AutoCreatedGitTree(Tree):
 	stuff"-type tree.
 	"""
 
-	def __init__(self, hub, name: str, branch: str = "master", root: str = None, commit_sha1: str = None):
+	def __init__(self, hub, name: str, branch: str = "master", root: str = None, commit_sha1: str = None, **kwargs):
 		super().__init__(hub, root=root)
 		self.branch = branch
 		self.name = self.reponame = name
