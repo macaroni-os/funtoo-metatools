@@ -298,27 +298,24 @@ class GitTree(Tree):
 				sys.exit(1)
 
 		# create local tracking branches for all remote branches. - we want to do this for every initialization.
-		s, o = subprocess.getstatusoutput("(cd %s && git branch -r | grep -v /HEAD)" % self.root)
-		if s != 0:
+		result = run(f"(cd {self.root} && git branch -r | grep -v /HEAD)")
+		if result.returncode != 0:
 			# if repo is totally uninitialized (like gitolite wildrepo) -- initialize it with a first commit.
 			print("Attempting to initialize git repository for first use...")
 			runShell(
 				"(cd %s && touch README && git add README && git commit -a -m 'first commit' && git push %s)"
 				% (self.root, self.forcepush)
 			)
-			s, o = subprocess.getstatusoutput("(cd %s && git branch -r | grep -v /HEAD)" % self.root)
-			if s != 0:
-				print("Error listing local branches.")
-				sys.exit(1)
-		for branch in o.split():
+			runShell(f"(cd {self.root} && git branch -r | grep -v /HEAD)")
+		for branch in result.output.split():
 			branch = branch.split("/")[-1]
 			if not self.localBranchExists(branch):
-				runShell("( cd %s && git checkout %s)" % (self.root, branch))
+				runShell(f"( cd {self.root} && git checkout {branch})")
 
 		# if we've gotten here, we can assume that the repo exists at self.root.
 		if self.url is not None and self.origin_check:
 			result = run("(cd %s && git remote get-url origin)" % self.root)
-			out = result.stdout
+			out = result.stdout.strip()
 			my_url = self.url
 			if my_url.endswith(".git"):
 				my_url = my_url[:-4]
