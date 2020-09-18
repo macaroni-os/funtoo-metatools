@@ -15,25 +15,28 @@ class Configuration:
 			self.config_path = path
 		if not prod:
 			self.defaults = {
+				"urls": {
+					"auto": "https://code.funtoo.org/bitbucket/scm/auto",
+					"indy": "https://code.funtoo.org/bitbucket/scm/indy",
+					"mirror": "",
+				},
 				"sources": {
 					"flora": "https://code.funtoo.org/bitbucket/scm/co/flora.git",
 					"kit-fixups": "https://code.funtoo.org/bitbucket/scm/core/kit-fixups.git",
 					"gentoo-staging": "https://code.funtoo.org/bitbucket/scm/auto/gentoo-staging.git",
 				},
-				"destinations": {"auto": "", "indy": "", "meta-repo": "", "mirror": ""},
 			}
 		else:
 			self.defaults = {
+				"urls": {
+					"auto": "ssh://git@code.funtoo.org:7999/auto",
+					"indy": "ssh://git@code.funtoo.org:7999/indy",
+					"mirror": "git@github.com:funtoo",
+				},
 				"sources": {
 					"flora": "ssh://git@code.funtoo.org:7999/co/flora.git",
 					"kit-fixups": "ssh://git@code.funtoo.org:7999/core/kit-fixups.git",
 					"gentoo-staging": "ssh://git@code.funtoo.org:7999/auto/gentoo-staging.git",
-				},
-				"destinations": {
-					"auto": "ssh://git@code.funtoo.org:7999/auto/",
-					"indy": "ssh://git@code.funtoo.org:7999/indy/",
-					"meta-repo": "ssh://git@code.funtoo.org:7999/auto/meta-repo.git",
-					"mirror": "git@github.com:funtoo/",
 				},
 			}
 		self.config = ConfigParser()
@@ -79,14 +82,14 @@ class Configuration:
 
 	@property
 	def mirror(self):
-		return self.get_option("destinations", "mirror")
+		return self.get_option("urls", "mirror")
 
 	@property
 	def gentoo_staging(self):
 		return self.get_option("sources", "gentoo-staging")
 
 	def url(self, repo, kind="auto"):
-		base = self.get_option("destinations", kind)
+		base = self.get_option("urls", kind)
 		if not base.endswith("/"):
 			base += "/"
 		if not repo.endswith(".git"):

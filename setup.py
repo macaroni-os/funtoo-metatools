@@ -19,7 +19,7 @@ setuptools.setup(
 		"Operating System :: POSIX :: Linux",
 	],
 	python_requires=">=3.7",
-	install_requires=["pop>=12", "Jinja2", "aiohttp", "aiodns", "tornado>=5"],
+	install_requires=["pop>=12", "Jinja2", "aiohttp", "aiodns", "tornado>=5", "xmltodict"],
 	packages=setuptools.find_packages(),
 	package_data={"": ["*.tmpl"]},
 )
