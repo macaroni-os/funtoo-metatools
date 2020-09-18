@@ -78,7 +78,7 @@ class Configuration:
 
 	@property
 	def meta_repo(self):
-		return self.get_option("destinations", "meta-repo")
+		return self.url("meta-repo")
 
 	@property
 	def mirror(self):
