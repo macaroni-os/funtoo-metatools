@@ -532,8 +532,6 @@ class GitTree(Tree):
 			await self.mirrorLocalBranches()
 			if self.mirror:
 				await self.mirrorUpstreamRepository(mirror=self.mirror)
-		else:
-			print("Pushing disabled.")
 
 
 class RsyncTree(Tree):

@@ -82,7 +82,7 @@ class Configuration:
 
 	@property
 	def mirror(self):
-		return self.get_option("urls", "mirror")
+		return self.get_option("urls", "mirror", default=False)
 
 	@property
 	def gentoo_staging(self):
