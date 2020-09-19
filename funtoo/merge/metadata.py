@@ -110,7 +110,9 @@ def strip_rev(hub, s):
 def get_catpkg_from_cpvs(hub, cpv_list):
 	"""
 	This function takes a list of things that look like 'sys-apps/foboar-1.2.0-r1' and returns a dict of
-	unique catpkgs found and their exact matches.
+	unique catpkgs found and their exact matches. Note that the input to this function must have version
+	information. This method is not designed to distinguish between non-versioned atoms and versioned
+	ones.
 	"""
 	catpkgs = defaultdict(set)
 	for cpv in cpv_list:
@@ -152,6 +154,104 @@ def get_eapi_of_ebuild(hub, ebuild_path):
 		return _parse_eapi_ebuild_head(fobj.readlines())
 
 
+def extract_uris(hub, src_uri):
+	"""
+	This function will take a SRC_URI value from an ebuild, and it will return a list of actual URIs from this string.
+	This will strip out all conditionals.
+
+	The returned data is in a special format. It's in a dictionary of lists. The key to the dictionary is the final
+	name of the file that would be written to disk. The list contains URIs for downloading this file. The data is
+	structured this way because SRC_URI can contain multiple alternate download URIs for a single artifact.
+	"""
+	fn_urls = defaultdict(list)
+
+	def record_fn_url(my_fn, p_blob):
+		if p_blob not in fn_urls[my_fn]:
+			fn_urls[my_fn].append(p_blob)
+
+	blobs = src_uri.split()
+	prev_blob = None
+	pos = 0
+
+	while pos <= len(blobs):
+		if pos < len(blobs):
+			blob = blobs[pos]
+		else:
+			blob = ""
+		if blob in [")", "(", "||"] or blob.endswith("?"):
+			pos += 1
+			continue
+		if blob == "->":
+			# We found a http://foo -> bar situation. Handle it:
+			fn = blobs[pos + 1]
+			if fn is not None:
+				record_fn_url(fn, prev_blob)
+				prev_blob = None
+				pos += 2
+		else:
+			# Process previous item:
+			if prev_blob:
+				fn = prev_blob.split("/")[-1]
+				record_fn_url(fn, prev_blob)
+			prev_blob = blob
+			pos += 1
+
+	return fn_urls
+
+
+def get_catpkg_relations_from_depstring(hub, depstring):
+	"""
+	This is a handy function that will take a dependency string, like something you would see in DEPEND, and it will
+	return a set of all catpkgs referenced in the dependency string. It does not evaluate USE conditionals, nor does
+	it return any blockers.
+
+	This method is used to determine package relationships, in a general sense. Does one package reference another
+	package in a dependency in some way? That's what this is used for.
+
+	What is returned is a python set of catpkg atoms (no version info, just cat/pkg).
+	"""
+	catpkgs = set()
+
+	for part in depstring.split():
+
+		# 1. Strip out things we are not interested in:
+		if part in ["(", ")", "||"]:
+			continue
+		if part.endswith("?"):
+			continue
+		if part.startswith("!"):
+			# we are not interested in blockers
+			continue
+
+		# 2. For remaining catpkgs, strip comparison operators:
+		has_version = False
+		for op in [">=", "<=", ">", "<", "=", "~"]:
+			if part.startswith(op):
+				part = part[len(op) :]
+				has_version = True
+				break
+
+		# 3. From the end, strip SLOT and USE info:
+		for ender in [":", "["]:
+			# strip everything from slot or USE spec onwards
+			pos = part.rfind(ender)
+			if pos == -1:
+				continue
+			part = part[:pos]
+
+		# 4. Strip any trailing '*':
+		part = part.rstrip("*")
+
+		# 5. We should now have a catpkg or catpgkg-version(-rev). If we have a version, remove it.
+
+		if has_version:
+			ps = part.split("-")
+			part = "-".join(ps[:-1])
+
+		catpkgs.add(part)
+	return catpkgs
+
+
 class EclassHashCollection:
 
 	"""
@@ -169,13 +269,21 @@ class EclassHashCollection:
 		return new_obj
 
 
-def gen_cache_entry(hub, repo, ebuild_path, eclass_hashes: dict, eclass_paths):
+def extract_ebuild_metadata(
+	hub, repo, ebuild_path, eclass_hashes=None, eclass_paths=None, write_cache=False, treedata=False
+):
 
 	"""
-	This function will grab metadata from a single ebuild pointed to by `ebuild_path`.
-	`metadata_outpath` will point to something like `/foo/bar/oni-kit/metadata/md5-cache` and is
-	where the metadata file will get written. `eclass_hashes` provides our collection of eclass
-	md5 hashes which are used to generate the metadata cache.
+	This function will grab metadata from a single ebuild pointed to by `ebuild_path` and
+	return it as a dictionary.
+
+	If `write_cache` is True, a `metadata/md5-cache/cat/pvr` file will be written out to the
+	repository as well. If `write_cache` is True, then `eclass_paths` and `eclass_hashes`
+	must be supplied.
+
+	If `treedata` is True, additional data will be generated based on the metadata (currently
+	this includes a 'relations' field that contains a set of catpkgs referenced by dependency
+	strings.) This treedata record will be returned instead of just the simpler metadata.
 
 	This function sets up a clean environment and spawns a bash process which runs `ebuild.sh`,
 	which is a file from Portage that processes the ebuild and eclasses and outputs the metadata
@@ -190,8 +298,6 @@ def gen_cache_entry(hub, repo, ebuild_path, eclass_hashes: dict, eclass_paths):
 	env["PATH"] = "/bin:/usr/bin"
 	env["LC_COLLATE"] = "POSIX"
 	env["LANG"] = "en_US.UTF-8"
-
-	metadata_outpath = os.path.join(repo.root, "metadata/md5-cache")
 
 	# For things to work correctly, the EAPI of the ebuild has to be manually extracted:
 	eapi, lineno = hub._.get_eapi_of_ebuild(ebuild_path)
@@ -223,8 +329,23 @@ def gen_cache_entry(hub, repo, ebuild_path, eclass_hashes: dict, eclass_paths):
 	# it from:
 	env["PORTAGE_PIPE_FD"] = "1"
 	result = run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
+	if result.returncode != 0:
+		hub.METADATA_ERRORS.append(
+			MetadataError(
+				severity=Severity.NONFATAL,
+				msg=f"Ebuild had non-zero returncode {result.returncode}",
+				ebuild_path=ebuild_path,
+				output=result.stderr,
+			)
+		)
+
+	td_out = {}
 	infos = {}
+
 	try:
+
+		# Extract results:
+
 		lines = result.stdout.split("\n")
 		line = 0
 		found = set()
@@ -245,7 +366,31 @@ def gen_cache_entry(hub, repo, ebuild_path, eclass_hashes: dict, eclass_paths):
 				)
 			)
 			return None
-		if metadata_outpath:
+
+		# Generate optional expanded 'treedata' record instead:
+
+		if treedata:
+
+			# Calculate tree relationships:
+			relations = set()
+			for key in ["DEPEND", "RDEPEND", "PDEPEND", "BDEPEND", "HDEPEND"]:
+				if infos[key]:
+					relations = relations | hub._.get_catpkg_relations_from_depstring(infos[key])
+
+			td_out["relations"] = sorted(list(relations))
+			td_out["category"] = env["category"]
+			td_out["revision"] = env["PR"].lstrip("r")
+			td_out["package"] = env["PN"]
+			td_out["catpkg"] = env["category"] + "/" + env["PN"]
+			td_out["atom"] = metapath
+			td_out["eclasses"] = set(infos["INHERITED"].split())
+			td_out["kit"] = repo.name
+			td_out["metadata"] = infos
+
+		# If so instructed, write out a cache entry:
+
+		if write_cache:
+			metadata_outpath = os.path.join(repo.root, "metadata/md5-cache")
 			final_md5_outpath = os.path.join(metadata_outpath, metapath)
 			os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
 			with open(os.path.join(metadata_outpath, metapath), "w") as f:
@@ -271,21 +416,17 @@ def gen_cache_entry(hub, repo, ebuild_path, eclass_hashes: dict, eclass_paths):
 						f.write("_eclasses_=" + eclass_out[1:] + "\n")
 				# final line is the md5sum of the ebuild itself:
 				f.write("_md5_=" + get_md5(ebuild_path) + "\n")
+
 	except (FileNotFoundError, IndexError) as e:
 		hub.METADATA_ERRORS.append(
 			MetadataError(severity=Severity.FATAL, msg=f"Exception: {str(e)}", ebuild_path=ebuild_path)
 		)
 		return None
-	if result.returncode != 0:
-		hub.METADATA_ERRORS.append(
-			MetadataError(
-				severity=Severity.NONFATAL,
-				msg=f"Ebuild had non-zero returncode {result.returncode}",
-				ebuild_path=ebuild_path,
-				output=result.stderr,
-			)
-		)
-	return infos
+
+	if treedata:
+		return td_out
+	else:
+		return infos
 
 
 def ebuild_generator(ebuild_src=None):
@@ -365,7 +506,12 @@ def gen_cache(hub, repo):
 
 		for ebpath in ebuild_generator(ebuild_src=repo.root):
 			future = executor.submit(
-				hub._.gen_cache_entry, repo, ebpath, eclass_hashes=eclass_hashes, eclass_paths=eclass_paths
+				hub._.extract_ebuild_metadata,
+				repo,
+				ebpath,
+				eclass_hashes=eclass_hashes,
+				eclass_paths=eclass_paths,
+				write_cache=True,
 			)
 			fut_map[future] = ebpath
 			futures.append(future)

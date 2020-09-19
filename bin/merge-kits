@@ -160,7 +160,7 @@ if __name__ == "__main__":
 
 		kwargs = {}
 		if hub.MIRROR:
-			kwargs['mirror'] = hub.MERGE_CONFIG.mirror.rstrip("/") + "/meta-repo"
+			kwargs["mirror"] = hub.MERGE_CONFIG.mirror.rstrip("/") + "/meta-repo"
 
 		hub.META_REPO = meta_repo = GitTree(
 			hub,
@@ -169,7 +169,7 @@ if __name__ == "__main__":
 			url=config.meta_repo,
 			root=config.dest_trees + "/meta-repo",
 			origin_check=True,
-			**kwargs
+			**kwargs,
 		)
 
 	hub.START_TIME = datetime.utcnow()
