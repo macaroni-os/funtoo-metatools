@@ -53,8 +53,8 @@ async def main_thread():
 
 	# Before we start looking at YAML, we need to ensure our two critical source repos are checked out
 
-	await hub.META_REPO.initialize()
-	await hub.FIXUP_REPO.initialize()
+	hub.META_REPO.initialize()
+	hub.FIXUP_REPO.initialize()
 
 	hub.KIT_GROUPS = list(hub.merge.foundations.kit_groups())
 
@@ -117,16 +117,16 @@ async def main_thread():
 			for kit_name, kit_tuple in kit_results.items():
 				kit_dict, tree_obj, tree_sha1 = kit_tuple
 				future = executor.submit(
-					run_async_adapter, tree_obj.GitMirrorPush
+					tree_obj.GitMirrorPush
 				)
 			for future in as_completed(kit_push_futures):
 				continue
 
 	# Create meta-repo commit referencing our updated kits:
 	hub.merge.kit.generate_metarepo_metadata(kit_sha1s)
-	await hub.META_REPO.gitCommit(message="kit updates", skip=["kits"], push=False)
+	hub.META_REPO.gitCommit(message="kit updates", skip=["kits"], push=False)
 	if hub.PUSH:
-		await hub.META_REPO.gitMirrorPush()
+		hub.META_REPO.gitMirrorPush()
 
 
 if __name__ == "__main__":

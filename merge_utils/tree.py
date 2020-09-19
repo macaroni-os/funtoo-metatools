@@ -85,7 +85,7 @@ class Tree:
 			raise GitTreeError("Autogen failed.")
 		self.autogenned = src_offset
 
-	async def cleanTree(self):
+	def cleanTree(self):
 		print("Cleaning tree %s" % self.root)
 		runShell("(cd %s &&  git reset --hard && git clean -fd )" % self.root)
 		self.autogenned = False
@@ -120,20 +120,20 @@ class Tree:
 		else:
 			return branch
 
-	async def initialize(self):
+	def initialize(self):
 		if not self.initialized:
-			await self._initialize_tree()
+			self._initialize_tree()
 
-	async def gitCheckout(self, branch=None, from_init=False):
+	def gitCheckout(self, branch=None, from_init=False):
 		if not from_init:
-			await self.initialize()
+			self.initialize()
 		if self.currentLocalBranch != branch:
 			if self.localBranchExists(branch):
 				runShell("(cd %s && git checkout %s)" % (self.root, branch))
 			else:
 				# An AutoCreatedGitTree will automatically create branches as needed, as forks of master.
 				runShell("(cd %s && git checkout master && git checkout -b %s)" % (self.root, branch))
-			await self.cleanTree()
+			self.cleanTree()
 		if self.currentLocalBranch != branch:
 			raise GitTreeError(
 				"%s: On branch %s. not able to check out branch %s." % (self.root, self.currentLocalBranch, branch)
@@ -141,7 +141,7 @@ class Tree:
 		print("Checked out %s on tree %s" % (branch, self.root))
 		self.branch = branch
 
-	async def gitCommit(self, message="", skip=None, push=True):
+	def gitCommit(self, message="", skip=None, push=True):
 		if skip is None:
 			skip = []
 		skip.append(".git")
@@ -181,15 +181,15 @@ class Tree:
 			print("Commit failed.")
 			sys.exit(1)
 		if push is True:
-			await self.mirrorLocalBranches()
+			self.mirrorLocalBranches()
 			if self.mirror:
-				await self.mirrorUpstreamRepository(mirror=self.mirror)
+				self.mirrorUpstreamRepository(mirror=self.mirror)
 
-	async def mirrorLocalBranches(self):
+	def mirrorLocalBranches(self):
 		# This is a special push command that will push local tags and branches *only*
 		runShell("(cd %s && git push %s %s +refs/heads/* +refs/tags/*)" % (self.root, self.forcepush, self.url))
 
-	async def mirrorUpstreamRepository(self, mirror):
+	def mirrorUpstreamRepository(self, mirror):
 		# This is a special push command that will push all the stuff from origin (branches and tags) *only*
 		# It will skip local branches.
 		runShell("(cd %s && git fetch --prune)" % self.root)
@@ -198,14 +198,14 @@ class Tree:
 			% (self.root, self.forcepush, mirror)
 		)
 
-	async def gitMirrorPush(self):
+	def gitMirrorPush(self):
 		runShell(
 			"(cd %s && ( git rev-parse --abbrev-ref --symbolic-full-name @{u} || git branch --set-upstream-to origin/%s))"
 			% (self.root, self.branch)
 		)
-		await self.mirrorLocalBranches()
+		self.mirrorLocalBranches()
 		if self.mirror:
-			await self.mirrorUpstreamRepository(self.mirror)
+			self.mirrorUpstreamRepository(self.mirror)
 
 
 class GitTreeError(Exception):
@@ -230,7 +230,7 @@ class AutoCreatedGitTree(Tree):
 		self.do_fetch = False
 		self.merged = []
 
-	async def _initialize_tree(self):
+	def _initialize_tree(self):
 		if not os.path.exists(self.root):
 			os.makedirs(self.root)
 			runShell("( cd %s && git init )" % self.root)
@@ -239,7 +239,7 @@ class AutoCreatedGitTree(Tree):
 			if not self.localBranchExists(self.branch):
 				runShell("( cd %s && git checkout -b %s)" % (self.root, self.branch))
 			else:
-				await self.gitCheckout(self.branch, from_init=True)
+				self.gitCheckout(self.branch, from_init=True)
 
 		if not self.has_cleaned:
 			runShell("(cd %s &&  git reset --hard && git clean -fd )" % self.root)
@@ -298,7 +298,7 @@ class GitTree(Tree):
 
 	# if we don't specify root destination tree, assume we are source only:
 
-	async def _initialize_tree(self):
+	def _initialize_tree(self):
 		if self.root is None:
 			base = self.hub.MERGE_CONFIG.source_trees
 			self.root = "%s/%s" % (base, self.name)
@@ -364,11 +364,11 @@ class GitTree(Tree):
 					pass
 		# first, we will clean up any messes:
 		if not self.has_cleaned:
-			await self.cleanTree()
+			self.cleanTree()
 			self.has_cleaned = True
 
 		# git fetch will run as part of this:
-		await self.gitCheckout(self.branch, from_init=True)
+		self.gitCheckout(self.branch, from_init=True)
 
 		# point to specified sha1:
 
@@ -377,11 +377,11 @@ class GitTree(Tree):
 			if self.head() != self.commit_sha1:
 				raise GitTreeError("%s: Was not able to check out specified SHA1: %s." % (self.root, self.commit_sha1))
 		elif self.pull:
-			await self.do_pull()
+			self.do_pull()
 
 		self.initialized = True
 
-	async def do_pull(self):
+	def do_pull(self):
 		if not self.pulled:
 			# we are on the right branch, but we want to make sure we have the latest updates
 			runShell("(cd %s && git pull --no-force --all || true)" % self.root)
@@ -437,9 +437,8 @@ class GitTree(Tree):
 	def catpkg_exists(self, catpkg):
 		return os.path.exists(self.root + "/" + catpkg)
 
-	async def gitCheckout(self, branch=None, sha1=None, from_init=False):
+	def gitCheckout(self, branch=None, sha1=None, from_init=False):
 		"""
-		TODO: this method currently isn't working correctly.
 		New gitCheckout method that tries to avoid calling cleanTree() if possible, since that allows us to avoid
 		re-autogenning in the tree.
 		:param branch:
@@ -450,10 +449,10 @@ class GitTree(Tree):
 			raise GitTreeError("Please specify at least a branch or a sha1.")
 
 		if not from_init:
-			await self.initialize()
+			self.initialize()
 		if sha1 is not None and self.head() != sha1:
 			runShell("(cd %s && git fetch --verbose && git checkout %s)" % (self.root, sha1))
-			await self.cleanTree()
+			self.cleanTree()
 			if self.head() != sha1:
 				raise GitTreeError("Not able to check out requested sha1: %s, got: %s" % (sha1, self.head()))
 		else:
@@ -466,13 +465,13 @@ class GitTree(Tree):
 					runShell("(cd %s && git checkout -b %s --track origin/%s)" % (self.root, branch, branch))
 				else:
 					runShell("(cd %s && git checkout -b %s)" % (self.root, branch))
-				await self.cleanTree()
+				self.cleanTree()
 			else:
 				old_head = self.head()
-				await self.do_pull()
+				self.do_pull()
 				new_head = self.head()
 				if old_head != new_head:
-					await self.cleanTree()
+					self.cleanTree()
 		if branch and self.currentLocalBranch != branch:
 			raise GitTreeError(
 				"%s: On branch %s. not able to check out branch %s." % (self.root, self.currentLocalBranch, branch)

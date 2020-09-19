@@ -338,7 +338,7 @@ class ZapMatchingEbuilds(MergeStep):
 	async def run(self, desttree):
 		if self.branch is not None:
 			# Allow dynamic switching to different branches/commits to grab things we want:
-			await self.srctree.gitCheckout(branch=self.branch)
+			self.srctree.gitCheckout(branch=self.branch)
 		# Figure out what categories to process:
 		dest_cat_path = os.path.join(desttree.root, "profiles/categories")
 		if os.path.exists(dest_cat_path):

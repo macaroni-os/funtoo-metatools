@@ -22,9 +22,9 @@ async def initialize_sources(hub, source):
 		if repo_key in hub.SOURCE_REPOS:
 			repo_obj = hub.SOURCE_REPOS[repo_key]
 			if repo_sha1:
-				await repo_obj.gitCheckout(sha1=repo_sha1)
+				repo_obj.gitCheckout(sha1=repo_sha1)
 			elif repo_branch:
-				await repo_obj.gitCheckout(branch=repo_branch)
+				repo_obj.gitCheckout(branch=repo_branch)
 		else:
 			path = repo_name
 			repo_obj = GitTree(
@@ -37,6 +37,6 @@ async def initialize_sources(hub, source):
 				origin_check=False,
 				reclone=False,
 			)
-			await repo_obj.initialize()
+			repo_obj.initialize()
 			hub.SOURCE_REPOS[repo_key] = repo_obj
 	hub.CURRENT_SOURCE_DEF = source
