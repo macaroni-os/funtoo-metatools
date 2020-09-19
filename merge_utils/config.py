@@ -107,6 +107,13 @@ class Configuration:
 			return "/var/tmp/repo_tmp"
 
 	@property
+	def temp_path(self):
+		if "HOME" in os.environ:
+			return os.path.join(os.environ["HOME"], "repo_tmp/tmp")
+		else:
+			return "/var/tmp/repo_tmp/tmp"
+
+	@property
 	def metadata_cache(self):
 		return os.path.join(self.work_path, "metadata-cache")
 

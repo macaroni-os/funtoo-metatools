@@ -49,6 +49,9 @@ class Tree:
 		self.autogenned = False
 		self.name = None
 		self.merged = []
+		self.forcepush = False
+		self.mirror = False
+		self.url = None
 
 	def logTree(self, srctree):
 		# record name and SHA of src tree in dest tree, used for git commit message/auditing:
@@ -138,42 +141,16 @@ class Tree:
 		print("Checked out %s on tree %s" % (branch, self.root))
 		self.branch = branch
 
-
-class GitTreeError(Exception):
-	pass
-
-
-class AutoCreatedGitTree(Tree):
-	"""
-	This is a locally-created Git Tree, typically used for local development purposes. Tree will be created
-	if it doesn't exist. It doesn't support remotes. It will not push, or fetch. It's your basic "create a
-	temporary local git tree to put stuff in because I'm too lazy to use a real existing git tree or am testing
-	stuff"-type tree.
-	"""
-
-	def __init__(self, hub, name: str, branch: str = "master", root: str = None, commit_sha1: str = None, **kwargs):
-		super().__init__(hub, root=root)
-		self.branch = branch
-		self.name = self.reponame = name
-		self.has_cleaned = False
-		self.initialized = False
-		self.commit_sha1 = commit_sha1
-		self.do_fetch = False
-		self.merged = []
-
-	async def gitCommit(self, message="", skip=None, push=False):
-		"""
-
-		:param message:
-		:param skip: Files or dirs in the root directory of the path to purposefully *not* git add.
-		:param push: This argument is ignored in this implementation.
-		:return:
-		"""
+	async def gitCommit(self, message="", skip=None, push=True):
 		if skip is None:
 			skip = []
+		skip.append(".git")
+		files = ""
 		for x in os.listdir(self.root):
 			if x not in skip:
-				runShell("( cd %s && git add %s )" % (self.root, x))
+				files += " '" + x + "'"
+		if files:
+			runShell(f"cd {self.root} && git add {files[1:]}")
 		cmd = '( cd %s && [ -n "$(git status --porcelain)" ] && git commit -a -F - << EOF\n' % self.root
 		if message != "":
 			cmd += "%s\n\n" % message
@@ -203,6 +180,55 @@ class AutoCreatedGitTree(Tree):
 			print(cp)
 			print("Commit failed.")
 			sys.exit(1)
+		if push is True:
+			await self.mirrorLocalBranches()
+			if self.mirror:
+				await self.mirrorUpstreamRepository(mirror=self.mirror)
+
+	async def mirrorLocalBranches(self):
+		# This is a special push command that will push local tags and branches *only*
+		runShell("(cd %s && git push %s %s +refs/heads/* +refs/tags/*)" % (self.root, self.forcepush, self.url))
+
+	async def mirrorUpstreamRepository(self, mirror):
+		# This is a special push command that will push all the stuff from origin (branches and tags) *only*
+		# It will skip local branches.
+		runShell("(cd %s && git fetch --prune)" % self.root)
+		runShell(
+			"(cd %s && git push %s --prune %s +refs/remotes/origin/*:refs/heads/* +refs/tags/*:refs/tags/*)"
+			% (self.root, self.forcepush, mirror)
+		)
+
+	async def gitMirrorPush(self):
+		runShell(
+			"(cd %s && ( git rev-parse --abbrev-ref --symbolic-full-name @{u} || git branch --set-upstream-to origin/%s))"
+			% (self.root, self.branch)
+		)
+		await self.mirrorLocalBranches()
+		if self.mirror:
+			await self.mirrorUpstreamRepository(self.mirror)
+
+
+class GitTreeError(Exception):
+	pass
+
+
+class AutoCreatedGitTree(Tree):
+	"""
+	This is a locally-created Git Tree, typically used for local development purposes. Tree will be created
+	if it doesn't exist. It doesn't support remotes. It will not push, or fetch. It's your basic "create a
+	temporary local git tree to put stuff in because I'm too lazy to use a real existing git tree or am testing
+	stuff"-type tree.
+	"""
+
+	def __init__(self, hub, name: str, branch: str = "master", root: str = None, commit_sha1: str = None, **kwargs):
+		super().__init__(hub, root=root)
+		self.branch = branch
+		self.name = self.reponame = name
+		self.has_cleaned = False
+		self.initialized = False
+		self.commit_sha1 = commit_sha1
+		self.do_fetch = False
+		self.merged = []
 
 	async def _initialize_tree(self):
 		if not os.path.exists(self.root):
@@ -452,84 +478,6 @@ class GitTree(Tree):
 				"%s: On branch %s. not able to check out branch %s." % (self.root, self.currentLocalBranch, branch)
 			)
 		self.branch = branch
-
-	async def gitCheckoutOld(self, branch="master", from_init=False):
-		if not from_init:
-			await self.initialize()
-		runShell("(cd %s && git fetch --verbose)" % self.root)
-		if self.localBranchExists(branch):
-			await self.do_pull()
-		elif self.remoteBranchExists(branch):
-			runShell("(cd %s && git checkout -b %s --track origin/%s)" % (self.root, branch, branch))
-		else:
-			runShell("(cd %s && git checkout -b %s)" % (self.root, branch))
-		await self.cleanTree()
-		if self.currentLocalBranch != branch:
-			raise GitTreeError(
-				"%s: On branch %s. not able to check out branch %s." % (self.root, self.currentLocalBranch, branch)
-			)
-
-	async def mirrorLocalBranches(self):
-		# This is a special push command that will push local tags and branches *only*
-		runShell("(cd %s && git push %s %s +refs/heads/* +refs/tags/*)" % (self.root, self.forcepush, self.url))
-
-	async def mirrorUpstreamRepository(self, mirror):
-		# This is a special push command that will push all the stuff from origin (branches and tags) *only*
-		# It will skip local branches.
-		runShell("(cd %s && git fetch --prune)" % self.root)
-		runShell(
-			"(cd %s && git push %s --prune %s +refs/remotes/origin/*:refs/heads/* +refs/tags/*:refs/tags/*)"
-			% (self.root, self.forcepush, mirror)
-		)
-
-	async def gitMirrorPush(self):
-		runShell(
-			"(cd %s && ( git rev-parse --abbrev-ref --symbolic-full-name @{u} || git branch --set-upstream-to origin/%s))"
-			% (self.root, self.branch)
-		)
-		await self.mirrorLocalBranches()
-		if self.mirror:
-			await self.mirrorUpstreamRepository(self.mirror)
-
-	async def gitCommit(self, message="", skip=None, push=True):
-		if skip is None:
-			skip = []
-		for x in os.listdir(self.root):
-			if x not in skip:
-				runShell("( cd %s && git add %s )" % (self.root, x))
-		cmd = '( cd %s && [ -n "$(git status --porcelain)" ] && git commit -a -F - << EOF\n' % self.root
-		if message != "":
-			cmd += "%s\n\n" % message
-		names = []
-		if len(self.merged):
-			cmd += "merged: \n\n"
-			for name, sha1 in self.merged:
-				if name in names:
-					# don't print dups
-					continue
-				names.append(name)
-				if sha1 is not None:
-					cmd += "  %s: %s\n" % (name, sha1)
-		cmd += "EOF\n"
-		cmd += ")\n"
-		print("running: %s" % cmd)
-		# we use os.system because this multi-line command breaks runShell() - really, breaks commands.getstatusoutput().
-		myenv = os.environ.copy()
-		if os.geteuid() == 0:
-			# make sure HOME is set if we are root (maybe we entered to a minimal environment -- this will mess git up.)
-			# In particular, a new tmux window will have HOME set to /root but NOT exported. Which will mess git up. (It won't know where to find ~/.gitconfig.)
-			myenv["HOME"] = "/root"
-		cp = subprocess.run(cmd, shell=True, env=myenv)
-		retval = cp.returncode
-		if retval not in [0, 1]:  # can return 1
-			print("retval is: %s" % retval)
-			print(cp)
-			print("Commit failed.")
-			sys.exit(1)
-		if push is True:
-			await self.mirrorLocalBranches()
-			if self.mirror:
-				await self.mirrorUpstreamRepository(mirror=self.mirror)
 
 
 class RsyncTree(Tree):

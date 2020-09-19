@@ -217,12 +217,14 @@ class CleanTree(MergeStep):
 		self.exclude = exclude
 
 	async def run(self, tree):
+		files = ""
 		for fn in os.listdir(tree.root):
 			if fn[:1] == ".":
 				continue
 			if fn in self.exclude:
 				continue
-			runShell("rm -rf %s/%s" % (tree.root, fn))
+			files += " '" + fn + "'"
+		runShell(f"cd {tree.root} && rm -rf {files[1:]}")
 
 
 class ELTSymlinkWorkaround(MergeStep):
@@ -438,6 +440,8 @@ class InsertEbuilds(MergeStep):
 
 	async def run(self, desttree):
 
+		script_out = ""
+
 		if self.ebuildloc:
 			srctree_root = self.srctree.root + "/" + self.ebuildloc
 		else:
@@ -526,8 +530,8 @@ class InsertEbuilds(MergeStep):
 					if not os.path.exists(tcatdir):
 						os.makedirs(tcatdir)
 					if os.path.exists(tpkgdir):
-						runShell("rm -rf " + tpkgdir)
-					runShell(["/bin/cp", "-a", pkgdir, tpkgdir])
+						script_out += f"/bin/rm -rf '{tpkgdir}' \n"
+					script_out += f"/bin/cp -a '{pkgdir}' '{tpkgdir}'\n"
 					copied = True
 				else:
 					if not os.path.exists(tpkgdir):
@@ -535,9 +539,7 @@ class InsertEbuilds(MergeStep):
 					if not os.path.exists(tcatdir):
 						os.makedirs(tcatdir)
 					if not os.path.exists(tpkgdir):
-						runShell(["/bin/cp", "-a", pkgdir, tpkgdir])
-				if os.path.exists("%s/__pycache__" % tpkgdir):
-					runShell("rm -rf %s/__pycache__" % tpkgdir)
+						script_out += f"/bin/cp -a '{pkgdir}' '{tpkgdir}'\n"
 				if copied:
 					# log XML here.
 					if self.hub.CPM_LOGGER:
@@ -552,6 +554,14 @@ class InsertEbuilds(MergeStep):
 								# This means we did a package move. Record the "new name" of the package, too. So both
 								# old name and new name get marked as being part of this kit.
 								self.hub.CPM_LOGGER.record(desttree.name, tcatpkg)
+		if script_out:
+			temp_out = os.path.join(self.hub.MERGE_CONFIG.temp_path, desttree.name + "_copyfiles.sh")
+			os.makedirs(os.path.dirname(temp_out), exist_ok=True)
+			with open(temp_out, "w") as f:
+				f.write("#!/bin/bash\n")
+				f.write(script_out)
+			runShell(f"/bin/bash {temp_out}")
+			os.unlink(temp_out)
 		if os.path.isdir(os.path.dirname(dest_cat_path)):
 			with open(dest_cat_path, "w") as f:
 				f.write("\n".join(sorted(dest_cat_set)))
