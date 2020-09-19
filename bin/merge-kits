@@ -5,6 +5,8 @@ import logging
 import os
 import sys
 from collections import defaultdict, OrderedDict
+from concurrent.futures import as_completed
+from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime
 
 import pop.hub
@@ -108,15 +110,22 @@ async def main_thread():
 			kit_results[kit_dict["name"]] = (kit_dict, tree_obj, tree_sha1)
 			kit_sha1s[kit_dict["name"]][kit_dict["branch"]] = tree_sha1
 
+	if hub.PUSH:
+		kit_push_futures = []
+		with ThreadPoolExecutor(max_workers=8) as executor:
+			# Push all kits, then push meta-repo.
+			for kit_name, kit_tuple in kit_results.items():
+				kit_dict, tree_obj, tree_sha1 = kit_tuple
+				future = executor.submit(
+					run_async_adapter, tree_obj.GitMirrorPush
+				)
+			for future in as_completed(kit_push_futures):
+				continue
+
 	# Create meta-repo commit referencing our updated kits:
 	hub.merge.kit.generate_metarepo_metadata(kit_sha1s)
 	await hub.META_REPO.gitCommit(message="kit updates", skip=["kits"], push=False)
-
 	if hub.PUSH:
-		# Push all kits, then push meta-repo.
-		for kit_name, kit_tuple in kit_results.items():
-			kit_dict, tree_obj, tree_sha1 = kit_tuple
-			await tree_obj.gitMirrorPush()
 		await hub.META_REPO.gitMirrorPush()
 
 
