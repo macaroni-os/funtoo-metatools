@@ -116,9 +116,7 @@ async def main_thread():
 			# Push all kits, then push meta-repo.
 			for kit_name, kit_tuple in kit_results.items():
 				kit_dict, tree_obj, tree_sha1 = kit_tuple
-				future = executor.submit(
-					lambda: tree_obj.GitMirrorPush()
-				)
+				future = executor.submit(lambda: tree_obj.GitMirrorPush())
 			for future in as_completed(kit_push_futures):
 				continue
 

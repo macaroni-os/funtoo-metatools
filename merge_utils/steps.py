@@ -10,6 +10,7 @@ from merge_utils.tree import runShell
 # TODO: add checks for duplicate catpkgs
 # TODO: add checks for missing catpkgs
 
+
 class MergeStep:
 
 	# This is only used for Repository Steps:
@@ -569,7 +570,9 @@ class InsertEbuilds(MergeStep):
 			os.unlink(temp_out)
 		for check in checks:
 			if not os.path.exists(check):
-				raise FileNotFoundError(f"It appears that {check} was not copied successfully. Maybe missing from {self.srctree.name}?")
+				raise FileNotFoundError(
+					f"It appears that {check} was not copied successfully. Maybe missing from {self.srctree.name}?"
+				)
 
 
 class ProfileDepFix(MergeStep):
