@@ -117,7 +117,7 @@ async def main_thread():
 			for kit_name, kit_tuple in kit_results.items():
 				kit_dict, tree_obj, tree_sha1 = kit_tuple
 				future = executor.submit(
-					tree_obj.GitMirrorPush
+					lambda: tree_obj.GitMirrorPush()
 				)
 			for future in as_completed(kit_push_futures):
 				continue
