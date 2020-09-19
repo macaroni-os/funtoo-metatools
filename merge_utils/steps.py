@@ -7,6 +7,8 @@ import shutil
 from merge_utils.tree import GitTree
 from merge_utils.tree import runShell
 
+# TODO: add checks for duplicate catpkgs
+# TODO: add checks for missing catpkgs
 
 class MergeStep:
 
@@ -441,6 +443,7 @@ class InsertEbuilds(MergeStep):
 	async def run(self, desttree):
 
 		script_out = ""
+		checks = []
 
 		if self.ebuildloc:
 			srctree_root = self.srctree.root + "/" + self.ebuildloc
@@ -532,6 +535,7 @@ class InsertEbuilds(MergeStep):
 					if os.path.exists(tpkgdir):
 						script_out += f"/bin/rm -rf '{tpkgdir}' \n"
 					script_out += f"/bin/cp -a '{pkgdir}' '{tpkgdir}'\n"
+					checks.append(tpkgdir)
 					copied = True
 				else:
 					if not os.path.exists(tpkgdir):
@@ -540,6 +544,7 @@ class InsertEbuilds(MergeStep):
 						os.makedirs(tcatdir)
 					if not os.path.exists(tpkgdir):
 						script_out += f"/bin/cp -a '{pkgdir}' '{tpkgdir}'\n"
+						checks.append(tpkgdir)
 				if copied:
 					# log XML here.
 					if self.hub.CPM_LOGGER:
@@ -562,9 +567,9 @@ class InsertEbuilds(MergeStep):
 				f.write(script_out)
 			runShell(f"/bin/bash {temp_out}")
 			os.unlink(temp_out)
-		if os.path.isdir(os.path.dirname(dest_cat_path)):
-			with open(dest_cat_path, "w") as f:
-				f.write("\n".join(sorted(dest_cat_set)))
+		for check in checks:
+			if not os.path.exists(check):
+				raise FileNotFoundError(f"It appears that {check} was not copied successfully. Maybe missing from {self.srctree.name}?")
 
 
 class ProfileDepFix(MergeStep):
