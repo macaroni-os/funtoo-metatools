@@ -11,6 +11,7 @@ from datetime import datetime
 
 import pop.hub
 
+from funtoo.pkgtools.thread import run_async_adapter
 from merge_utils.config import Configuration
 from merge_utils.tree import GitTree, AutoCreatedGitTree
 
@@ -28,9 +29,8 @@ async def do_kit(kit_dict):
 		await hub.merge.sources.initialize_sources(kit_dict["source"])
 	hub.cache.metadata.fetch_kit(kit_dict)
 	kit_dict_2, tree_obj, tree_sha1 = await hub.merge.kit.generate_kit(kit_dict)
-	hub.KIT_RESULTS[kit_dict["name"]] = (kit_dict, tree_obj, tree_sha1)
-	hub.KIT_SHA1S[kit_dict["name"]][kit_dict["branch"]] = tree_sha1
 	hub.cache.metadata.flush_kit(kit_dict)
+	return kit_dict, tree_obj, tree_sha1
 
 
 async def main_thread():
@@ -83,8 +83,15 @@ async def main_thread():
 	# Generate all other kits:
 	for source in thread_keys:
 		kit_dict_list = thread_groups[source]
-		for kit_dict in kit_dict_list:
-			await do_kit(kit_dict)
+		regen_futures = []
+		with ThreadPoolExecutor(max_workers=4) as executor:
+			for kit_dict in kit_dict_list:
+				future = executor.submit(run_async_adapter, do_kit, kit_dict)
+				regen_futures.append(future)
+			for future in as_completed(regen_futures):
+				kit_dict, tree_obj, tree_sha1 = future.result()
+				hub.KIT_RESULTS[kit_dict["name"]] = (kit_dict, tree_obj, tree_sha1)
+				hub.KIT_SHA1S[kit_dict["name"]][kit_dict["branch"]] = tree_sha1
 
 	if hub.PUSH:
 		kit_push_futures = []
@@ -93,6 +100,7 @@ async def main_thread():
 			for kit_name, kit_tuple in hub.KIT_RESULTS.items():
 				kit_dict, tree_obj, tree_sha1 = kit_tuple
 				future = executor.submit(lambda: tree_obj.GitMirrorPush())
+				kit_push_futures.append(future)
 			for future in as_completed(kit_push_futures):
 				continue
 

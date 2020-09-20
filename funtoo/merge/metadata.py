@@ -501,7 +501,6 @@ def gen_cache(hub, repo):
 	just point to the root of the kit and all eclasses are found and metadata is generated.
 
 	"""
-	hub.METADATA_ENTRIES = {}
 
 	with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
 		count = 0
@@ -532,17 +531,17 @@ def gen_cache(hub, repo):
 			else:
 				# Record all metadata in-memory so it's available later.
 				hash_key = data["HASH_KEY"]
-				hub.METADATA_ENTRIES[hash_key] = data
+				repo.METADATA_ENTRIES[hash_key] = data
 				sys.stdout.write(".")
 				sys.stdout.flush()
 
 		print(f"{count} ebuilds processed.")
 
 
-async def get_python_use_lines(hub, catpkg, cpv_list, cur_tree, def_python, bk_python):
+async def get_python_use_lines(hub, repo, catpkg, cpv_list, cur_tree, def_python, bk_python):
 	ebs = {}
 	for cpv in cpv_list:
-		imps = hub.METADATA_ENTRIES[cpv]["PYTHON_COMPAT"].split()
+		imps = repo.METADATA_ENTRIES[cpv]["PYTHON_COMPAT"].split()
 
 		# For anything in PYTHON_COMPAT that we would consider equivalent to python3_7, we want to
 		# set python3_7 instead. This is so we match the primary python implementation correctly

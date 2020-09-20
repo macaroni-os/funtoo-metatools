@@ -298,7 +298,7 @@ class PruneLicenses(MergeStep):
 
 	def get_all_licenses(self, desttree):
 		used_licenses = set()
-		for key, datums in desttree.hub.METADATA_ENTRIES.items():
+		for key, datums in desttree.METADATA_ENTRIES.items():
 			if "LICENSE" in datums:
 				used_licenses = used_licenses | set(datums["LICENSE"].split())
 		return used_licenses
@@ -658,11 +658,9 @@ class GenPythonUse(MergeStep):
 
 	async def run(self, cur_overlay):
 		all_lines = []
-		for catpkg, cpv_list in self.hub.merge.metadata.get_catpkg_from_cpvs(
-			cur_overlay.hub.METADATA_ENTRIES.keys()
-		).items():
+		for catpkg, cpv_list in self.hub.merge.metadata.get_catpkg_from_cpvs(cur_overlay.METADATA_ENTRIES.keys()).items():
 			result = await cur_overlay.hub.merge.metadata.get_python_use_lines(
-				catpkg, cpv_list, cur_overlay.root, self.def_python, self.bk_python
+				cur_overlay, catpkg, cpv_list, cur_overlay.root, self.def_python, self.bk_python
 			)
 			if result is not None:
 				all_lines += result

@@ -52,6 +52,7 @@ class Tree:
 		self.forcepush = False
 		self.mirror = False
 		self.url = None
+		self.METADATA_ENTRIES = {}
 
 	def logTree(self, srctree):
 		# record name and SHA of src tree in dest tree, used for git commit message/auditing:
