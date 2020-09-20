@@ -23,30 +23,14 @@ class MergeError(Exception):
 	pass
 
 
-def run_async_adapter(corofn, *args):
-	"""
-	Use this method to run an asynchronous worker within a ThreadPoolExecutor.
-	Without this special wrapper, this normally doesn't work, and the
-	ThreadPoolExecutor will not allow async calls.  But with this wrapper, our
-	worker and its subsequent calls can be async.
-
-	Use as follows::
-
-		futures =[
-			hub.LOOP.run_in_executor(hub.CPU_BOUND_EXECUTOR, run_async_adapter, self.worker_async, worker_async_arg1, ...)
-			for meta_pkg_ebuild_path in all_meta_pkg_ebuilds
-		]
-		for future in asyncio.as_completed(futures):
-			...
-
-	"""
-	loop = asyncio.new_event_loop()
-	try:
-		future = corofn(*args)
-		asyncio.set_event_loop(loop)
-		return loop.run_until_complete(future)
-	finally:
-		loop.close()
+async def do_kit(kit_dict):
+	if kit_dict["kind"] != "independent":
+		await hub.merge.sources.initialize_sources(kit_dict["source"])
+	hub.cache.metadata.fetch_kit(kit_dict)
+	kit_dict_2, tree_obj, tree_sha1 = await hub.merge.kit.generate_kit(kit_dict)
+	hub.KIT_RESULTS[kit_dict["name"]] = (kit_dict, tree_obj, tree_sha1)
+	hub.KIT_SHA1S[kit_dict["name"]][kit_dict["branch"]] = tree_sha1
+	hub.cache.metadata.flush_kit(kit_dict)
 
 
 async def main_thread():
@@ -90,38 +74,30 @@ async def main_thread():
 	if core_kit is None:
 		raise MergeError(f"Unable to find core-kit in source definitions for release {hub.RELEASE}.")
 
-	kit_results = OrderedDict()
-	kit_sha1s = defaultdict(dict)
+	hub.KIT_RESULTS = OrderedDict()
+	hub.KIT_SHA1S = defaultdict(dict)
+
 	# Generate core-kit:
+	await do_kit(core_kit)
 
-	await hub.merge.sources.initialize_sources(core_kit["source"])
-	kit_dict, tree_obj, tree_sha1 = await hub.merge.kit.generate_kit(core_kit)
-	kit_results[kit_dict["name"]] = (kit_dict, tree_obj, tree_sha1)
-	kit_sha1s[kit_dict["name"]][kit_dict["branch"]] = tree_sha1
 	# Generate all other kits:
-
 	for source in thread_keys:
 		kit_dict_list = thread_groups[source]
-		if source != "independent":
-			await hub.merge.sources.initialize_sources(source)
-		for kit in kit_dict_list:
-			# Generate a kit. Record results for later add to meta-repo metadata:
-			kit_dict, tree_obj, tree_sha1 = await hub.merge.kit.generate_kit(kit)
-			kit_results[kit_dict["name"]] = (kit_dict, tree_obj, tree_sha1)
-			kit_sha1s[kit_dict["name"]][kit_dict["branch"]] = tree_sha1
+		for kit_dict in kit_dict_list:
+			await do_kit(kit_dict)
 
 	if hub.PUSH:
 		kit_push_futures = []
 		with ThreadPoolExecutor(max_workers=8) as executor:
 			# Push all kits, then push meta-repo.
-			for kit_name, kit_tuple in kit_results.items():
+			for kit_name, kit_tuple in hub.KIT_RESULTS.items():
 				kit_dict, tree_obj, tree_sha1 = kit_tuple
 				future = executor.submit(lambda: tree_obj.GitMirrorPush())
 			for future in as_completed(kit_push_futures):
 				continue
 
 	# Create meta-repo commit referencing our updated kits:
-	hub.merge.kit.generate_metarepo_metadata(kit_sha1s)
+	hub.merge.kit.generate_metarepo_metadata(hub.KIT_SHA1S)
 	hub.META_REPO.gitCommit(message="kit updates", skip=["kits"], push=False)
 	if hub.PUSH:
 		hub.META_REPO.gitMirrorPush()
@@ -136,7 +112,7 @@ if __name__ == "__main__":
 	# Parse options:
 
 	push = not hub.OPT["merge-kits"]["nopush"]
-	prod = hub.OPT["merge-kits"]["prod"]
+	hub.PROD = prod = hub.OPT["merge-kits"]["prod"]
 	forcepush = hub.OPT["merge-kits"]["force"]
 
 	# Initialize internal pop globals that are expected to be in place when the merge sub gets added:
@@ -186,7 +162,7 @@ if __name__ == "__main__":
 
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools")
-
+	hub.pop.sub.add("funtoo.cache")
 	# TODO: hook into fastpull
 	hub.CPM_LOGGER = None
 

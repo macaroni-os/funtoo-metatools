@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import hashlib
+import json
 import os
 import re
 import sys
@@ -269,9 +270,64 @@ class EclassHashCollection:
 		return new_obj
 
 
-def extract_ebuild_metadata(
-	hub, repo, ebuild_path, eclass_hashes=None, eclass_paths=None, write_cache=False, treedata=False
-):
+def extract_ebuild_metadata(hub, atom, ebuild_path=None, env=None, eclass_paths=None):
+	infos = {"HASH_KEY": atom}
+	env["PATH"] = "/bin:/usr/bin"
+	env["LC_COLLATE"] = "POSIX"
+	env["LANG"] = "en_US.UTF-8"
+	# For things to work correctly, the EAPI of the ebuild has to be manually extracted:
+	eapi, lineno = hub._.get_eapi_of_ebuild(ebuild_path)
+	if eapi is not None and eapi in "01234567":
+		env["EAPI"] = eapi
+	else:
+		env["EAPI"] = "0"
+	env["PORTAGE_GID"] = "250"
+	env["PORTAGE_BIN_PATH"] = "/usr/lib/portage/python3.7"
+	env["PORTAGE_ECLASS_LOCATIONS"] = " ".join(eclass_paths)
+	env["EBUILD"] = ebuild_path
+	env["EBUILD_PHASE"] = "depend"
+	# This tells ebuild.sh to write out the metadata to stdout (fd 1) which is where we will grab
+	# it from:
+	env["PORTAGE_PIPE_FD"] = "1"
+	result = run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
+	if result.returncode != 0:
+		hub.METADATA_ERRORS.append(
+			MetadataError(
+				severity=Severity.NONFATAL,
+				msg=f"Ebuild had non-zero returncode {result.returncode}",
+				ebuild_path=ebuild_path,
+				output=result.stderr,
+			)
+		)
+	try:
+		# Extract results:
+		lines = result.stdout.split("\n")
+		line = 0
+		found = set()
+		while line < len(METADATA_LINES) and line < len(lines):
+			found.add(METADATA_LINES[line])
+			infos[METADATA_LINES[line]] = lines[line]
+			line += 1
+		if line != len(METADATA_LINES):
+			missing = set(METADATA_LINES) - found
+			hub.METADATA_ERRORS.append(
+				MetadataError(
+					Severity.FATAL,
+					msg=f"Could not extract all metadata. Missing: {missing}",
+					ebuild_path=ebuild_path,
+					output=result.stderr,
+				)
+			)
+			return None
+		return infos
+	except (FileNotFoundError, IndexError) as e:
+		hub.METADATA_ERRORS.append(
+			MetadataError(severity=Severity.FATAL, msg=f"Exception: {str(e)}", ebuild_path=ebuild_path)
+		)
+		return None
+
+
+def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths=None, write_cache=False):
 
 	"""
 	This function will grab metadata from a single ebuild pointed to by `ebuild_path` and
@@ -293,140 +349,97 @@ def extract_ebuild_metadata(
 	TODO: Currently hard-coded to assume a python3.7 installation. We should fix that at some point.
 	"""
 
-	env = {}
+	basespl = ebuild_path.split("/")
+	atom = basespl[-3] + "/" + basespl[-1][:-7]
+	ebuild_md5 = get_md5(ebuild_path)
 
-	env["PATH"] = "/bin:/usr/bin"
-	env["LC_COLLATE"] = "POSIX"
-	env["LANG"] = "en_US.UTF-8"
+	# Try to see if we already have this metadata in our kit metadata cache.
+	existing = hub.cache.metadata.get_atom(repo, atom, ebuild_md5, eclass_hashes)
 
-	# For things to work correctly, the EAPI of the ebuild has to be manually extracted:
-	eapi, lineno = hub._.get_eapi_of_ebuild(ebuild_path)
-	if eapi is not None and eapi in "01234567":
-		env["EAPI"] = eapi
+	if existing:
+		infos = existing["metadata"]
+		metadata_out = existing["metadata_out"]
+		# print(json.dumps(infos, indent=4))
 	else:
-		env["EAPI"] = "0"
+		env = {}
+		env["PF"] = os.path.basename(ebuild_path)[:-7]
+		env["CATEGORY"] = ebuild_path.split("/")[-3]
+		pkg_only = ebuild_path.split("/")[-2]  # JUST the pkg name "foobar"
+		reduced, rev = hub._.strip_rev(env["PF"])
+		if rev is None:
+			env["PR"] = "r0"
+			pkg_and_ver = env["PF"]
+		else:
+			env["PR"] = f"r{rev}"
+			pkg_and_ver = reduced
+		env["P"] = pkg_and_ver
+		env["PV"] = pkg_and_ver[len(pkg_only) + 1 :]
+		env["PN"] = pkg_only
+		env["PVR"] = env["PF"][len(env["PN"]) + 1 :]
 
-	env["PORTAGE_GID"] = "250"
-	env["PORTAGE_BIN_PATH"] = "/usr/lib/portage/python3.7"
-	env["PORTAGE_ECLASS_LOCATIONS"] = " ".join(eclass_paths)
-	env["EBUILD"] = ebuild_path
-	env["EBUILD_PHASE"] = "depend"
-	env["PF"] = os.path.basename(ebuild_path)[:-7]
-	env["CATEGORY"] = ebuild_path.split("/")[-3]
-	pkg_only = ebuild_path.split("/")[-2]  # JUST the pkg name "foobar"
-	reduced, rev = hub._.strip_rev(env["PF"])
-	if rev is None:
-		env["PR"] = "r0"
-		pkg_and_ver = env["PF"]
-	else:
-		env["PR"] = f"r{rev}"
-		pkg_and_ver = reduced
-	env["P"] = pkg_and_ver
-	env["PV"] = pkg_and_ver[len(pkg_only) + 1 :]
-	env["PN"] = pkg_only
-	env["PVR"] = env["PF"][len(env["PN"]) + 1 :]
-	# This tells ebuild.sh to write out the metadata to stdout (fd 1) which is where we will grab
-	# it from:
-	env["PORTAGE_PIPE_FD"] = "1"
-	result = run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
-	if result.returncode != 0:
-		hub.METADATA_ERRORS.append(
-			MetadataError(
-				severity=Severity.NONFATAL,
-				msg=f"Ebuild had non-zero returncode {result.returncode}",
-				ebuild_path=ebuild_path,
-				output=result.stderr,
-			)
-		)
-
-	td_out = {}
-	infos = {}
-
-	try:
-
-		# Extract results:
-
-		lines = result.stdout.split("\n")
-		line = 0
-		found = set()
-		basespl = ebuild_path.split("/")
-		infos["HASH_KEY"] = metapath = basespl[-3] + "/" + basespl[-1][:-7]
-		while line < len(METADATA_LINES) and line < len(lines):
-			found.add(METADATA_LINES[line])
-			infos[METADATA_LINES[line]] = lines[line]
-			line += 1
-		if line != len(METADATA_LINES):
-			missing = set(METADATA_LINES) - found
-			hub.METADATA_ERRORS.append(
-				MetadataError(
-					Severity.FATAL,
-					msg=f"Could not extract all metadata. Missing: {missing}",
-					ebuild_path=ebuild_path,
-					output=result.stderr,
-				)
-			)
+		infos = hub._.extract_ebuild_metadata(atom, ebuild_path, env, eclass_paths)
+		if infos is None:
 			return None
 
-		# Generate optional expanded 'treedata' record instead:
+		eclass_out = ""
+		eclass_tuples = []
 
-		if treedata:
+		if infos["INHERITED"]:
 
-			# Calculate tree relationships:
-			relations = set()
-			for key in ["DEPEND", "RDEPEND", "PDEPEND", "BDEPEND", "HDEPEND"]:
-				if infos[key]:
-					relations = relations | hub._.get_catpkg_relations_from_depstring(infos[key])
+			# Do common pre-processing for eclasses:
 
-			td_out["relations"] = sorted(list(relations))
-			td_out["category"] = env["category"]
-			td_out["revision"] = env["PR"].lstrip("r")
-			td_out["package"] = env["PN"]
-			td_out["catpkg"] = env["category"] + "/" + env["PN"]
-			td_out["atom"] = metapath
-			td_out["eclasses"] = set(infos["INHERITED"].split())
-			td_out["kit"] = repo.name
-			td_out["metadata"] = infos
+			for eclass_name in sorted(infos["INHERITED"].split()):
+				if eclass_name not in eclass_hashes:
+					hub.METADATA_ERRORS.append(
+						MetadataError(Severity.SHOULDFIX, msg=f"Can't find eclass hash for {eclass_name}", ebuild_path=ebuild_path)
+					)
+					continue
+				try:
+					eclass_out += f"\t{eclass_name}\t{eclass_hashes[eclass_name]}"
+					eclass_tuples.append((eclass_name, eclass_hashes[eclass_name]))
+				except KeyError as ke:
+					print(f"When processing {ebuild_path}:")
+					print(f"Could not find eclass '{eclass_name}' (from '{infos['INHERITED']}')")
+					sys.exit(1)
 
-		# If so instructed, write out a cache entry:
+		metadata_out = ""
+		for key in AUXDB_LINES:
+			if infos[key] != "":
+				metadata_out += key + "=" + infos[key] + "\n"
+		if len(eclass_out):
+			metadata_out += "_eclasses_=" + eclass_out[1:] + "\n"
+		metadata_out += "_md5_=" + get_md5(ebuild_path) + "\n"
 
-		if write_cache:
-			metadata_outpath = os.path.join(repo.root, "metadata/md5-cache")
-			final_md5_outpath = os.path.join(metadata_outpath, metapath)
-			os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
-			with open(os.path.join(metadata_outpath, metapath), "w") as f:
-				for key in AUXDB_LINES:
-					if infos[key] != "":
-						f.write(key + "=" + infos[key] + "\n")
-				# eclasses are recorded in a special way with their md5sums:
-				if infos["INHERITED"] != "":
-					eclass_out = ""
-					for eclass_name in sorted(infos["INHERITED"].split()):
-						if eclass_name not in eclass_hashes:
-							hub.METADATA_ERRORS.append(
-								MetadataError(Severity.SHOULDFIX, msg=f"Can't find eclass hash for {eclass_name}", ebuild_path=ebuild_path)
-							)
-							continue
-						try:
-							eclass_out += f"\t{eclass_name}\t{eclass_hashes[eclass_name]}"
-						except KeyError as ke:
-							print(f"When processing {ebuild_path}:")
-							print(f"Could not find eclass '{eclass_name}' (from '{infos['INHERITED']}')")
-							sys.exit(1)
-					if len(eclass_out):
-						f.write("_eclasses_=" + eclass_out[1:] + "\n")
-				# final line is the md5sum of the ebuild itself:
-				f.write("_md5_=" + get_md5(ebuild_path) + "\n")
+		# Extended metadata calculation:
 
-	except (FileNotFoundError, IndexError) as e:
-		hub.METADATA_ERRORS.append(
-			MetadataError(severity=Severity.FATAL, msg=f"Exception: {str(e)}", ebuild_path=ebuild_path)
-		)
-		return None
+		td_out = {}
+		relations = set()
+		for key in ["DEPEND", "RDEPEND", "PDEPEND", "BDEPEND", "HDEPEND"]:
+			if infos[key]:
+				relations = relations | hub._.get_catpkg_relations_from_depstring(infos[key])
 
-	if treedata:
-		return td_out
-	else:
-		return infos
+		td_out["relations"] = sorted(list(relations))
+		td_out["category"] = env["CATEGORY"]
+		td_out["revision"] = env["PR"].lstrip("r")
+		td_out["package"] = env["PN"]
+		td_out["catpkg"] = env["CATEGORY"] + "/" + env["PN"]
+		td_out["atom"] = atom
+		td_out["eclasses"] = eclass_tuples
+		td_out["kit"] = repo.name
+		td_out["branch"] = repo.branch
+		td_out["metadata"] = infos
+		td_out["md5"] = ebuild_md5
+		td_out["metadata_out"] = metadata_out
+		hub.cache.metadata.update_atom(td_out)
+
+	if write_cache:
+		metadata_outpath = os.path.join(repo.root, "metadata/md5-cache")
+		final_md5_outpath = os.path.join(metadata_outpath, atom)
+		os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
+		with open(os.path.join(metadata_outpath, atom), "w") as f:
+			f.write(metadata_out)
+
+	return infos
 
 
 def ebuild_generator(ebuild_src=None):
@@ -506,12 +519,7 @@ def gen_cache(hub, repo):
 
 		for ebpath in ebuild_generator(ebuild_src=repo.root):
 			future = executor.submit(
-				hub._.extract_ebuild_metadata,
-				repo,
-				ebpath,
-				eclass_hashes=eclass_hashes,
-				eclass_paths=eclass_paths,
-				write_cache=True,
+				hub._.get_ebuild_metadata, repo, ebpath, eclass_hashes=eclass_hashes, eclass_paths=eclass_paths, write_cache=True,
 			)
 			fut_map[future] = ebpath
 			futures.append(future)
