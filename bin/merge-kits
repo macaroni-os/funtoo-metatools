@@ -102,7 +102,7 @@ async def main_thread():
 				future = executor.submit(lambda: tree_obj.GitMirrorPush())
 				kit_push_futures.append(future)
 			for future in as_completed(kit_push_futures):
-				continue
+				result = future.result()
 
 	# Create meta-repo commit referencing our updated kits:
 	hub.merge.kit.generate_metarepo_metadata(hub.KIT_SHA1S)
