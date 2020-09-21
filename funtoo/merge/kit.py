@@ -254,3 +254,5 @@ def mirror_repository(hub, repo_obj):
 		f"cd {base_path}/{repo_obj.name}.pushme && git remote add upstream {repo_obj.mirror} && git push --mirror upstream"
 	)
 	hub.merge.tree.run(f"rm -rf {base_path}/{repo_obj.name}.pushme")
+	return repo_obj.name
+

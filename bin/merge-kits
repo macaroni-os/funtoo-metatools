@@ -117,10 +117,11 @@ async def main_thread():
 			future = executor.submit(hub.merge.kit.mirror_repository, tree_obj)
 			kit_mirror_futures.append(future)
 		for future in as_completed(kit_mirror_futures):
-			result = future.result()
+			kit_name = future.result()
+			print(f"Mirroring of {kit_name} complete.")
 
 	hub.merge.kit.mirror_repository(hub.META_REPO)
-
+	print("Mirroring of meta-repo complete.")
 
 if __name__ == "__main__":
 	sub_name = os.path.basename(sys.argv[0])
