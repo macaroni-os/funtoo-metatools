@@ -25,8 +25,6 @@ class MergeError(Exception):
 
 
 async def do_kit(kit_dict):
-	if kit_dict["kind"] != "independent":
-		await hub.merge.sources.initialize_sources(kit_dict["source"])
 	hub.cache.metadata.fetch_kit(kit_dict)
 	kit_dict_2, tree_obj, tree_sha1 = await hub.merge.kit.generate_kit(kit_dict)
 	hub.cache.metadata.flush_kit(kit_dict)
@@ -78,6 +76,7 @@ async def main_thread():
 	hub.KIT_SHA1S = defaultdict(dict)
 
 	# Generate core-kit:
+	await hub.merge.sources.initialize_sources(core_kit["source"])
 	kit_dict, tree_obj, tree_sha1 = await do_kit(core_kit)
 	hub.KIT_RESULTS[kit_dict["name"]] = (kit_dict, tree_obj, tree_sha1)
 	hub.KIT_SHA1S[kit_dict["name"]][kit_dict["branch"]] = tree_sha1
@@ -86,7 +85,13 @@ async def main_thread():
 	for source in thread_keys:
 		kit_dict_list = thread_groups[source]
 		regen_futures = []
-		with ThreadPoolExecutor(max_workers=1) as executor:
+		with ThreadPoolExecutor(max_workers=4) as executor:
+
+			# Initialize sources based on the settings of the first kit in the group (they are all identical)
+			kit_dict = kit_dict_list[0]
+			if kit_dict["kind"] != "independent":
+				await hub.merge.sources.initialize_sources(kit_dict["source"])
+
 			for kit_dict in kit_dict_list:
 				future = executor.submit(run_async_adapter, do_kit, kit_dict)
 				regen_futures.append(future)
