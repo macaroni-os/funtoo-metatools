@@ -100,22 +100,26 @@ async def main_thread():
 				hub.KIT_RESULTS[kit_dict["name"]] = (kit_dict, tree_obj, tree_sha1)
 				hub.KIT_SHA1S[kit_dict["name"]][kit_dict["branch"]] = tree_sha1
 
-	if hub.PUSH:
-		kit_push_futures = []
-		with ThreadPoolExecutor(max_workers=8) as executor:
-			# Push all kits, then push meta-repo.
-			for kit_name, kit_tuple in hub.KIT_RESULTS.items():
-				kit_dict, tree_obj, tree_sha1 = kit_tuple
-				future = executor.submit(lambda: tree_obj.gitMirrorPush())
-				kit_push_futures.append(future)
-			for future in as_completed(kit_push_futures):
-				result = future.result()
-
 	# Create meta-repo commit referencing our updated kits:
 	hub.merge.kit.generate_metarepo_metadata(hub.KIT_SHA1S)
-	hub.META_REPO.gitCommit(message="kit updates", skip=["kits"], push=False)
-	if hub.PUSH:
-		hub.META_REPO.gitMirrorPush()
+	hub.META_REPO.gitCommit(message="kit updates", skip=["kits"], push=hub.PUSH)
+
+	if not hub.MIRROR:
+		return
+
+	# Mirroring to GitHub happens here:
+
+	kit_mirror_futures = []
+	with ThreadPoolExecutor(max_workers=8) as executor:
+		# Push all kits, then push meta-repo.
+		for kit_name, kit_tuple in hub.KIT_RESULTS.items():
+			kit_dict, tree_obj, tree_sha1 = kit_tuple
+			future = executor.submit(hub.merge.kit.mirror_repository, tree_obj)
+			kit_mirror_futures.append(future)
+		for future in as_completed(kit_mirror_futures):
+			result = future.result()
+
+	hub.merge.kit.mirror_repository(hub.META_REPO)
 
 
 if __name__ == "__main__":

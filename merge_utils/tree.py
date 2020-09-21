@@ -183,30 +183,10 @@ class Tree:
 			sys.exit(1)
 		if push is True:
 			self.mirrorLocalBranches()
-			if self.mirror:
-				self.mirrorUpstreamRepository(mirror=self.mirror)
 
 	def mirrorLocalBranches(self):
 		# This is a special push command that will push local tags and branches *only*
 		runShell("(cd %s && git push %s %s +refs/heads/* +refs/tags/*)" % (self.root, self.forcepush, self.url))
-
-	def mirrorUpstreamRepository(self, mirror):
-		# This is a special push command that will push all the stuff from origin (branches and tags) *only*
-		# It will skip local branches.
-		runShell("(cd %s && git fetch --prune)" % self.root)
-		runShell(
-			"(cd %s && git push %s --prune %s +refs/remotes/origin/*:refs/heads/* +refs/tags/*:refs/tags/*)"
-			% (self.root, self.forcepush, mirror)
-		)
-
-	def gitMirrorPush(self):
-		runShell(
-			"(cd %s && ( git rev-parse --abbrev-ref --symbolic-full-name @{u} || git branch --set-upstream-to origin/%s))"
-			% (self.root, self.branch)
-		)
-		self.mirrorLocalBranches()
-		if self.mirror:
-			self.mirrorUpstreamRepository(self.mirror)
 
 
 class GitTreeError(Exception):
