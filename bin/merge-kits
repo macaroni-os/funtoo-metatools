@@ -123,6 +123,7 @@ async def main_thread():
 	hub.merge.kit.mirror_repository(hub.META_REPO)
 	print("Mirroring of meta-repo complete.")
 
+
 if __name__ == "__main__":
 	sub_name = os.path.basename(sys.argv[0])
 	int_g = [sub_name, "pkgtools"]
