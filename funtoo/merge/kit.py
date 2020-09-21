@@ -20,7 +20,7 @@ from merge_utils.steps import (
 	RemoveFiles,
 	FindAndRemove,
 )
-from merge_utils.tree import GitTree, run
+from merge_utils.tree import GitTree, runShell
 
 
 def copy_from_fixups_steps(hub, kit_dict=None):
@@ -249,9 +249,9 @@ def mirror_repository(hub, repo_obj):
 	"""
 	base_path = os.path.join(hub.MERGE_CONFIG.temp_path, "mirror_repos")
 	os.makedirs(base_path, exist_ok=True)
-	run(f"git clone - -bare {repo_obj.root} {base_path}/{repo_obj.name}.pushme")
-	run(
+	runShell(f"git clone --bare {repo_obj.root} {base_path}/{repo_obj.name}.pushme")
+	runShell(
 		f"cd {base_path}/{repo_obj.name}.pushme && git remote add upstream {repo_obj.mirror} && git push --mirror upstream"
 	)
-	run(f"rm -rf {base_path}/{repo_obj.name}.pushme")
+	runShell(f"rm -rf {base_path}/{repo_obj.name}.pushme")
 	return repo_obj.name

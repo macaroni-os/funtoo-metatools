@@ -199,15 +199,15 @@ if __name__ == "__main__":
 	loop = asyncio.get_event_loop()
 	loop.run_until_complete(main_thread())
 
-	if len(hub.METADATA_ERRORS):
-		print()
-		print("The following errors were encountered during processing:")
-		print()
-		for error in hub.METADATA_ERRORS:
-			print(f"{error.severity}: {error.ebuild_path}: {error.msg}")
-			if error.output:
-				print("Output: " + error.output)
-				print()
+	#if len(hub.METADATA_ERRORS):
+	#	print()
+	#	print("The following errors were encountered during processing:")
+	#	print()
+	#	for error in hub.METADATA_ERRORS:
+	#		print(f"{error.severity}: {error.ebuild_path}: {error.msg}")
+	#		if error.output:
+	#			print("Output: " + error.output)
+	#			print()
 
 	sys.exit(0)
 
