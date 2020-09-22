@@ -32,7 +32,7 @@ class ThirdPartyMirrors(MergeStep):
 		for line in a:
 			ls = line.split()
 			if len(ls) and ls[0] == "gentoo":
-				b.write("gentoo\t" + ls[1] + " " + mirrors + " " + " ".join(ls[2:]) + "\n")
+				b.write("gentoo\t" + mirrors + " " + " ".join(ls[1:]) + "\n")
 			else:
 				b.write(line)
 		b.write("funtoo %s\n" % mirrors)

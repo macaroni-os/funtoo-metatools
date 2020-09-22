@@ -11,9 +11,13 @@ except ImportError:
 	pass
 
 
-def __init__(hub):
+def init_kit_cache(hub):
 	hub.KIT_CACHE = defaultdict(dict)
 	hub.KIT_CACHE_TOUCHED = defaultdict(lambda: defaultdict(bool))
+
+
+def __init__(hub):
+	hub._.init_kit_cache()
 
 	# mc.create_index("atom")
 	# mc.create_index([("kit", pymongo.ASCENDING), ("category", pymongo.ASCENDING), ("package", pymongo.ASCENDING)])
@@ -40,11 +44,15 @@ def fetch_kit(hub, kit_dict):
 	hub.KIT_CACHE[kit_dict["name"]][kit_dict["branch"]] = atoms
 
 
-def flush_kit(hub, kit_dict):
+def flush_kit(hub, kit_dict, save=True):
 	"""
 	Write out our in-memory copy of our entire kit metadata, which may contain updates.
 
+	If `save` is False, simply empty without saving.
 	"""
+	if not save:
+		hub._.init_kit_cache()
+		return
 	if not hub.KIT_CACHE_TOUCHED[kit_dict["name"]][kit_dict["branch"]]:
 		return
 	if kit_dict["name"] in hub.KIT_CACHE and kit_dict["branch"] in hub.KIT_CACHE[kit_dict["name"]]:

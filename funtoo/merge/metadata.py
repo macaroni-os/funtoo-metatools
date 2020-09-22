@@ -111,9 +111,10 @@ def strip_rev(hub, s):
 def get_catpkg_from_cpvs(hub, cpv_list):
 	"""
 	This function takes a list of things that look like 'sys-apps/foboar-1.2.0-r1' and returns a dict of
-	unique catpkgs found and their exact matches. Note that the input to this function must have version
-	information. This method is not designed to distinguish between non-versioned atoms and versioned
-	ones.
+	unique catpkgs found (as dict keys) and exact matches (in dict value, as a member of a set.)
+
+	Note that the input to this function must have version information. This method is not designed to
+	distinguish between non-versioned atoms and versioned ones.
 	"""
 	catpkgs = defaultdict(set)
 	for cpv in cpv_list:
@@ -153,6 +154,35 @@ def get_eapi_of_ebuild(hub, ebuild_path):
 
 	with open(ebuild_path, "r") as fobj:
 		return _parse_eapi_ebuild_head(fobj.readlines())
+
+
+def extract_manifest_hashes(hub, cp_dir):
+	"""
+	Given a catpkg directory as an argument, attempt to open `Manifest` and extract sha512 (preferred) or
+	sha256 hashes for each DIST entry, and return these in a dict.
+	"""
+	man_info = {}
+	man_file = os.path.join(cp_dir, "/Manifest")
+	if os.path.exists(man_file):
+		man_f = open(man_file, "r")
+		for line in man_f.readlines():
+			ls = line.split()
+			if len(ls) <= 3 or ls[0] != "DIST":
+				continue
+			try:
+				digest_index = ls.index("SHA512") + 1
+				digest_type = "sha512"
+			except ValueError:
+				try:
+					digest_index = ls.index("SHA256") + 1
+					digest_type = "sha256"
+				except ValueError:
+					print("Error: Manifest file %s has invalid format: " % man_file)
+					print(" ", line)
+					continue
+			man_info[ls[1]] = {"size": ls[2], "digest": ls[digest_index], "digest_type": digest_type}
+		man_f.close()
+	return man_info
 
 
 def extract_uris(hub, src_uri):
@@ -440,6 +470,31 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 			f.write(metadata_out)
 
 	return infos
+
+
+def catpkg_generator(repo_path=None):
+
+	"""
+	This function is a generator that will scan a specified path for all valid category/
+	package directories (catpkgs). It will yield paths to these directories. It defines
+	a valid catpkg as a path two levels deep that contains at least one .ebuild file.
+	"""
+
+	cpdirs = defaultdict(set)
+
+	for catdir in os.listdir(repo_path):
+		catpath = os.path.join(repo_path, catdir)
+		if not os.path.isdir(catpath):
+			continue
+		for pkgdir in os.listdir(catpath):
+			pkgpath = os.path.join(catpath, pkgdir)
+			if not os.path.isdir(pkgpath):
+				continue
+			for ebfile in os.listdir(pkgpath):
+				if ebfile.endswith(".ebuild"):
+					if pkgdir not in cpdirs[catdir]:
+						cpdirs[catdir].add(pkgdir)
+						yield os.path.join(pkgpath)
 
 
 def ebuild_generator(ebuild_src=None):

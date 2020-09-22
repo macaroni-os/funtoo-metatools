@@ -208,7 +208,6 @@ class AutoCreatedGitTree(Tree):
 		self.has_cleaned = False
 		self.initialized = False
 		self.commit_sha1 = commit_sha1
-		self.do_fetch = False
 		self.merged = []
 
 	def _initialize_tree(self):
@@ -254,6 +253,7 @@ class GitTree(Tree):
 		origin_check: bool = False,
 		destfix: bool = False,
 		reclone: bool = False,
+		pull: bool = True,
 	):
 
 		# note that if create=True, we are in a special 'local create' mode which is good for testing. We create the repo locally from
@@ -263,7 +263,7 @@ class GitTree(Tree):
 		self.name = name
 		self.url = url
 		self.merged = []
-		self.pull = True
+		self.pull = pull
 		# avoid pulling multiple times:
 		self.pulled = False
 		self.reponame = reponame

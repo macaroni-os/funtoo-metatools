@@ -25,9 +25,6 @@ def get_kit_pre_post_steps(hub, kit_dict):
 				SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "eclass"),
 			],
 			"post": [
-				# news items are not included here anymore
-				SyncDir(hub.FIXUP_REPO.root, "metadata", exclude=["cache", "md5-cache", "layout.conf"]),
-				# add funtoo stuff to thirdpartymirrors
 				ThirdPartyMirrors(),
 				RunSed(["profiles/base/make.defaults"], ["/^PYTHON_TARGETS=/d", "/^PYTHON_SINGLE_TARGET=/d"]),
 			],
