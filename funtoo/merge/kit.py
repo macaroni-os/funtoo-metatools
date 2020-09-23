@@ -83,7 +83,7 @@ def copy_from_fixups_steps(hub, kit_dict=None):
 	return steps
 
 
-async def populate_fastpull_for_kit(hub, kit_dict=None):
+async def get_deepdive_kit_items(hub, kit_dict=None):
 
 	"""
 	This function will read on-disk metadata for a particular kit, and process it, splitting it into individual
