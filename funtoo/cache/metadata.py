@@ -51,7 +51,7 @@ def flush_kit(hub, kit_dict, save=True):
 	If `save` is False, simply empty without saving.
 	"""
 	if not save:
-		hub._.init_kit_cache()
+		hub.KIT_CACHE[kit_dict["name"]][kit_dict["branch"]] = {}
 		return
 	if not hub.KIT_CACHE_TOUCHED[kit_dict["name"]][kit_dict["branch"]]:
 		return

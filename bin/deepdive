@@ -21,15 +21,24 @@ hub = pop.hub.Hub()
 
 
 if __name__ == "__main__":
+	hub.MERGE_CONFIG = config = Configuration()
 	hub.RELEASE = "1.4-release"
 	hub.GIT_CLASS = GitTree
-
+	hub.FIXUP_REPO = GitTree(
+		hub, "kit-fixups", config.branch("kit-fixups"), url=config.kit_fixups, root=config.source_trees + "/kit-fixups",
+	)
+	hub.META_REPO = meta_repo = GitTree(
+		hub, "meta-repo", branch=hub.RELEASE, url=config.meta_repo, root=config.dest_trees + "/meta-repo", origin_check=True
+	)
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools")
 	hub.pop.sub.add("funtoo.cache")
 
+	hub.META_REPO.initialize()
+	hub.FIXUP_REPO.initialize()
+
 	hub.KIT_GROUPS = list(hub.merge.foundations.kit_groups())
-	pipeline_keys, pipeline_groups = hub.merge.source.get_kits_in_correct_processing_order()
+	pipeline_keys, pipeline_groups = hub.merge.sources.get_kits_in_correct_processing_order()
 
 	hub.DEEPDIVE.delete_many({})
 
@@ -44,5 +53,8 @@ if __name__ == "__main__":
 				future = executor.submit(run_async_adapter, hub.merge.kit.get_deepdive_kit_items, kit_dict)
 				update_futures.append(future)
 			for future in as_completed(update_futures):
-				result = future.result()
-
+				kit_dict, items_to_insert = future.result()
+				if len(items_to_insert):
+					hub.DEEPDIVE.insert_many(items_to_insert)
+				else:
+					print(f"****** WARNING: got zero items from {kit_dict['name']} branch {kit_dict['branch']}")

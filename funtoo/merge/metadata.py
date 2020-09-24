@@ -472,7 +472,7 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 	return infos
 
 
-def catpkg_generator(repo_path=None):
+def catpkg_generator(hub, repo_path=None):
 
 	"""
 	This function is a generator that will scan a specified path for all valid category/

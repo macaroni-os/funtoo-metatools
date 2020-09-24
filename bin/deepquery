@@ -1,0 +1,33 @@
+#!/usr/bin/python3
+
+import asyncio
+import logging
+import os
+import sys
+from collections import defaultdict, OrderedDict
+from concurrent.futures import as_completed
+from concurrent.futures.thread import ThreadPoolExecutor
+from datetime import datetime
+
+import pop.hub
+
+from funtoo.pkgtools.thread import run_async_adapter
+from merge_utils.config import Configuration
+from merge_utils.tree import GitTree, AutoCreatedGitTree
+
+hub_logger = logging.getLogger("pop.hub")
+hub_logger.setLevel(logging.DEBUG)
+hub = pop.hub.Hub()
+
+
+if __name__ == "__main__":
+	hub.pop.sub.add("funtoo.merge")
+
+	nodep_catpkgs = set()
+	for pypak in hub.DEEPDIVE.find({"category": "dev-python"}):
+		dep_on_me = hub.DEEPDIVE.count_documents({"relations": {"$in": [pypak["catpkg"]]}})
+		if dep_on_me == 0:
+			nodep_catpkgs.add(pypak["catpkg"])
+
+	for item in sorted(list(nodep_catpkgs)):
+		print(item)

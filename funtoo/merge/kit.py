@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import sys
 from collections import defaultdict
 
 from merge_utils.steps import (
@@ -95,10 +96,11 @@ async def get_deepdive_kit_items(hub, kit_dict=None):
 	# load on-disk JSON metadata cache into memory:
 	hub.cache.metadata.fetch_kit(kit_dict)
 
-	out_tree = await hub._.checkout_kit(kit_dict)
+	out_tree = await hub._.checkout_kit(kit_dict, pull=False)
 
 	catpkg_hashes = {}
 
+	print(f"Extracting Manifest data from {kit_dict['name']}")
 	# Read in sha512/256 hashes from Manifest files for this kit:
 	for catpkg_dir in hub.merge.metadata.catpkg_generator(out_tree.root):
 		hashes = hub.merge.metadata.extract_manifest_hashes(catpkg_dir)
@@ -107,30 +109,42 @@ async def get_deepdive_kit_items(hub, kit_dict=None):
 		d_split = catpkg_dir.split("/")
 		catpkg = d_split[-2] + "/" + d_split[-1]
 		catpkg_hashes[catpkg] = hashes
+	print(f"Extracting Manifest data from {kit_dict['name']} == done")
 
 	bulk_insert = []
-
+	head_sha1 = headSHA1(out_tree.root)
 	# Grab our fancy JSON record containing lots of kit information and prep it for insertion into MongoDB:
-	for atom, json_data in hub.KIT_CACHE[kit_dict["name"]][out_tree.branch].items():
+	print(f"OUT TREE BRANCH {kit_dict['name']} {out_tree.branch}")
+	try:
+		for atom, json_data in hub.KIT_CACHE[kit_dict["name"]][out_tree.branch].items():
 
-		final_name_to_uri_dict = hub.merge.metadata.extract_uris(json_data["metadata"]["SRC_URI"])
-		json_data["sources"] = []
+			final_name_to_uri_dict = hub.merge.metadata.extract_uris(json_data["metadata"]["SRC_URI"])
+			json_data["sources"] = []
 
-		for final_name, uri_list in final_name_to_uri_dict.items():
-			source_entry = {"name": final_name, "uris": uri_list}
-			if json_data["catpkg"] in catpkg_hashes:
-				# add hashes to our sources record
-				source_entry.update(catpkg_hashes[json_data["catpkg"]])
-			json_data["sources"].append(source_entry)
-			json_data["commit"] = headSHA1(out_tree.root)
-
-		bulk_insert.append(json_data)
-
+			for final_name, uri_list in final_name_to_uri_dict.items():
+				source_entry = {"name": final_name, "uris": uri_list}
+				if json_data["catpkg"] in catpkg_hashes:
+					# add hashes to our sources record
+					source_entry.update(catpkg_hashes[json_data["catpkg"]])
+				json_data["sources"].append(source_entry)
+				json_data["commit"] = head_sha1
+			sys.stdout.write(".")
+			sys.stdout.flush()
+			bulk_insert.append(json_data)
+	except KeyError as ke:
+		print(f"Encountered error when processing {kit_dict['name']} {kit_dict['branch']}")
+		print(f"Kit cache keys: ")
+		for key in hub.KIT_CACHE.keys():
+			print(f"KEY {key}")
+			for nextkey in hub.KIT_CACHE[key].keys():
+				print(f" * {nextkey}")
+		raise ke
 	hub.cache.metadata.flush_kit(kit_dict, save=False)
-	return bulk_insert
+	print(f"Got {len(bulk_insert)} items to bulk insert for {kit_dict['name']} branch {kit_dict['branch']}.")
+	return kit_dict, bulk_insert
 
 
-async def checkout_kit(hub, kit_dict=None):
+async def checkout_kit(hub, kit_dict=None, pull=None):
 
 	kind = kit_dict["kind"]
 	branch = kit_dict["branch"]
@@ -140,7 +154,7 @@ async def checkout_kit(hub, kit_dict=None):
 		# For independent kits, we must clone the source tree
 		git_class = GitTree
 		kwargs["url"] = hub.MERGE_CONFIG.url(kit_dict["name"], kind="indy")
-		if not hub.PROD:
+		if not getattr(hub, "PROD", False):
 			# If generating indy kits locally, the indy kit was sourced from the Internet, so it's not an
 			# AutoCreatedGitTree (we had to pull it.) But it will diverge from upstream. So we can't really
 			# keep pulling in upstream changes:
@@ -150,10 +164,17 @@ async def checkout_kit(hub, kit_dict=None):
 		git_class = getattr(hub, "GIT_CLASS", GitTree)
 		kwargs["url"] = hub.MERGE_CONFIG.url(kit_dict["name"], kind="auto")
 
-	if hub.MIRROR:
-		kwargs["mirror"] = hub.MERGE_CONFIG.mirror.rstrip("/") + "/" + kit_dict["name"]
+	# Allow overriding of pull behavior.
+	if pull is not None:
+		kwargs["pull"] = pull
 
-	if hub.NEST_KITS:
+	try:
+		if hub.MIRROR:
+			kwargs["mirror"] = hub.MERGE_CONFIG.mirror.rstrip("/") + "/" + kit_dict["name"]
+	except AttributeError:
+		pass
+
+	if getattr(hub, "NEST_KITS", True):
 		root = os.path.join(hub.MERGE_CONFIG.dest_trees, "meta-repo/kits", kit_dict["name"])
 	else:
 		root = os.path.join(hub.MERGE_CONFIG.dest_trees, kit_dict["name"])
