@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import asyncio
 import hashlib
 import logging
@@ -6,38 +7,48 @@ import os
 import sys
 from subprocess import getstatusoutput
 
+"""
+This sub deals with the higher-level logic related to downloading of distfiles. Where the 'fetch.py'
+sub deals with grabbing HTTP data from APIs, this is much more geared towards grabbing tarballs that
+are bigger, and organizing them into a distfiles directory. This includes calculating cryptographic
+hashes on the resultant downloads and ensuring they match what we expect.
+
+The implementation is based around a class called `Download`.
+
+Because autogen is multi-threaded, it's possible for two autogens to try downloading the same file
+at the same time. If they create a `Download` object, this special class will do the magic of looking
+at `hub.DL_ACTIVE` for any active downloads of the same file, and if one exists, it will not fire
+off a new download but instead wait for the existing download to complete. So the 'downloader'
+(code trying to download the file) can remain ignorant of the fact that the download was already
+started previously.
+
+This allows multi-threaded downloads of potentially identical files to work without complication in
+the autogen.py files or generators so that this complexity does not have to be dealt with by those
+who are simply writing autogens.
+"""
+
 
 def __init__(hub):
+
 	hub.CHECK_DISK_HASHES = False
 	hub.DL_ACTIVE = {}
+	# This DL_ACTIVE_COUNT is used to limit the number of simultaneous downloads (to 24):
 	hub.DL_ACTIVE_COUNT = asyncio.Semaphore(value=24, loop=asyncio.get_event_loop())
 
 
-HASHES = ["sha512", "blake2b"]
+HASHES = ["sha256", "sha512", "blake2b"]
 
 # TODO: implement different download strategies with different levels of security. Maybe as a
 #       declarative pipeline.
 
 
-def get_final_path(hub, artifact):
-	return os.path.join(hub.TEMP_PATH, "distfiles", artifact.final_name)
-
-
-def _temp_path(hub, artifact):
-	return os.path.join(hub.TEMP_PATH, "distfiles", "%s.__download__" % artifact.final_name)
-
-
-def is_fetched(hub, artifact):
-	return os.path.exists(get_final_path(hub, artifact))
-
-
 async def ensure_fetched(hub, artifact):
-	if is_fetched(hub, artifact):
+	if artifact.is_fetched(hub, artifact):
 		if artifact.final_data is not None:
 			return
 		else:
 			# TODO: put this in a threadpool to avoid multiple simultaneous hash calcs on same file:
-			artifact.record_final_data(await calc_hashes(hub, get_final_path(hub, artifact)))
+			artifact.record_final_data(await calc_hashes(hub, artifact.final_path))
 	else:
 		if artifact.final_name in hub.DL_ACTIVE:
 			# Active download -- wait for it to finish:
@@ -104,9 +115,10 @@ async def _download(hub, artifact):
 	"""
 
 	logging.info(f"Fetching {artifact.url}...")
-	os.makedirs(os.path.join(hub.TEMP_PATH, "distfiles"), exist_ok=True)
-	temp_path = _temp_path(hub, artifact)
-	final_path = get_final_path(hub, artifact)
+
+	temp_path = artifact.temp_path
+	os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+	final_path = artifact.final_path
 
 	fd = open(temp_path, "wb")
 	hashes = {}
@@ -142,7 +154,7 @@ async def _download(hub, artifact):
 
 
 def extract_path(hub, artifact):
-	return os.path.join(hub.TEMP_PATH, "distfile", "extract", artifact.final_name)
+	return os.path.join(hub.TEMP_PATH, artifact.subsystem + "_extract", artifact.final_name)
 
 
 def extract(hub, artifact):
@@ -151,7 +163,7 @@ def extract(hub, artifact):
 		artifact.fetch()
 	ep = extract_path(hub, artifact)
 	os.makedirs(ep, exist_ok=True)
-	cmd = "tar -C %s -xf %s" % (ep, get_final_path(hub, artifact))
+	cmd = "tar -C %s -xf %s" % (ep, artifact.final_path)
 	s, o = getstatusoutput(cmd)
 	if s != 0:
 		raise hub.pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
@@ -159,7 +171,7 @@ def extract(hub, artifact):
 
 def cleanup(hub, artifact):
 	# TODO: check for path stuff like ../.. in final_name to avoid security issues.
-	getstatusoutput("rm -rf " + os.path.join(hub.TEMP_PATH, "distfiles", "extract", artifact.final_name))
+	getstatusoutput("rm -rf " + os.path.join(hub.TEMP_PATH, artifact.subsystem + "_extract", artifact.final_name))
 
 
 async def calc_hashes(hub, fn):

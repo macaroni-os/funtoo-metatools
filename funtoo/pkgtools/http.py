@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-from urllib.parse import urlparse
 
+from urllib.parse import urlparse
 import aiohttp
 from tornado import httpclient
 from tornado.httpclient import HTTPRequest
@@ -8,9 +8,36 @@ import sys
 import logging
 import socket
 
+"""
+This sub implements lower-level HTTP fetching logic, such as actually grabbing the data, sending the
+proper headers and authentication, etc.
+"""
+
 
 http_data_timeout = 60
 chunk_size = 262144
+
+
+def get_fetch_headers(hub):
+	"""
+	Headers to send for all HTTP requests.
+	"""
+	return {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
+
+
+def get_auth_kwargs(hub, url):
+	"""
+	Keyword arguments to aiohttp ClientSession.get() for authentication to certain URLs based on configuration
+	in ~/.autogen (YAML format.)
+	"""
+	kwargs = {}
+	if "authentication" in hub.AUTOGEN_CONFIG:
+		parsed_url = urlparse(url)
+		if parsed_url.hostname in hub.AUTOGEN_CONFIG["authentication"]:
+			auth_info = hub.AUTOGEN_CONFIG["authentication"][parsed_url.hostname]
+			logging.warning(f"Using authentication (username {auth_info['username']}) for {url}")
+			kwargs = {"auth": aiohttp.BasicAuth(auth_info["username"], auth_info["password"])}
+	return kwargs
 
 
 async def http_fetch_stream(hub, url, on_chunk):
@@ -21,10 +48,11 @@ async def http_fetch_stream(hub, url, on_chunk):
 	returns successfully then the download completed successfully.
 	"""
 	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub.pkgtools.dns.get_resolver(), ssl=False)
-	headers = {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
 	try:
 		async with aiohttp.ClientSession(connector=connector) as http_session:
-			async with http_session.get(url, headers=headers, timeout=None) as response:
+			async with http_session.get(
+				url, headers=hub._.get_fetch_headers(), timeout=None, **hub._.get_auth_kwargs(url)
+			) as response:
 				if response.status != 200:
 					reason = (await response.text()).strip()
 					raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}")
@@ -50,16 +78,10 @@ async def http_fetch(hub, url):
 	string and return the entire content as a string.
 	"""
 	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub.pkgtools.dns.get_resolver(), ssl=False)
-	headers = {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
 	async with aiohttp.ClientSession(connector=connector) as http_session:
-		kwargs = {}
-		if "authentication" in hub.AUTOGEN_CONFIG:
-			parsed_url = urlparse(url)
-			if parsed_url.hostname in hub.AUTOGEN_CONFIG["authentication"]:
-				auth_info = hub.AUTOGEN_CONFIG["authentication"][parsed_url.hostname]
-				logging.warning(f"Using authentication (username {auth_info['username']}) for {url}")
-				kwargs = {"auth": aiohttp.BasicAuth(auth_info["username"], auth_info["password"])}
-		async with http_session.get(url, headers=headers, timeout=None, **kwargs) as response:
+		async with http_session.get(
+			url, headers=hub._.get_fetch_headers(), timeout=None, **hub._.get_auth_kwargs(url)
+		) as response:
 			if response.status != 200:
 				reason = (await response.text()).strip()
 				raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason}")

@@ -5,6 +5,11 @@ import logging
 import sys
 from enum import Enum
 
+"""
+This sub implements high-level fetching logic. Not the lower-level HTTP stuff. Things involving
+retrying, using our fetch cache, etc.
+"""
+
 
 def __init__(hub):
 	hub.FETCH_ATTEMPTS = 3

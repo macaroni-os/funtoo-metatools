@@ -16,6 +16,7 @@ def __init__(hub):
 	global HUB
 	HUB = hub
 	hub.MANIFEST_LINES = defaultdict(set)
+	hub.FETCH_SUBSYSTEM = "fastpull"
 
 
 class BreezyError(Exception):
@@ -36,10 +37,26 @@ class Fetchable:
 
 
 class Artifact(Fetchable):
-	def __init__(self, url=None, final_name=None, **kwargs):
+	def __init__(self, url=None, final_name=None, final_path=None, **kwargs):
 		super().__init__(url=url, **kwargs)
 		self._final_name = final_name
 		self.final_data = None
+		self._final_path = final_path
+
+	@property
+	def temp_path(self):
+		return os.path.join(self.hub.TEMP_PATH, self.hub.FETCH_SUBSYSTEM, "%s.__download__" % self.final_name)
+
+	@property
+	def extract_path(self):
+		return os.path.join(self.hub.TEMP_PATH, self.hub.FETCH_SUBSYSTEM + "-extract", self.final_name)
+
+	@property
+	def final_path(self):
+		if self._final_path:
+			return self._final_path
+		else:
+			return os.path.join(self.hub.TEMP_PATH, self.hub.FETCH_SUBSYSTEM, self.final_name)
 
 	@property
 	def final_name(self):
@@ -48,21 +65,20 @@ class Artifact(Fetchable):
 		else:
 			return self._final_name
 
-	@property
-	def extract_path(self):
-		return self.hub.pkgtools.download.extract_path(self)
-
 	async def fetch(self):
 		await self.hub.pkgtools.download.ensure_fetched(self)
 
 	def is_fetched(self):
-		return self.hub.pkgtools.download.is_fetched(self)
+		return os.path.exists(self.final_path)
 
 	async def ensure_fetched(self):
 		await self.fetch()
 
 	def record_final_data(self, final_data):
 		self.final_data = final_data
+		if self.hub.FETCH_SUBSYSTEM == "fastpull":
+			# Store in fastpull:
+			self.hub.pkgtools.fastpull.download_completion_hook(self)
 
 	@property
 	def hashes(self):
@@ -89,7 +105,7 @@ class Artifact(Fetchable):
 		return self.hub.pkgtools.download.cleanup(self)
 
 	def exists(self):
-		return self.hub.pkgtools.is_fetched(self)
+		return self.is_fetched()
 
 
 class BreezyBuild:
@@ -143,14 +159,11 @@ class BreezyBuild:
 	async def setup(self):
 		"""
 		This method ensures that Artifacts are instantiated (if dictionaries were passed in instead of live
-		Artifact objects) -- and that their setup() method is called, which may actually do fetching, if the
+		Artifact objects) -- and that their ensure_fetched() method is called, which may actually do fetching, if the
 		local archive is not available for generating digests.
 
 		Note that this now parallelizes all downloads.
 		"""
-
-		# TODO: if not fetched, we need to wait on something that will return when the file is actually
-		#       fetched.
 
 		futures = []
 
