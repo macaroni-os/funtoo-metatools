@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from urllib.parse import urlparse
 
 import aiohttp
 from tornado import httpclient
@@ -51,7 +52,14 @@ async def http_fetch(hub, url):
 	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub.pkgtools.dns.get_resolver(), ssl=False)
 	headers = {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
 	async with aiohttp.ClientSession(connector=connector) as http_session:
-		async with http_session.get(url, headers=headers, timeout=None) as response:
+		kwargs = {}
+		if "authentication" in hub.AUTOGEN_CONFIG:
+			parsed_url = urlparse(url)
+			if parsed_url.hostname in hub.AUTOGEN_CONFIG["authentication"]:
+				auth_info = hub.AUTOGEN_CONFIG["authentication"][parsed_url.hostname]
+				logging.warning(f"Using authentication (username {auth_info['username']}) for {url}")
+				kwargs = {"auth": aiohttp.BasicAuth(auth_info["username"], auth_info["password"])}
+		async with http_session.get(url, headers=headers, timeout=None, **kwargs) as response:
 			if response.status != 200:
 				reason = (await response.text()).strip()
 				raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason}")

@@ -93,16 +93,16 @@ async def get_deepdive_kit_items(hub, kit_dict=None):
 	be added to each record.
 	"""
 
-	# load on-disk JSON metadata cache into memory:
-	hub.cache.metadata.fetch_kit(kit_dict)
+	repo_obj = await hub._.checkout_kit(kit_dict, pull=False)
 
-	out_tree = await hub._.checkout_kit(kit_dict, pull=False)
+	# load on-disk JSON metadata cache into memory:
+	hub.cache.metadata.fetch_kit(repo_obj)
 
 	catpkg_hashes = {}
 
 	print(f"Extracting Manifest data from {kit_dict['name']}")
 	# Read in sha512/256 hashes from Manifest files for this kit:
-	for catpkg_dir in hub.merge.metadata.catpkg_generator(out_tree.root):
+	for catpkg_dir in hub.merge.metadata.catpkg_generator(repo_obj.root):
 		hashes = hub.merge.metadata.extract_manifest_hashes(catpkg_dir)
 		if not hashes:
 			continue
@@ -112,11 +112,11 @@ async def get_deepdive_kit_items(hub, kit_dict=None):
 	print(f"Extracting Manifest data from {kit_dict['name']} == done")
 
 	bulk_insert = []
-	head_sha1 = headSHA1(out_tree.root)
+	head_sha1 = headSHA1(repo_obj.root)
 	# Grab our fancy JSON record containing lots of kit information and prep it for insertion into MongoDB:
-	print(f"OUT TREE BRANCH {kit_dict['name']} {out_tree.branch}")
+	print(f"OUT TREE BRANCH {kit_dict['name']} {repo_obj.branch}")
 	try:
-		for atom, json_data in hub.KIT_CACHE[kit_dict["name"]][out_tree.branch].items():
+		for atom, json_data in repo_obj.KIT_CACHE.items():
 
 			final_name_to_uri_dict = hub.merge.metadata.extract_uris(json_data["metadata"]["SRC_URI"])
 			json_data["sources"] = []
@@ -133,13 +133,8 @@ async def get_deepdive_kit_items(hub, kit_dict=None):
 			bulk_insert.append(json_data)
 	except KeyError as ke:
 		print(f"Encountered error when processing {kit_dict['name']} {kit_dict['branch']}")
-		print(f"Kit cache keys: ")
-		for key in hub.KIT_CACHE.keys():
-			print(f"KEY {key}")
-			for nextkey in hub.KIT_CACHE[key].keys():
-				print(f" * {nextkey}")
 		raise ke
-	hub.cache.metadata.flush_kit(kit_dict, save=False)
+	hub.cache.metadata.flush_kit(repo_obj, save=False)
 	print(f"Got {len(bulk_insert)} items to bulk insert for {kit_dict['name']} branch {kit_dict['branch']}.")
 	return kit_dict, bulk_insert
 
@@ -196,12 +191,15 @@ async def generate_kit(hub, kit_dict=None):
 	contents of the git repo, and copying everything over again, updating metadata cache, etc. and then committing (and
 	possibly pushing) the result.
 
+	It will also work for 'independent' kits but will simply re-generate the metadata cache and ensure proper
+	housekeeping is done.
+
 	"""
 
-	# load on-disk JSON metadata cache into memory:
-	hub.cache.metadata.fetch_kit(kit_dict)
-
 	out_tree = await hub._.checkout_kit(kit_dict)
+
+	# load on-disk JSON metadata cache into memory:
+	hub.cache.metadata.fetch_kit(out_tree)
 
 	steps = []
 
@@ -251,7 +249,7 @@ async def generate_kit(hub, kit_dict=None):
 		hub.ECLASS_ROOT = out_tree.root
 		hub.ECLASS_HASHES = hub.merge.metadata.get_eclass_hashes(hub.ECLASS_ROOT)
 
-	# We will execute all the steps that we have queued up to this point, which will result in hub.METADATA_ENTRIES
+	# We will execute all the steps that we have queued up to this point, which will result in out_tree.KIT_CACHE
 	# being populated with all the metadata from the kit. Which will allow the next steps to run successfully.
 
 	await out_tree.run([GenCache()])
@@ -275,7 +273,7 @@ async def generate_kit(hub, kit_dict=None):
 	out_tree.gitCommit(message=update_msg, push=hub.PUSH)
 
 	# save in-memory metadata cache to JSON:
-	hub.cache.metadata.flush_kit(kit_dict)
+	hub.cache.metadata.flush_kit(out_tree)
 
 	return kit_dict, out_tree, out_tree.head()
 
@@ -316,7 +314,6 @@ def generate_metarepo_metadata(hub, output_sha1s):
 		k_info["kit_settings"] = out_settings
 
 		# auto-generate release-defs. We used to define them manually in foundation:
-		print(list(hub.KIT_GROUPS))
 		rdefs = {}
 		for kit_name in all_kit_names:
 			rdefs[kit_name] = []

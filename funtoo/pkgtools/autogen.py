@@ -4,6 +4,8 @@ import subprocess
 import os
 import traceback
 import sys
+
+import yaml
 from yaml import safe_load
 import logging
 
@@ -210,11 +212,21 @@ async def generate_yaml_autogens(hub):
 	await asyncio.gather(*pending_tasks)
 
 
+def load_autogen_config(hub):
+	path = os.path.expanduser("~/.autogen")
+	if os.path.exists(path):
+		with open(path, "r") as f:
+			hub.AUTOGEN_CONFIG = yaml.safe_load(f)
+	else:
+		hub.AUTOGEN_CONFIG = {}
+
+
 async def start(hub, start_path=None, out_path=None, temp_path=None, cacher=None, fetcher=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
+	hub._.load_autogen_config()
 	hub.CACHER = cacher
 	hub.FETCHER = fetcher
 	hub.TEMP_PATH = temp_path

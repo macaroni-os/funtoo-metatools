@@ -2,12 +2,12 @@
 
 import hashlib
 import json
+import logging
 import os
 import re
 import sys
 from collections import defaultdict
 from concurrent.futures.thread import ThreadPoolExecutor
-from enum import Enum
 from multiprocessing import cpu_count
 from concurrent.futures import as_completed
 
@@ -15,22 +15,29 @@ from merge_utils.tree import run
 
 
 def __init__(hub):
-	hub.METADATA_ERRORS = []
+	hub.METADATA_GEN_ERRORS = defaultdict(list)
+	hub.METADATA_MISC_ERRORS = defaultdict(list)
 
 
-class Severity(Enum):
-	FATAL = 0
-	VERYBAD = 1
-	NONFATAL = 2
-	WARNING = 3
-	SHOULDFIX = 4
-	ANOMALY = 5
-	NOTE = 6
+def display_error_summary(hub):
+	repo_objs_sorted = sorted(list(hub.METADATA_GEN_ERRORS.keys()), key=lambda x: len(hub.METADATA_GEN_ERRORS[x]))
+	if len(repo_objs_sorted):
+		logging.warning("The following kits had errors during metadata extraction:")
+		for repo_obj in repo_objs_sorted:
+			branch_info = f"{repo_obj.name} branch {repo_obj.branch}".ljust(30)
+			logging.warning(f"* {branch_info} -- {len(hub.METADATA_GEN_ERRORS[repo_obj])} errors.")
+			outpath = os.path.join(hub.MERGE_CONFIG.temp_path, f"metadata-errors-{repo_obj.name}-{repo_obj.branch}.log")
+			out = []
+			for item in hub.METADATA_GEN_ERRORS[repo_obj]:
+				out.append({"ebuild_path": item.ebuild_path, "msg": item.msg, "output": item.output})
+			with open(outpath, "w") as f:
+				f.write(json.dumps(out, indent=4))
+		logging.warning(f"Metadata errors logged to {hub.MERGE_CONFIG.temp_path}.")
 
 
 class MetadataError:
-	def __init__(self, severity=None, ebuild_path=None, output=None, msg=None):
-		self.severity = severity
+	def __init__(self, repo=None, ebuild_path=None, output=None, msg=None):
+		self.repo = repo
 		self.ebuild_path = ebuild_path
 		self.output = output
 		self.msg = msg
@@ -300,7 +307,15 @@ class EclassHashCollection:
 		return new_obj
 
 
-def extract_ebuild_metadata(hub, atom, ebuild_path=None, env=None, eclass_paths=None):
+def record_gen_error(hub, repo=None, ebuild_path=None, output=None, msg=None):
+	hub.METADATA_GEN_ERRORS[repo].append(MetadataError(repo=repo, ebuild_path=ebuild_path, output=output, msg=msg))
+
+
+def record_misc_error(hub, repo=None, ebuild_path=None, output=None, msg=None):
+	hub.METADATA_MISC_ERRORS[repo].append(MetadataError(repo=repo, ebuild_path=ebuild_path, output=output, msg=msg))
+
+
+def extract_ebuild_metadata(hub, repo_obj, atom, ebuild_path=None, env=None, eclass_paths=None):
 	infos = {"HASH_KEY": atom}
 	env["PATH"] = "/bin:/usr/bin"
 	env["LC_COLLATE"] = "POSIX"
@@ -321,13 +336,8 @@ def extract_ebuild_metadata(hub, atom, ebuild_path=None, env=None, eclass_paths=
 	env["PORTAGE_PIPE_FD"] = "1"
 	result = run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
 	if result.returncode != 0:
-		hub.METADATA_ERRORS.append(
-			MetadataError(
-				severity=Severity.NONFATAL,
-				msg=f"Ebuild had non-zero returncode {result.returncode}",
-				ebuild_path=ebuild_path,
-				output=result.stderr,
-			)
+		hub._.record_gen_error(
+			repo=repo_obj, msg=f"non-zero returncode {result.returncode}", ebuild_path=ebuild_path, output=result.stderr
 		)
 	try:
 		# Extract results:
@@ -340,20 +350,13 @@ def extract_ebuild_metadata(hub, atom, ebuild_path=None, env=None, eclass_paths=
 			line += 1
 		if line != len(METADATA_LINES):
 			missing = set(METADATA_LINES) - found
-			hub.METADATA_ERRORS.append(
-				MetadataError(
-					Severity.FATAL,
-					msg=f"Could not extract all metadata. Missing: {missing}",
-					ebuild_path=ebuild_path,
-					output=result.stderr,
-				)
+			hub._.record_gen_error(
+				msg=f"Missing metadata: {' '.join(missing)}", repo=repo_obj, ebuild_path=ebuild_path, output=result.stderr
 			)
 			return None
 		return infos
 	except (FileNotFoundError, IndexError) as e:
-		hub.METADATA_ERRORS.append(
-			MetadataError(severity=Severity.FATAL, msg=f"Exception: {str(e)}", ebuild_path=ebuild_path)
-		)
+		hub._.record_gen_error(repo=repo_obj, msg=f"Exception: {str(e)}", ebuild_path=ebuild_path)
 		return None
 
 
@@ -385,12 +388,17 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 
 	# Try to see if we already have this metadata in our kit metadata cache.
 	existing = hub.cache.metadata.get_atom(repo, atom, ebuild_md5, eclass_hashes)
+	repo.KIT_CACHE_RETRIEVED_ATOMS.add(atom)
 
 	if existing:
+
 		infos = existing["metadata"]
 		metadata_out = existing["metadata_out"]
-		# print(json.dumps(infos, indent=4))
+		# TODO: Note - this may be a 'dud' existing entry where there was a metadata failure previously.
 	else:
+		sys.stdout.write("*")
+		sys.stdout.flush()
+		repo.KIT_CACHE_MISSES.add(atom)
 		env = {}
 		env["PF"] = os.path.basename(ebuild_path)[:-7]
 		env["CATEGORY"] = ebuild_path.split("/")[-3]
@@ -407,22 +415,24 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 		env["PN"] = pkg_only
 		env["PVR"] = env["PF"][len(env["PN"]) + 1 :]
 
-		infos = hub._.extract_ebuild_metadata(atom, ebuild_path, env, eclass_paths)
-		if infos is None:
-			return None
+		infos = hub._.extract_ebuild_metadata(repo, atom, ebuild_path, env, eclass_paths)
 
 		eclass_out = ""
 		eclass_tuples = []
 
-		if infos["INHERITED"]:
+		# TODO: do we have a situation where because we can't extract inheritance information, if we fail with
+		# metadata extraction then we will not know if and when we should attempt to re-try the metadata extraction?
+		# Therefore we should record *all* eclass hashes (or a hash of hashes) that we check to see if changed along
+		# with the ebuild md5 to tell if we should attempt to retry the extraction. Or we could keep retrying every
+		# time. Maybe?
+
+		if infos and infos["INHERITED"]:
 
 			# Do common pre-processing for eclasses:
 
 			for eclass_name in sorted(infos["INHERITED"].split()):
 				if eclass_name not in eclass_hashes:
-					hub.METADATA_ERRORS.append(
-						MetadataError(Severity.SHOULDFIX, msg=f"Can't find eclass hash for {eclass_name}", ebuild_path=ebuild_path)
-					)
+					hub._.record_misc_error(repo=repo, msg=f"Can't find eclass hash for {eclass_name}", ebuild_path=ebuild_path)
 					continue
 				try:
 					eclass_out += f"\t{eclass_name}\t{eclass_hashes[eclass_name]}"
@@ -433,20 +443,24 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 					sys.exit(1)
 
 		metadata_out = ""
-		for key in AUXDB_LINES:
-			if infos[key] != "":
-				metadata_out += key + "=" + infos[key] + "\n"
-		if len(eclass_out):
-			metadata_out += "_eclasses_=" + eclass_out[1:] + "\n"
-		metadata_out += "_md5_=" + get_md5(ebuild_path) + "\n"
+		if infos:
+			# if metdata extraction successful...
+			for key in AUXDB_LINES:
+				if infos[key] != "":
+					metadata_out += key + "=" + infos[key] + "\n"
+			if len(eclass_out):
+				metadata_out += "_eclasses_=" + eclass_out[1:] + "\n"
+			metadata_out += "_md5_=" + get_md5(ebuild_path) + "\n"
 
 		# Extended metadata calculation:
 
 		td_out = {}
 		relations = set()
-		for key in ["DEPEND", "RDEPEND", "PDEPEND", "BDEPEND", "HDEPEND"]:
-			if infos[key]:
-				relations = relations | hub._.get_catpkg_relations_from_depstring(infos[key])
+		if infos:
+			# if metadata extraction successful...
+			for key in ["DEPEND", "RDEPEND", "PDEPEND", "BDEPEND", "HDEPEND"]:
+				if infos[key]:
+					relations = relations | hub._.get_catpkg_relations_from_depstring(infos[key])
 
 		td_out["relations"] = sorted(list(relations))
 		td_out["category"] = env["CATEGORY"]
@@ -460,9 +474,10 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 		td_out["metadata"] = infos
 		td_out["md5"] = ebuild_md5
 		td_out["metadata_out"] = metadata_out
-		hub.cache.metadata.update_atom(td_out)
+		hub.cache.metadata.update_atom(repo, td_out)
 
-	if write_cache:
+	if infos and write_cache:
+		# if we successfully extracted metadata and we are told to write cache, write the cache entry:
 		metadata_outpath = os.path.join(repo.root, "metadata/md5-cache")
 		final_md5_outpath = os.path.join(metadata_outpath, atom)
 		os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
@@ -586,7 +601,6 @@ def gen_cache(hub, repo):
 			else:
 				# Record all metadata in-memory so it's available later.
 				hash_key = data["HASH_KEY"]
-				repo.METADATA_ENTRIES[hash_key] = data
 				sys.stdout.write(".")
 				sys.stdout.flush()
 
@@ -596,7 +610,11 @@ def gen_cache(hub, repo):
 async def get_python_use_lines(hub, repo, catpkg, cpv_list, cur_tree, def_python, bk_python):
 	ebs = {}
 	for cpv in cpv_list:
-		imps = repo.METADATA_ENTRIES[cpv]["PYTHON_COMPAT"].split()
+		metadata = repo.KIT_CACHE[cpv]["metadata"]
+		if not metadata:
+			imps = []
+		else:
+			imps = metadata["PYTHON_COMPAT"].split()
 
 		# For anything in PYTHON_COMPAT that we would consider equivalent to python3_7, we want to
 		# set python3_7 instead. This is so we match the primary python implementation correctly
@@ -606,13 +624,12 @@ async def get_python_use_lines(hub, repo, catpkg, cpv_list, cur_tree, def_python
 		new_imps = set()
 		for imp in imps:
 			if imp in ["python3_5", "python3_6"]:
-				hub.METADATA_ERRORS.append(
-					MetadataError(
-						severity=Severity.SHOULDFIX,
-						ebuild_path=f"{cur_tree}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
-						msg=f"Old {imp} referenced in PYTHON_COMPAT",
-					)
+				hub._.record_misc_error(
+					repo=repo,
+					ebuild_path=f"{cur_tree}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
+					msg=f"Old {imp} referenced in PYTHON_COMPAT",
 				)
+
 				# The eclass bumps these to python3_7. We do the same to get correct results:
 				new_imps.add(def_python)
 			elif imp in ["python3+", "python3_7+"]:
@@ -626,12 +643,10 @@ async def get_python_use_lines(hub, repo, catpkg, cpv_list, cur_tree, def_python
 			else:
 				new_imps.add(imp)
 				if imp in ["python2_4", "python2_5", "python2_6"]:
-					hub.METADATA_ERRORS.append(
-						MetadataError(
-							severity=Severity.SHOULDFIX,
-							ebuild_path=f"{cur_tree}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
-							msg=f"Old {imp} referenced in PYTHON_COMPAT",
-						)
+					hub._.record_misc_error(
+						repo=repo,
+						ebuild_path=f"{cur_tree}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
+						msg=f"Old {imp} referenced in PYTHON_COMPAT",
 					)
 		imps = list(new_imps)
 		if len(imps):

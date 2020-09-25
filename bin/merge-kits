@@ -65,6 +65,7 @@ async def main_thread():
 	hub.META_REPO.gitCommit(message="kit updates", skip=["kits"], push=hub.PUSH)
 
 	if not hub.MIRROR:
+		hub.merge.metadata.display_error_summary()
 		return
 
 	# Mirroring to GitHub happens here:
@@ -82,6 +83,7 @@ async def main_thread():
 
 	hub.merge.kit.mirror_repository(hub.META_REPO)
 	print("Mirroring of meta-repo complete.")
+	hub.merge.metadata.display_error_summary()
 
 
 if __name__ == "__main__":

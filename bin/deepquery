@@ -1,6 +1,11 @@
 #!/usr/bin/python3
 
+# The output of this command can be used to remove things from packages.yaml as follows:
+#
+# for x in $(deepquery); do echo Removing $x; sed -i -e "\|- ${x}\$|d" packages.yaml ; done
+
 import logging
+import sys
 
 import pop.hub
 
@@ -12,11 +17,11 @@ hub = pop.hub.Hub()
 if __name__ == "__main__":
 	hub.pop.sub.add("funtoo.merge")
 
-	nodep_catpkgs = set()
-	for pypak in hub.DEEPDIVE.find({"category": "dev-python"}):
+	nodep_catpkgs = dict()
+	for pypak in hub.DEEPDIVE.find({"category": sys.argv[1]}):
 		dep_on_me = hub.DEEPDIVE.count_documents({"relations": {"$in": [pypak["catpkg"]]}})
 		if dep_on_me == 0:
-			nodep_catpkgs.add(pypak["catpkg"])
+			nodep_catpkgs[pypak["catpkg"]] = pypak["kit"]
 
-	for item in sorted(list(nodep_catpkgs)):
-		print(item)
+	for item in sorted(list(nodep_catpkgs.keys())):
+		print(item, nodep_catpkgs[item])

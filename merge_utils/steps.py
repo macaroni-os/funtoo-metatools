@@ -292,15 +292,16 @@ class PruneLicenses(MergeStep):
 	"""
 
 	This step will remove all files in licenses/ that is not actually used by any ebuild in the kit. This
-	step expects hub.METADATA_ENTRIES to be populated (so GenCache() should be run first.)
+	step expects KIT_CACHE to be populated (so GenCache() should be run first.)
 
 	"""
 
 	def get_all_licenses(self, desttree):
 		used_licenses = set()
-		for key, datums in desttree.METADATA_ENTRIES.items():
-			if "LICENSE" in datums:
-				used_licenses = used_licenses | set(datums["LICENSE"].split())
+		for key, datums in desttree.KIT_CACHE.items():
+			metadata = datums["metadata"]
+			if metadata and "LICENSE" in metadata:
+				used_licenses = used_licenses | set(metadata["LICENSE"].split())
 		return used_licenses
 
 	async def run(self, desttree):
@@ -658,7 +659,7 @@ class GenPythonUse(MergeStep):
 
 	async def run(self, cur_overlay):
 		all_lines = []
-		for catpkg, cpv_list in self.hub.merge.metadata.get_catpkg_from_cpvs(cur_overlay.METADATA_ENTRIES.keys()).items():
+		for catpkg, cpv_list in self.hub.merge.metadata.get_catpkg_from_cpvs(cur_overlay.KIT_CACHE.keys()).items():
 			result = await cur_overlay.hub.merge.metadata.get_python_use_lines(
 				cur_overlay, catpkg, cpv_list, cur_overlay.root, self.def_python, self.bk_python
 			)
