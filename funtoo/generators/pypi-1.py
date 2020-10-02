@@ -12,12 +12,12 @@ async def generate(hub, **pkginfo):
 	else:
 		pypi_name = pkginfo["name"]
 
-	json_data = await hub.pkgtools.fetch.get_page(
-		f"https://pypi.org/pypi/{pypi_name}/json", refresh_interval=pkginfo["refresh_interval"]
+	json_dict = await hub.pkgtools.fetch.get_page(
+		f"https://pypi.org/pypi/{pypi_name}/json", refresh_interval=pkginfo["refresh_interval"], is_json=True
 	)
-	json_dict = json.loads(json_data)
 
 	if "version" not in pkginfo or pkginfo["version"] == "latest":
+		# This will grab the latest version:
 		pkginfo["version"] = json_dict["info"]["version"]
 
 	artifact_url = None

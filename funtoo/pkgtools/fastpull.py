@@ -47,8 +47,8 @@ requested_by (kit, branch, atom, date?) would be cool.
 """
 
 
-def get_disk_path(hub, final_data):
-	sh = final_data["hashes"]["sha512"]
+def get_disk_path(hub, artifact):
+	sh = artifact.final_data["hashes"]["sha512"]
 	return os.path.join(hub.TEMP_PATH, "fastpull", sh[0], sh[1], sh[2], sh)
 
 
@@ -79,7 +79,11 @@ def complete_artifact(hub, artifact, expected_final_data):
 
 def download_completion_hook(hub, artifact):
 	fastpull_path = hub._.get_disk_path(artifact)
-	os.link(artifact.final_path, fastpull_path)
+	print(artifact.final_path)
+	print(fastpull_path)
+	if not os.path.exists(fastpull_path):
+		os.makedirs(os.path.dirname(fastpull_path), exist_ok=True)
+		os.link(artifact.final_path, fastpull_path)
 
 
 def add_artifact(hub, artifact):
@@ -88,7 +92,8 @@ def add_artifact(hub, artifact):
 
 
 async def distfile_service(hub):
-
+	pass
 
 async def fastpull_spider(hub):
 	"""Start the fastpull spider, which will attempt to download queued artifacts and add them to fastpull db."""
+	pass

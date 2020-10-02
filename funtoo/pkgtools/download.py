@@ -43,7 +43,7 @@ HASHES = ["sha256", "sha512", "blake2b"]
 
 
 async def ensure_fetched(hub, artifact):
-	if artifact.is_fetched(hub, artifact):
+	if artifact.is_fetched():
 		if artifact.final_data is not None:
 			return
 		else:
