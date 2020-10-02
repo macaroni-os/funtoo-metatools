@@ -45,18 +45,18 @@ class Artifact(Fetchable):
 
 	@property
 	def temp_path(self):
-		return os.path.join(self.hub.MERGE_CONFIG.temp_path, self.hub.FETCH_SUBSYSTEM, "%s.__download__" % self.final_name)
+		return os.path.join(self.hub.MERGE_CONFIG.fetch_download_path, f"{self.final_name}.__download__")
 
 	@property
 	def extract_path(self):
-		return os.path.join(self.hub.MERGE_CONFIG.temp_path, self.hub.FETCH_SUBSYSTEM + "-extract", self.final_name)
+		return os.path.join(self.hub.MERGE_CONFIG.extract_path, self.final_name)
 
 	@property
 	def final_path(self):
 		if self._final_path:
 			return self._final_path
 		else:
-			return os.path.join(self.hub.MERGE_CONFIG.temp_path, self.hub.FETCH_SUBSYSTEM, self.final_name)
+			return os.path.join(self.hub.MERGE_CONFIG.fetch_download_path, self.final_name)
 
 	@property
 	def final_name(self):
@@ -76,7 +76,7 @@ class Artifact(Fetchable):
 
 	def record_final_data(self, final_data):
 		self.final_data = final_data
-		if self.hub.FETCH_SUBSYSTEM == "fastpull":
+		if self.hub.MERGE_CONFIG.fastpull_enabled:
 			# Store in fastpull:
 			self.hub.pkgtools.fastpull.download_completion_hook(self)
 

@@ -88,6 +88,10 @@ async def generate_individual_autogens(hub):
 
 
 async def run_autogen(hub, sub, pkginfo):
+	if "version" in pkginfo and pkginfo['version'] != 'latest':
+		print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
+	else:
+		print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
 	try:
 		await sub.generate(**pkginfo)
 	except (hub.pkgtools.fetch.FetchError, hub.pkgtools.ebuild.BreezyError) as e:
@@ -135,7 +139,6 @@ async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, sub
 				await run_autogen(hub, generator_sub, v_pkginfo)
 		else:
 			pkginfo.update(pkg_section)
-			print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}")
 			await run_autogen(hub, generator_sub, pkginfo)
 
 	await parallelize_pending_tasks(hub)
@@ -218,13 +221,12 @@ def load_autogen_config(hub):
 		hub.AUTOGEN_CONFIG = {}
 
 
-async def start(hub, start_path=None, out_path=None, temp_path=None, cacher=None, fetcher=None):
+async def start(hub, start_path=None, out_path=None, fetcher=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
 	hub._.load_autogen_config()
-	hub.CACHER = cacher
 	hub.FETCHER = fetcher
 	hub.pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
 	hub.pop.sub.add("funtoo.cache")

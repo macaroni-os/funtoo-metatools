@@ -18,14 +18,13 @@ hub.pop.conf.integrate(int_g, cli="doit", roots=True, loader="yaml", logs=True)
 
 if __name__ == "__main__":
 
-	hub.MERGE_CONFIG = config = Configuration()
+	kwargs = {}
+	for arg in ["fetcher", "out_path", "start_path"]:
+		kwargs[arg] = hub.OPT["doit"][arg]
+	hub.MERGE_CONFIG = config = Configuration(job=hub.OPT["doit"]["job"])
 
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools", omit_class=False)
-	kwargs = {}
-
-	for arg in ["cacher", "fetcher", "out_path", "start_path"]:
-		kwargs[arg] = hub.OPT["doit"][arg]
 
 	errors = asyncio.get_event_loop().run_until_complete(hub.pkgtools.autogen.start(**kwargs))
 

@@ -20,8 +20,7 @@ def autogen_setup():
 			hub.OPT.pkgtools["start_path"],
 			out_path=hub.OPT.pkgtools["out_path"],
 			name=hub.OPT.pkgtools["name"],
-			fetcher=hub.OPT.pkgtools["fetcher"],
-			cacher=hub.OPT.pkgtools["cacher"],
+			fetcher=hub.OPT.pkgtools["fetcher"]
 		)
 	)
 

@@ -26,8 +26,7 @@ __virtualname__ = "fetch"
 
 
 def __virtual__(hub):
-	cacher = getattr(hub, "CACHER", None)
-	return cacher == "mongodb"
+	return True
 
 
 def __init__(hub):

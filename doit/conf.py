@@ -6,7 +6,7 @@ CLI_CONFIG = {
 	"out_path": {"default": None, "os": "AUTOGEN_OUTPUT_PATH", "help": "Destination repository path"},
 	"name": {"default": None, "os": "AUTOGEN_REPONAME", "help": "Repository name (to override)"},
 	"fetcher": {"default": "default", "os": "AUTOGEN_FETCHER", "help": "What fetching plugin to use."},
-	"cacher": {"default": "noop", "os": "AUTOGEN_CACHER", "help": "What caching plugin to use."},
+	"job" : {"default": None, "help": "Specify a unique ID for the job that is running to segregate tempfiles and prevent conflicts."}
 }
 
 DYNE = {"doit": ["doit"]}

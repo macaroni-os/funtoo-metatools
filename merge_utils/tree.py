@@ -80,7 +80,7 @@ class Tree:
 			return
 		print(f"Starting autogen {self.hub.AUTOGEN_OPTS} in src_offset {src_offset} (in {autogen_path})...")
 		# use subprocess.call so we can see the output of autogen:
-		retcode = subprocess.call(f"(cd {autogen_path} && doit {self.hub.AUTOGEN_OPTS})", shell=True)
+		retcode = subprocess.call(f"cd {autogen_path} && doit --job {self.name}", shell=True)
 		if retcode != 0:
 			raise GitTreeError("Autogen failed.")
 		self.autogenned = src_offset
