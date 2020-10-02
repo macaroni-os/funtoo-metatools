@@ -49,7 +49,7 @@ requested_by (kit, branch, atom, date?) would be cool.
 
 def get_disk_path(hub, artifact):
 	sh = artifact.final_data["hashes"]["sha512"]
-	return os.path.join(hub.TEMP_PATH, "fastpull", sh[0], sh[1], sh[2], sh)
+	return os.path.join(hub.MERGE_CONFIG.temp_path, "fastpull", sh[0], sh[1], sh[2], sh)
 
 
 def complete_artifact(hub, artifact, expected_final_data):
@@ -67,9 +67,9 @@ def complete_artifact(hub, artifact, expected_final_data):
 	if not fp:
 		return None
 	hashes = hub.pkgtools.download.calc_hashes(fp)
-	if hashes['sha512'] != artifact.final_data['sha512']:
+	if hashes["sha512"] != artifact.final_data["sha512"]:
 		return None
-	if hashes['size'] != artifact.final_data['size']:
+	if hashes["size"] != artifact.final_data["size"]:
 		return None
 	artifact.final_data = hashes
 	artifact.final_path = fp
@@ -93,6 +93,7 @@ def add_artifact(hub, artifact):
 
 async def distfile_service(hub):
 	pass
+
 
 async def fastpull_spider(hub):
 	"""Start the fastpull spider, which will attempt to download queued artifacts and add them to fastpull db."""

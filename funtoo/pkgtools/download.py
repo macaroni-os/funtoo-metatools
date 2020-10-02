@@ -154,7 +154,14 @@ async def _download(hub, artifact):
 
 
 def extract_path(hub, artifact):
-	return os.path.join(hub.TEMP_PATH, artifact.subsystem + "_extract", artifact.final_name)
+	return os.path.join(hub.MERGE_CONFIG.temp_path, artifact.subsystem + "_extract", artifact.final_name)
+
+
+def cleanup(hub, artifact):
+	# TODO: check for path stuff like ../.. in final_name to avoid security issues.
+	getstatusoutput(
+		"rm -rf " + os.path.join(hub.MERGE_CONFIG.temp_path, artifact.subsystem + "_extract", artifact.final_name)
+	)
 
 
 def extract(hub, artifact):
@@ -167,11 +174,6 @@ def extract(hub, artifact):
 	s, o = getstatusoutput(cmd)
 	if s != 0:
 		raise hub.pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
-
-
-def cleanup(hub, artifact):
-	# TODO: check for path stuff like ../.. in final_name to avoid security issues.
-	getstatusoutput("rm -rf " + os.path.join(hub.TEMP_PATH, artifact.subsystem + "_extract", artifact.final_name))
 
 
 def calc_hashes(hub, fn):

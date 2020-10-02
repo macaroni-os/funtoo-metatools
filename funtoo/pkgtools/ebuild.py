@@ -45,18 +45,18 @@ class Artifact(Fetchable):
 
 	@property
 	def temp_path(self):
-		return os.path.join(self.hub.TEMP_PATH, self.hub.FETCH_SUBSYSTEM, "%s.__download__" % self.final_name)
+		return os.path.join(self.hub.MERGE_CONFIG.temp_path, self.hub.FETCH_SUBSYSTEM, "%s.__download__" % self.final_name)
 
 	@property
 	def extract_path(self):
-		return os.path.join(self.hub.TEMP_PATH, self.hub.FETCH_SUBSYSTEM + "-extract", self.final_name)
+		return os.path.join(self.hub.MERGE_CONFIG.temp_path, self.hub.FETCH_SUBSYSTEM + "-extract", self.final_name)
 
 	@property
 	def final_path(self):
 		if self._final_path:
 			return self._final_path
 		else:
-			return os.path.join(self.hub.TEMP_PATH, self.hub.FETCH_SUBSYSTEM, self.final_name)
+			return os.path.join(self.hub.MERGE_CONFIG.temp_path, self.hub.FETCH_SUBSYSTEM, self.final_name)
 
 	@property
 	def final_name(self):

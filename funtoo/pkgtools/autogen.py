@@ -226,7 +226,6 @@ async def start(hub, start_path=None, out_path=None, temp_path=None, cacher=None
 	hub._.load_autogen_config()
 	hub.CACHER = cacher
 	hub.FETCHER = fetcher
-	hub.TEMP_PATH = temp_path
 	hub.pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
 	hub.pop.sub.add("funtoo.cache")
 	hub.pop.sub.add("funtoo.generators")

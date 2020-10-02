@@ -6,6 +6,8 @@ import sys
 import pop.hub
 import logging
 
+from merge_utils.config import Configuration
+
 hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
 hub = pop.hub.Hub()
@@ -15,9 +17,14 @@ int_g = ["doit", "pkgtools"]
 hub.pop.conf.integrate(int_g, cli="doit", roots=True, loader="yaml", logs=True)
 
 if __name__ == "__main__":
+
+	hub.MERGE_CONFIG = config = Configuration()
+
+	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools", omit_class=False)
 	kwargs = {}
-	for arg in ["cacher", "fetcher", "temp_path", "out_path", "start_path"]:
+
+	for arg in ["cacher", "fetcher", "out_path", "start_path"]:
 		kwargs[arg] = hub.OPT["doit"][arg]
 
 	errors = asyncio.get_event_loop().run_until_complete(hub.pkgtools.autogen.start(**kwargs))

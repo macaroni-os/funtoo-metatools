@@ -106,7 +106,6 @@ async def get_page(hub, url):
 			raise hub.pkgtools.fetch.FetchError(url, f"Couldn't get_page due to exception {repr(e)}")
 
 
-
 async def get_url_from_redirect(hub, url):
 	"""
 	This function will take a URL that redirects and grab what it redirects to. This is useful
