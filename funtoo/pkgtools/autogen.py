@@ -121,17 +121,14 @@ async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, sub
 
 		pkginfo["name"] = list(package.keys())[0]
 		pkg_section = list(package.values())[0]
+		versions_section = None
 
-		if type(pkg_section) == list:
-			# looks like this: [{'versions': [{'2.5.1': {'python_compat': 'python2_7 python3_{6,7,8} pypy3'}}, {'latest': {'python_compat': 'python3_{6,7,8} pypy3'}}]}]
-			# we have multiple variants of this package
-			versions_section = pkg_section[0]
-			assert list(versions_section.keys())[0] == "versions"
+		if type(pkg_section) == dict and "versions" in pkg_section:
+			versions_section = pkg_section["versions"]
 
-			for version_dict in list(versions_section.values())[0]:
-				version = list(version_dict.keys())[0]
-				v_pkg_section = list(version_dict.values())[0]
-				# process each pkg
+		if versions_section:
+
+			for version, v_pkg_section in versions_section.items():
 				v_pkginfo = pkginfo.copy()
 				v_pkginfo["version"] = version
 				v_pkginfo.update(v_pkg_section)

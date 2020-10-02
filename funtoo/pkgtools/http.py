@@ -75,12 +75,14 @@ async def get_page(hub, url):
 	"""
 	logging.info(f"Fetching page {url}...")
 	try:
-		return await http_fetch(hub, url)
+		return await hub._.http_fetch(url)
 	except Exception as e:
 		if isinstance(e, hub.pkgtools.fetch.FetchError):
 			raise e
 		else:
+			raise e
 			raise hub.pkgtools.fetch.FetchError(url, f"Couldn't get_page due to exception {repr(e)}")
+
 
 
 async def get_url_from_redirect(hub, url):
