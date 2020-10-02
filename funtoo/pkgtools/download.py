@@ -48,7 +48,7 @@ async def ensure_fetched(hub, artifact):
 			return
 		else:
 			# TODO: put this in a threadpool to avoid multiple simultaneous hash calcs on same file:
-			artifact.record_final_data(await calc_hashes(hub, artifact.final_path))
+			artifact.record_final_data(calc_hashes(hub, artifact.final_path))
 	else:
 		if artifact.final_name in hub.DL_ACTIVE:
 			# Active download -- wait for it to finish:
@@ -174,7 +174,7 @@ def cleanup(hub, artifact):
 	getstatusoutput("rm -rf " + os.path.join(hub.TEMP_PATH, artifact.subsystem + "_extract", artifact.final_name))
 
 
-async def calc_hashes(hub, fn):
+def calc_hashes(hub, fn):
 	hashes = {}
 	for h in HASHES:
 		hashes[h] = getattr(hashlib, h)()

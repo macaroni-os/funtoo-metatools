@@ -47,13 +47,9 @@ requested_by (kit, branch, atom, date?) would be cool.
 """
 
 
-def get_disk_path(hub, disk_index):
-	return os.path.join(hub.TEMP_PATH, "fastpull", disk_index[0], disk_index[1], disk_index)
-
-
-def __init__(hub):
-	db = MongoClient.fastpull
-	fpdf = hub.FASTPULL_DISTFILES = db.distfiles
+def get_disk_path(hub, final_data):
+	sh = final_data["hashes"]["sha512"]
+	return os.path.join(hub.TEMP_PATH, "fastpull", sh[0], sh[1], sh[2], sh)
 
 
 def complete_artifact(hub, artifact, expected_final_data):
@@ -67,28 +63,31 @@ def complete_artifact(hub, artifact, expected_final_data):
 
 	If not found, simply return None.
 	"""
-	result = hub.FASTPULL.find_one(expected_final_data)
-	if result:
-		artifact.subsystem = "fastpull"
-		artifact.final_data = result
-		artifact.final_path = hub._.get_disk_path(result["disk_index"])
-		return artifact
-	else:
+	fp = hub._.get_disk_path(artifact.final_data)
+	if not fp:
 		return None
+	hashes = hub.pkgtools.download.calc_hashes(fp)
+	if hashes['sha512'] != artifact.final_data['sha512']:
+		return None
+	if hashes['size'] != artifact.final_data['size']:
+		return None
+	artifact.final_data = hashes
+	artifact.final_path = fp
+	artifact.subsystem = "fastpull"
+	return artifact
 
 
 def download_completion_hook(hub, artifact):
-	rand_id = "".join(random.choice("abcdef0123456789") for _ in range(128))
-	fastpull_path = hub._.get_disk_path(rand_id)
+	fastpull_path = hub._.get_disk_path(artifact)
 	os.link(artifact.final_path, fastpull_path)
-	record = {"disk_index": rand_id}
-	# Store hashes:
-	record.update(artifact.final_data)
 
 
 def add_artifact(hub, artifact):
 	"""Add an artifact to the persistent download queue."""
 	pass
+
+
+async def distfile_service(hub):
 
 
 async def fastpull_spider(hub):
