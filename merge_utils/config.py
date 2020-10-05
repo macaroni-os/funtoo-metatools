@@ -45,8 +45,8 @@ class Configuration:
 			self.config.read(self.config_path)
 
 		valids = {
-			"main" : [ "features" ],
-			"paths" : [ "fastpull" ],
+			"main": ["features"],
+			"paths": ["fastpull"],
 			"sources": ["flora", "kit-fixups", "gentoo-staging"],
 			"destinations": ["base_url", "mirror", "indy_url"],
 			"branches": ["flora", "kit-fixups", "meta-repo"],

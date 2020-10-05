@@ -88,7 +88,7 @@ async def generate_individual_autogens(hub):
 
 
 async def run_autogen(hub, sub, pkginfo):
-	if "version" in pkginfo and pkginfo['version'] != 'latest':
+	if "version" in pkginfo and pkginfo["version"] != "latest":
 		print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
 	else:
 		print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")

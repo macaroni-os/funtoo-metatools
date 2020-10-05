@@ -19,9 +19,9 @@ hub.pop.conf.integrate(int_g, cli="doit", roots=True, loader="yaml", logs=True)
 if __name__ == "__main__":
 
 	kwargs = {}
-	for arg in ["fetcher", "out_path", "start_path"]:
+	for arg in ["fetcher", "out_path", "start_path", "release", "kit", "branch"]:
 		kwargs[arg] = hub.OPT["doit"][arg]
-	hub.MERGE_CONFIG = config = Configuration(job=hub.OPT["doit"]["job"])
+	hub.MERGE_CONFIG = config = Configuration(fastpull=hub.OPT["doit"]["fastpull"])
 
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools", omit_class=False)

@@ -74,6 +74,13 @@ class Artifact(Fetchable):
 	async def ensure_fetched(self):
 		await self.fetch()
 
+	async def ensure_completed(self):
+		"""
+		This method will ensure that we can generate an ebuild that uses this Artifact, and that we have all hashes
+		available to us in MongoDB. This doesn't mean the file needs to exist locally. For that, use ensure_fetched().
+		"""
+		pass
+
 	def record_final_data(self, final_data):
 		self.final_data = final_data
 		if self.hub.MERGE_CONFIG.fastpull_enabled:
@@ -125,6 +132,7 @@ class BreezyBuild:
 	):
 		global HUB
 		self.hub = HUB
+		self.release = self.hub.RELEASE
 		self.source_tree = self.hub.CONTEXT
 		self.output_tree = self.hub.OUTPUT_CONTEXT
 		self._pkgdir = None
@@ -159,8 +167,8 @@ class BreezyBuild:
 	async def setup(self):
 		"""
 		This method ensures that Artifacts are instantiated (if dictionaries were passed in instead of live
-		Artifact objects) -- and that their ensure_fetched() method is called, which may actually do fetching, if the
-		local archive is not available for generating digests.
+		Artifact objects) -- and that their ensure_completed() method is called, which may actually do fetching,
+		but may not if either the local artifact already exists or we have pre-calculated hashes in MongoDB.
 
 		Note that this now parallelizes all downloads.
 		"""
@@ -172,7 +180,7 @@ class BreezyBuild:
 				artifact = Artifact(**artifact)
 
 			async def lil_coroutine(a):
-				await a.ensure_fetched()
+				await a.ensure_completed()
 				return a
 
 			futures.append(lil_coroutine(artifact))

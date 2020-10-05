@@ -90,7 +90,13 @@ async def get_deepdive_kit_items(hub, kit_dict=None):
 	This function will read on-disk metadata for a particular kit, and process it, splitting it into individual
 	records for performing a bulk insert into MongoDB, for example. It will return a big collection of dicts
 	in a list, ready for insertion. As part of this scan, Manifest data will be read from disk and hashes will
-	be added to each record.
+	be added to each record. This last Manifest scan was added so that we could implement fastpull, but the
+	fastpull architecture has since evolved so that we shouldn't need to extract data from Manifests. The original
+	idea is that what is in the Manifests is what we should send to fastpull. But fastpull is integrated more
+	deeply now. And in fact, we need to re-do our manifest handling.
+
+	We use this after a kit has been generated. We then grab the JSON of the metadata cache and prep it for
+	writing into MongoDB.
 	"""
 
 	repo_obj = await hub._.checkout_kit(kit_dict, pull=False)
@@ -98,36 +104,12 @@ async def get_deepdive_kit_items(hub, kit_dict=None):
 	# load on-disk JSON metadata cache into memory:
 	hub.cache.metadata.fetch_kit(repo_obj)
 
-	catpkg_hashes = {}
-
-	print(f"Extracting Manifest data from {kit_dict['name']}")
-	# Read in sha512/256 hashes from Manifest files for this kit:
-	for catpkg_dir in hub.merge.metadata.catpkg_generator(repo_obj.root):
-		hashes = hub.merge.metadata.extract_manifest_hashes(catpkg_dir)
-		if not hashes:
-			continue
-		d_split = catpkg_dir.split("/")
-		catpkg = d_split[-2] + "/" + d_split[-1]
-		catpkg_hashes[catpkg] = hashes
-	print(f"Extracting Manifest data from {kit_dict['name']} == done")
-
 	bulk_insert = []
 	head_sha1 = headSHA1(repo_obj.root)
 	# Grab our fancy JSON record containing lots of kit information and prep it for insertion into MongoDB:
-	print(f"OUT TREE BRANCH {kit_dict['name']} {repo_obj.branch}")
 	try:
 		for atom, json_data in repo_obj.KIT_CACHE.items():
-
-			final_name_to_uri_dict = hub.merge.metadata.extract_uris(json_data["metadata"]["SRC_URI"])
-			json_data["sources"] = []
-
-			for final_name, uri_list in final_name_to_uri_dict.items():
-				source_entry = {"name": final_name, "uris": uri_list}
-				if json_data["catpkg"] in catpkg_hashes:
-					# add hashes to our sources record
-					source_entry.update(catpkg_hashes[json_data["catpkg"]])
-				json_data["sources"].append(source_entry)
-				json_data["commit"] = head_sha1
+			json_data["commit"] = head_sha1
 			sys.stdout.write(".")
 			sys.stdout.flush()
 			bulk_insert.append(json_data)

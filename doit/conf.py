@@ -6,7 +6,10 @@ CLI_CONFIG = {
 	"out_path": {"default": None, "os": "AUTOGEN_OUTPUT_PATH", "help": "Destination repository path"},
 	"name": {"default": None, "os": "AUTOGEN_REPONAME", "help": "Repository name (to override)"},
 	"fetcher": {"default": "default", "os": "AUTOGEN_FETCHER", "help": "What fetching plugin to use."},
-	"job" : {"default": None, "help": "Specify a unique ID for the job that is running to segregate tempfiles and prevent conflicts."}
+	"release": {"default": None, "help": "Specify a release (used for production distfile integrity/fastpull.)"},
+	"kit": {"default": None, "help": "Specify a kit (used for production distfile integrity/fastpull.)"},
+	"branch": {"default": None, "help": "Specify a branch (used for production distfile integrity/fastpull.)"},
+	"fastpull": {"default": False, "action": "store_true", "help": "Enable fastpull reads and writes."},
 }
 
 DYNE = {"doit": ["doit"]}
