@@ -16,6 +16,11 @@ QUE = []
 
 
 async def parallelize_pending_tasks(hub):
+	"""
+	This waits for all asyncio tasks that are in the QUE. The `BreezyBuild.push` method will actually call the async
+	`generate()` method to start processing but will then add the future to the QUE. This is where we wait for
+	completion and also catch exceptions.
+	"""
 	for future in asyncio.as_completed(QUE):
 		try:
 			await future
@@ -28,6 +33,12 @@ async def parallelize_pending_tasks(hub):
 
 
 def generate_manifests(hub):
+	"""
+	Once auto-generation is complete, this function will write all stored Manifest data to disk. We do this after
+	autogen completes so we can ensure that all necessary ebuilds have been created and we can ensure that these
+	are written once for each catpkg, rather than written as each individual ebuild is autogenned (which would
+	create a race condition writing to each Manifest file.)
+	"""
 	for manifest_file, manifest_lines in hub.MANIFEST_LINES.items():
 		manifest_lines = sorted(list(manifest_lines))
 		with open(manifest_file, "w") as myf:
@@ -48,7 +59,6 @@ def _map_filepath_as_sub(hub, subpath):
 
 
 def _unmap_sub(hub):
-
 	hub.pop.sub.remove("my_catpkg")
 
 
@@ -106,6 +116,9 @@ async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, sub
 	"""
 	This method takes a single YAML rule that we've extracted from an autogen.yaml file,
 	loads the appropriate generator, and uses it to generate (probably) a bunch of catpkgs.
+
+	This function is async and typically we simply grab the future returned and add it to
+	a list of pending tasks which we gather afterwards.
 	"""
 	glob_defs = getattr(generator_sub, "GLOBAL_DEFAULTS", {})
 	pkginfo = glob_defs.copy()
@@ -147,7 +160,7 @@ async def process_yaml_rule(hub, generator_sub, package=None, defaults=None, sub
 async def generate_yaml_autogens(hub):
 	"""
 	This method finds autogen.yaml files in the repository and executes them. This provides a mechanism
-	to perform autogeneration en-masse without needing to have individual autogen.py files all over the
+	to perform auto-generation en-masse without needing to have individual autogen.py files all over the
 	place.
 
 	Currently supported in the initial implementation are autogen.yaml files existing in *category*
@@ -164,6 +177,7 @@ async def generate_yaml_autogens(hub):
 		if not len(file):
 			continue
 		subpath = os.path.dirname(file)
+		# TODO: check for duplicate catpkgs defined in the YAML.
 		with open(file, "r") as myf:
 			for rule_name, rule in safe_load(myf.read()).items():
 				if "defaults" in rule:
@@ -221,7 +235,7 @@ def load_autogen_config(hub):
 		hub.AUTOGEN_CONFIG = {}
 
 
-async def start(hub, start_path=None, out_path=None, fetcher=None):
+async def start(hub, start_path=None, out_path=None, fetcher=None, release=None, kit=None, branch=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.

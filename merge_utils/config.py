@@ -6,9 +6,10 @@ from configparser import ConfigParser
 
 
 class Configuration:
-	def __init__(self, prod=False, path=None, job=None):
+	def __init__(self, prod=False, path=None, job=None, fastpull=None):
 		self.prod = prod
 		self.job = job
+		self.fastpull = fastpull
 		if path is None:
 			home_dir = os.path.expanduser("~")
 			self.config_path = os.path.join(home_dir, ".merge")
@@ -61,6 +62,7 @@ class Configuration:
 					if opt not in my_valids:
 						print("Error: ~/.merge [%s] option %s is invalid." % (section, opt))
 						sys.exit(1)
+		print(f"Fastpull enabled: {self.fastpull_enabled}")
 
 	def get_option(self, section, key, default=None):
 		if self.config.has_section(section) and key in self.config[section]:
@@ -165,6 +167,9 @@ class Configuration:
 
 	@property
 	def fastpull_enabled(self):
+		# If set via constructor, we use that. Otherwise, read from config.
+		if self.fastpull is not None:
+			return self.fastpull
 		features = self.get_option("main", "features", "")
 		f_split = features.split()
 		if "fastpull" in f_split:

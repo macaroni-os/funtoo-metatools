@@ -42,6 +42,7 @@ class Artifact(Fetchable):
 		self._final_name = final_name
 		self.final_data = None
 		self._final_path = final_path
+		self.catpkgs = set()
 
 	@property
 	def temp_path(self):
@@ -74,18 +75,8 @@ class Artifact(Fetchable):
 	async def ensure_fetched(self):
 		await self.fetch()
 
-	async def ensure_completed(self):
-		"""
-		This method will ensure that we can generate an ebuild that uses this Artifact, and that we have all hashes
-		available to us in MongoDB. This doesn't mean the file needs to exist locally. For that, use ensure_fetched().
-		"""
-		pass
-
 	def record_final_data(self, final_data):
 		self.final_data = final_data
-		if self.hub.MERGE_CONFIG.fastpull_enabled:
-			# Store in fastpull:
-			self.hub.pkgtools.fastpull.download_completion_hook(self)
 
 	@property
 	def hashes(self):
@@ -132,7 +123,6 @@ class BreezyBuild:
 	):
 		global HUB
 		self.hub = HUB
-		self.release = self.hub.RELEASE
 		self.source_tree = self.hub.CONTEXT
 		self.output_tree = self.hub.OUTPUT_CONTEXT
 		self._pkgdir = None
@@ -166,34 +156,55 @@ class BreezyBuild:
 
 	async def setup(self):
 		"""
-		This method ensures that Artifacts are instantiated (if dictionaries were passed in instead of live
-		Artifact objects) -- and that their ensure_completed() method is called, which may actually do fetching,
-		but may not if either the local artifact already exists or we have pre-calculated hashes in MongoDB.
+		This method performs some special setup steps. We tend to treat Artifacts as stand-alone objects -- and they
+		can be -- such as if you instantiate an Artifact in `generate()` and fetch it because you need to extract it
+		and look inside it.
 
-		Note that this now parallelizes all downloads.
+		But when associated with a BreezyBuild, as is commonly the case, this means that there is a relationship between
+		the Artifact and the BreezyBuild.
+
+		In this scenario, we know that the Artifact is associated with a catpkg, and will be written out to a Manifest.
+		So this means we want to create some associations. We want to record that the Artifact is associated with the
+		catpkg of this BreezyBuild. We use this for writing new entries to the Distfile Integrity database for
+		to-be-fetched artifacts.
+
+		The `ensure_completed()` call will ensure the Artifact has hashes from the Distfile Integrity Database or is
+		fetched and hashes calculated.
+
+		TODO: if the file exists on disk, but there is no Distfile Integrity entry, we need to make sure that hashes
+		      are not just calculated -- the distfile integrity entry should be created as well.
+
 		"""
 
 		futures = []
+		artifacts = []
 
 		for artifact in self.artifact_dicts:
 			if type(artifact) != Artifact:
 				artifact = Artifact(**artifact)
 
-			async def lil_coroutine(a):
-				await a.ensure_completed()
-				return a
+			# This records that the artifact is used by this catpkg. This is used for the integrity database writes:
+			if self.catpkg not in artifact.catpkgs:
+				artifact.catpkgs.add(self.catpkg)
 
-			futures.append(lil_coroutine(artifact))
+			if not artifact.final_data:
 
-		# At this point, all artifacts are fetched:
-		self.artifacts = await asyncio.gather(*futures)
+				async def lil_coroutine(a):
+					await self.hub.pkgtools.download.ensure_completed(self.catpkg, a)
+					return a
+
+				futures.append(lil_coroutine(artifact))
+
+		# Wait for any artifacts that are still fetching:
+		artifacts += await asyncio.gather(*futures)
+		self.artifacts = artifacts
 		self.template_args["artifacts"] = self.artifacts
 
 	def push(self):
 		"""
-		Push means "do it soon". Anything pushed will be on a task queue which will get fired off at the end
-		of the autogen run. Tasks will run in parallel so this is a great way to improve performance if generating
-		a lot of catpkgs. Push all the catpkgs you want to generate and they will all get fired off at once.
+		Push means "do it now, asynchronously". Anything pushed will start execution but we will not stop and wait
+		for the work to finish. This is a great way to improve performance if generating a lot of catpkgs as fetching
+		will start immediately but will not block other fetches (via other `push()` calls) from starting too.
 		"""
 		task = asyncio.create_task(self.generate())
 		self.hub.pkgtools.autogen.QUE.append(task)
@@ -247,8 +258,6 @@ class BreezyBuild:
 			return self._template_path
 		tpath = os.path.join(self.source_tree.root, self.cat, self.name, "templates")
 		return tpath
-
-	# TODO: we should really generate one Manifest per catpkg -- this does one per ebuild:
 
 	def record_manifest_lines(self):
 		"""

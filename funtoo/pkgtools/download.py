@@ -42,13 +42,44 @@ HASHES = ["sha256", "sha512", "blake2b"]
 #       declarative pipeline.
 
 
-async def ensure_fetched(hub, artifact):
+async def ensure_completed(hub, catpkg, artifact):
+	"""
+	This function ensures that we can 'complete' the artifact -- meaning we have its hash data in the integrity database.
+	If this hash data is not found, then we need to fetch the artifact.
+	"""
+	integrity_item = hub.merge.deepdive.get_distfile_integrity(catpkg, distfile=artifact.final_name)
+	if integrity_item is not None:
+		artifact.final_data = integrity_item["final_data"]
+	else:
+		await hub._.ensure_fetched(artifact, catpkg=catpkg)
+
+
+async def ensure_fetched(hub, artifact, catpkg=None):
+	"""
+	This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
+	calculate its hashes or extract it.
+	"""
 	if artifact.is_fetched():
 		if artifact.final_data is not None:
 			return
 		else:
-			# TODO: put this in a threadpool to avoid multiple simultaneous hash calcs on same file:
-			artifact.record_final_data(calc_hashes(hub, artifact.final_path))
+			# We will hit this condition only if for some reason we blew away our Distfile Integrity database or an
+			# entry for a distfile in it. In this scenario -- the file is fetched, so it's on disk, but we don't have
+			# any hashes for it yet. We want to re-populate the Distfile Integrity database if necessary so we don't
+			# keep recalculating hashes unnecessarily and they are persistently stored
+			#
+			# We can only do this if we are called from ensure_completed().
+			if catpkg:
+				integrity_item = hub.merge.deepdive.get_distfile_integrity(catpkg, distfile=artifact.final_name)
+				if integrity_item is not None:
+					artifact.final_data = integrity_item["final_data"]
+				else:
+					final_data = hub._.calc_hashes(artifact.final_path)
+					hub.merge.deepdive.store_distfile_integrity(catpkg, artifact.final_name, final_data)
+					artifact.record_final_data(final_data)
+			else:
+				final_data = hub._.calc_hashes(artifact.final_path)
+				artifact.record_final_data(final_data)
 	else:
 		if artifact.final_name in hub.DL_ACTIVE:
 			# Active download -- wait for it to finish:
@@ -72,6 +103,10 @@ class Download:
 	The Download object will record all Artifacts that need this file, and arbitrate the download
 	of this file and update the Artifacts with the completion data when the download is complete.
 
+	A Download will be shared only if the Artifacts fetching the file are storing it as the same
+	final_name. So it's possible that if the final_name differs that files could be theoretically
+	downloaded multiple times or simultaneously and redundantly (but this rarely if ever happens,
+	just worth mentioning and a possible improvement in the future.)
 	"""
 
 	def __init__(self, hub, artifact):
@@ -94,8 +129,24 @@ class Download:
 		await self.hub.DL_ACTIVE_COUNT.acquire()
 		self.hub.DL_ACTIVE[self.final_name] = self
 		final_data = await _download(self.hub, self.artifacts[0])
+
+		integrity_keys = {}
 		for artifact in self.artifacts:
 			artifact.record_final_data(final_data)
+			for catpkg in artifact.catpkgs:
+				integrity_keys[(catpkg, artifact.final_name)] = True
+
+		# For every final_name referenced by a catpkg, create a distfile integrity entry. We use integrity_keys to
+		# avoid duplicate records.
+
+		for catpkg, final_name in integrity_keys.keys():
+			self.hub.merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
+
+		# We only need to insert once into fastpull since it is the same underlying file.
+
+		if self.hub.MERGE_CONFIG.fastpull_enabled:
+			self.hub.pkgtools.fastpull.download_completion_hook(final_data, self.artifacts[0].final_path)
+
 		del self.hub.DL_ACTIVE[self.final_name]
 		self.hub.DL_ACTIVE_COUNT.release()
 		for future in self.futures:

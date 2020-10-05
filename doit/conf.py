@@ -9,7 +9,7 @@ CLI_CONFIG = {
 	"release": {"default": None, "help": "Specify a release (used for production distfile integrity/fastpull.)"},
 	"kit": {"default": None, "help": "Specify a kit (used for production distfile integrity/fastpull.)"},
 	"branch": {"default": None, "help": "Specify a branch (used for production distfile integrity/fastpull.)"},
-	"fastpull": {"default": False, "action": "store_true", "help": "Enable fastpull reads and writes."},
+	"fastpull": {"default": None, "action": "store_true", "help": "Enable fastpull reads and writes."},
 }
 
 DYNE = {"doit": ["doit"]}

@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
+
 import json
 import logging
 import os
 import sys
-
-try:
-	import pymongo
-	import pymongo.errors
-	from pymongo import MongoClient
-except ImportError:
-	pass
 
 
 def get_outpath(hub, repo_obj):

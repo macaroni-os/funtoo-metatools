@@ -45,8 +45,8 @@ requested_by (kit, branch, atom, date?) would be cool.
 """
 
 
-def get_disk_path(hub, artifact):
-	sh = artifact.final_data["hashes"]["sha512"]
+def get_disk_path(hub, final_data):
+	sh = final_data["hashes"]["sha512"]
 	return os.path.join(hub.MERGE_CONFIG.fastpull_path, sh[0], sh[1], sh[2], sh)
 
 
@@ -60,6 +60,8 @@ def complete_artifact(hub, artifact, expected_final_data):
 	as the binary data on disk has matching hashes and size.
 
 	If not found, simply return None.
+
+	TODO: compare expected_final_data?
 	"""
 	fp = hub._.get_disk_path(artifact.final_data)
 	if not fp:
@@ -75,12 +77,12 @@ def complete_artifact(hub, artifact, expected_final_data):
 	return artifact
 
 
-def download_completion_hook(hub, artifact):
-	fastpull_path = hub._.get_disk_path(artifact)
+def download_completion_hook(hub, final_data, final_path):
+	fastpull_path = hub._.get_disk_path(final_data)
 	if not os.path.exists(fastpull_path):
 		try:
 			os.makedirs(os.path.dirname(fastpull_path), exist_ok=True)
-			os.link(artifact.final_path, fastpull_path)
+			os.link(final_path, fastpull_path)
 		except Exception as e:
 			# Multiple doits running in parallel, trying to link the same file -- could cause exceptions:
 			logging.error(f"Exception encountered when trying to link into fastpull (may be harmless) -- {repr(e)}")
