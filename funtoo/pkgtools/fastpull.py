@@ -47,10 +47,10 @@ requested_by (kit, branch, atom, date?) would be cool.
 
 def get_disk_path(hub, final_data):
 	sh = final_data["hashes"]["sha512"]
-	return os.path.join(hub.MERGE_CONFIG.fastpull_path, sh[0], sh[1], sh[2], sh)
+	return os.path.join(hub.MERGE_CONFIG.fastpull_path, sh[:2], sh[2:4], sh[4:], sh)
 
 
-def complete_artifact(hub, artifact, expected_final_data):
+def complete_artifact(hub, artifact):
 	"""
 	Provided with an artifact and expected final data (hashes and size), we will attempt to locate the artifact
 	binary data in the fastpull database. If we find it, we 'complete' the artifact so it is usable for extraction
@@ -61,7 +61,10 @@ def complete_artifact(hub, artifact, expected_final_data):
 
 	If not found, simply return None.
 
-	TODO: compare expected_final_data?
+	This method was originally intended to allow us to specify expected final data, aka hashes, that we expect to
+	see. But this is not really used by autogen at the moment. The reason is that while emerge and ebuild do
+	Manifest/hash validation on the client side, this is because we want to ensure that what was downloaded by the
+	client matches what was set by the server. But we don't have such checks on just the server side.
 	"""
 	fp = hub._.get_disk_path(artifact.final_data)
 	if not fp:
