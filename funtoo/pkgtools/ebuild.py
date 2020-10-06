@@ -50,7 +50,7 @@ class Artifact(Fetchable):
 
 	@property
 	def extract_path(self):
-		return os.path.join(self.hub.MERGE_CONFIG.extract_path, self.final_name)
+		return self.hub.pkgtools.download.extract_path(self)
 
 	@property
 	def final_path(self):
@@ -207,7 +207,7 @@ class BreezyBuild:
 		will start immediately but will not block other fetches (via other `push()` calls) from starting too.
 		"""
 		task = asyncio.create_task(self.generate())
-		self.hub.pkgtools.autogen.QUE.append(task)
+		self.hub.pkgtools.autogen.RUNNING_QUE.append(task)
 
 	@property
 	def pkgdir(self):

@@ -205,14 +205,12 @@ async def _download(hub, artifact):
 
 
 def extract_path(hub, artifact):
-	return os.path.join(hub.MERGE_CONFIG.temp_path, artifact.subsystem + "_extract", artifact.final_name)
+	return os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name)
 
 
 def cleanup(hub, artifact):
 	# TODO: check for path stuff like ../.. in final_name to avoid security issues.
-	getstatusoutput(
-		"rm -rf " + os.path.join(hub.MERGE_CONFIG.temp_path, artifact.subsystem + "_extract", artifact.final_name)
-	)
+	getstatusoutput("rm -rf " + os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name))
 
 
 def extract(hub, artifact):

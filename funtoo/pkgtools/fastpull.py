@@ -76,7 +76,6 @@ def complete_artifact(hub, artifact):
 		return None
 	artifact.final_data = hashes
 	artifact.final_path = fp
-	artifact.subsystem = "fastpull"
 	return artifact
 
 

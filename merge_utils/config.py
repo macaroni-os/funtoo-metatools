@@ -182,7 +182,3 @@ class Configuration:
 		if self.job:
 			return os.path.join(self.work_path, "fetch", self.job)
 		return os.path.join(self.work_path, "fetch")
-
-	@property
-	def extract_path(self):
-		return os.path.join(self.work_path, "extract")
