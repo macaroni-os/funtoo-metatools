@@ -2,6 +2,7 @@
 
 import os
 import asyncio
+from asyncio import FIRST_COMPLETED
 
 import jinja2
 import logging
@@ -119,13 +120,25 @@ class BreezyBuild:
 	template_args = None
 
 	def __init__(
-		self, artifacts: list = None, template: str = None, template_text: str = None, template_path: str = None, **kwargs,
+		self,
+		artifacts: list = None,
+		template: str = None,
+		template_text: str = None,
+		template_path: str = None,
+		sub_index=None,
+		**kwargs,
 	):
 		global HUB
 		self.hub = HUB
 		self.source_tree = self.hub.CONTEXT
 		self.output_tree = self.hub.OUTPUT_CONTEXT
 		self._pkgdir = None
+		self.sub_index = sub_index
+		try:
+			assert self.sub_index is not None
+		except AssertionError as ase:
+			raise ValueError("Please ensure that **pkginfo is passed to BreezyBuild. Special variable sub_index is needed.")
+
 		self.template_args = kwargs
 		for kwarg in ["cat", "name", "version", "revision", "path"]:
 			if kwarg in kwargs:
@@ -176,8 +189,8 @@ class BreezyBuild:
 
 		"""
 
-		futures = []
 		artifacts = []
+		fetch_tasks = []
 
 		for artifact in self.artifact_dicts:
 			if type(artifact) != Artifact:
@@ -193,21 +206,14 @@ class BreezyBuild:
 					await self.hub.pkgtools.download.ensure_completed(self.catpkg, a)
 					return a
 
-				futures.append(lil_coroutine(artifact))
+				fetch_tasks.append(asyncio.Task(lil_coroutine(artifact)))
 
 		# Wait for any artifacts that are still fetching:
-		artifacts += await asyncio.gather(*futures)
-		self.artifacts = artifacts
-		self.template_args["artifacts"] = self.artifacts
+
+		self.artifacts = self.template_args["artifacts"] = await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks)
 
 	def push(self):
-		"""
-		Push means "do it now, asynchronously". Anything pushed will start execution but we will not stop and wait
-		for the work to finish. This is a great way to improve performance if generating a lot of catpkgs as fetching
-		will start immediately but will not block other fetches (via other `push()` calls) from starting too.
-		"""
-		task = asyncio.create_task(self.generate())
-		self.hub.pkgtools.autogen.RUNNING_QUE.append(task)
+		self.hub.pkgtools.autogen.BREEZYBUILDS_PENDING[self.sub_index].append(self)
 
 	@property
 	def pkgdir(self):
@@ -297,7 +303,6 @@ class BreezyBuild:
 		If you don't call push() on your BreezyBuild, then you could choose to call the generate() method
 		directly instead. In that case it will run right away.
 		"""
-
 		if self.cat is None:
 			raise BreezyError("Please set 'cat' to the category name of this ebuild.")
 		if self.name is None:

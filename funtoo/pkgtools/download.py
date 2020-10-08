@@ -83,11 +83,10 @@ async def ensure_fetched(hub, artifact, catpkg=None):
 	else:
 		if artifact.final_name in hub.DL_ACTIVE:
 			# Active download -- wait for it to finish:
-			print(f"Waiting for {artifact.final_name} to finish")
+			logging.info(f"Waiting for {artifact.final_name} to finish")
 			await hub.DL_ACTIVE[artifact.final_name].wait_for_completion(artifact)
 		else:
 			# No active download for this file -- start one:
-			print(f"Starting download of {artifact.final_name}")
 			dl_file = Download(hub, artifact)
 			await dl_file.download()
 
@@ -129,7 +128,6 @@ class Download:
 		await self.hub.DL_ACTIVE_COUNT.acquire()
 		self.hub.DL_ACTIVE[self.final_name] = self
 		final_data = await _download(self.hub, self.artifacts[0])
-
 		integrity_keys = {}
 		for artifact in self.artifacts:
 			artifact.record_final_data(final_data)
@@ -164,7 +162,6 @@ async def _download(hub, artifact):
 	filesize of the downloaded artifact.
 
 	"""
-
 	logging.info(f"Fetching {artifact.url}...")
 
 	temp_path = artifact.temp_path

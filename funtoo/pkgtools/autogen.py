@@ -4,6 +4,8 @@ import subprocess
 import os
 import traceback
 import sys
+from asyncio import FIRST_COMPLETED, ALL_COMPLETED, FIRST_EXCEPTION
+from collections import defaultdict
 
 import yaml
 from yaml import safe_load
@@ -12,14 +14,43 @@ import logging
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
-ERRORS = []
+"""
+The `PENDING_QUE` will be built up to contain a full list of all the catpkgs we want to autogen in the full run
+of 'doit'. We queue up everything first so that we have the ability to add QA checks, such as for catpkgs that
+are defined multiple times and other errors that we should catch before processing begins. The work is organized
+by the generator (pop plugin) that will be used to generate a list of catpkgs. Before we start, we have
+everything organized so that we only need to call `execute_generator` once for each generator. It will start
+work for all catpkgs in that generator, and wait for completion of this work before returning.
+
+Similarly to how we queue up all work before we start, `ERRORS` will contain a list of all errors encountered
+during processing.
+"""
+
 PENDING_QUE = []
-RUNNING_QUE = []
+ERRORS = []
+
+
 SUB_FP_MAP_LOCK = asyncio.Lock()
 SUB_FP_MAP = {}
 
-# Allow maximum of 8 generators to run at the same time:
-ACTIVE_GENERATORS = asyncio.Semaphore(value=8, loop=asyncio.get_event_loop())
+"""
+While it is possible for a `generate()` function to call the `generate()` method on a `BreezyBuild` directly,
+in nearly all cases the `BreezyBuild`'s `push` method is called to queue it for processing. When `push` is
+called, we want to start the `generate` method as an asyncio `Task` and then keep track of it so we can wait for
+all of these `Tasks` to complete.
+
+When these tasks are running, they are using a specific generator (pop plugin) and we want to be able to wait
+for these tasks to complete after we have processed all the work for the generator. This is for two reasons --
+so we can enforce a limit for the number of generators running at once, and so we do not exit prematurely while
+generators have still not completed their work.
+
+`BREEZYBUILD_TASKS` is configured to hold these tasks. They are organized by the 'sub-index', which is a string
+name we use to reference the generator internally. That way we can segregate our tasks by generator, which is
+important so each generator can wait for only its own tasks to complete.
+"""
+
+BREEZYBUILDS_PENDING = defaultdict(list)
+BREEZYBUILD_TASKS_ACTIVE = defaultdict(list)
 
 
 def generate_manifests(hub):
@@ -49,7 +80,7 @@ async def acquire_sub(hub, subpath):
 			subname = f"my_sub{len(SUB_FP_MAP)+1}"
 			hub.pop.sub.add(static=subpath, subname=subname)
 			SUB_FP_MAP[subpath] = subname
-	return getattr(hub, subname)
+	return getattr(hub, subname), subname
 
 
 def queue_all_indy_autogens(hub):
@@ -79,38 +110,68 @@ def queue_all_indy_autogens(hub):
 		)
 
 
-async def gather_pending_tasks(hub, future_list):
+async def gather_pending_tasks(hub, task_list):
 	"""
 	This function collects completed asyncio coroutines, catches any exceptions recorded during their execution
 	and logs them properly.
 	"""
-	for future in asyncio.as_completed(future_list):
-		try:
-			result = await future
-		except (hub.pkgtools.fetch.FetchError, hub.pkgtools.ebuild.BreezyError) as e:
-			_, _, tb = sys.exc_info()
-			ERRORS.append((e, traceback.extract_tb(tb)))
-		except AssertionError as e:
-			_, _, tb = sys.exc_info()
-			ERRORS.append((e, traceback.extract_tb(tb)))
-		print(f"Task completed - {result}")
+	cur_tasks = task_list
+	results = []
+	count = 0
+	if not len(cur_tasks):
+		return []
+	while True:
+		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
+		for done_item in done_list:
+			try:
+				result = done_item.result()
+				if isinstance(result, list):
+					results += result
+				else:
+					results.append(result)
+				count += 1
+			except (hub.pkgtools.fetch.FetchError, hub.pkgtools.ebuild.BreezyError) as e:
+				_, _, tb = sys.exc_info()
+				ERRORS.append((e, traceback.extract_tb(tb)))
+			except AssertionError as e:
+				_, _, tb = sys.exc_info()
+				ERRORS.append((e, traceback.extract_tb(tb)))
+		if not len(cur_tasks):
+			break
+	return results
 
 
 async def execute_generator(
 	hub, generator_sub_path=None, generator_sub_name="autogen", template_path=None, defaults=None, pkginfo_list=None
 ):
-
-	await ACTIVE_GENERATORS.acquire()
-	RUNNING_QUE = []
-
 	if generator_sub_path:
 		# This is an individual autogen.py. First grab the "base sub" (map the path), and then grab the actual sub-
 		# module we want by name.
-		generator_sub_base = await hub._.acquire_sub(generator_sub_path)
+		generator_sub_base, sub_index = await hub._.acquire_sub(generator_sub_path)
 		generator_sub = getattr(generator_sub_base, generator_sub_name)
 	else:
 		# This is an official generator that is built-in to pkgtools:
 		generator_sub = getattr(hub.generators, generator_sub_name)
+		sub_index = generator_sub_name
+
+	# The generate_wrapper wraps the call to `generate()` (in autogen.py or the generator) and performs setup
+	# and post-tasks:
+
+	async def generate_wrapper(sub_index, pkginfo):
+		# Generate some output to let the user know what we're doing:
+		if "version" in pkginfo and pkginfo["version"] != "latest":
+			print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
+		else:
+			print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+		await generator_sub.generate(**pkginfo)
+		global BREEZYBUILDS_PENDING
+		while len(BREEZYBUILDS_PENDING[sub_index]):
+			bzb = BREEZYBUILDS_PENDING[sub_index].pop(0)
+			BREEZYBUILD_TASKS_ACTIVE[sub_index].append(asyncio.Task(bzb.generate()))
+
+	running_generate_wrappers = []
+
+	print(f"Executing generator {sub_index}")
 
 	for base_pkginfo in pkginfo_list:
 
@@ -133,26 +194,22 @@ async def execute_generator(
 		pkginfo.update(base_pkginfo)
 		if template_path:
 			pkginfo["template_path"] = template_path
+		pkginfo["sub_index"] = sub_index
 
-		# Generate some output to let the user know what we're doing:
+		# Now that we have wrapped the generate method, we need to start it as an asyncio task and then we will wait
+		# for all our generate() calls to complete, outside this for loop.
 
-		if "version" in pkginfo and pkginfo["version"] != "latest":
-			print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
-		else:
-			print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+		task = asyncio.Task(generate_wrapper(sub_index, pkginfo))
+		running_generate_wrappers.append(task)
 
-		# Start execution of the generator and add it to our list of pending tasks:
+	# Wait for all of our generate_wrappers to complete. When the generate_wrapper is complete, we can be sure that
+	# all BreezyBuilds have been instantiated, and all JSON or other Web data has been grabbed to figure out versions,
+	# etc.
 
-		async def lil_coroutine():
-			await generator_sub.generate(**pkginfo)
-			return pkginfo
+	await hub._.gather_pending_tasks(running_generate_wrappers)
 
-		future = lil_coroutine()
-		RUNNING_QUE.append(future)
-
-	# Wait for all pending autogens to finish:
-	await hub._.gather_pending_tasks(RUNNING_QUE)
-	ACTIVE_GENERATORS.release()
+	global BREEZYBUILD_TASKS_ACTIVE
+	await hub._.gather_pending_tasks(BREEZYBUILD_TASKS_ACTIVE[sub_index])
 
 
 def parse_yaml_rule(hub, package_section=None):
@@ -262,18 +319,10 @@ def load_autogen_config(hub):
 
 
 async def execute_all_queued_generators(hub):
-	GENERATOR_TASKS = []
-	print("PENDING", len(PENDING_QUE))
-	print(PENDING_QUE)
+
 	while len(PENDING_QUE):
 		task_args = PENDING_QUE.pop(0)
-		print("STARTING TASK", task_args)
-		gen_task = asyncio.Task(hub._.execute_generator(**task_args))
-		GENERATOR_TASKS.append(gen_task)
-		print("APPPPPPPPPPPPPPPPPPPPPPPPPPPEND")
-	print("GATHERING")
-	for task in await asyncio.gather(*GENERATOR_TASKS):
-		print("TASK GATHERED DAWG")
+		await hub._.execute_generator(**task_args)
 
 
 async def start(hub, start_path=None, out_path=None, fetcher=None, release=None, kit=None, branch=None):
@@ -289,7 +338,6 @@ async def start(hub, start_path=None, out_path=None, fetcher=None, release=None,
 	hub._.queue_all_indy_autogens()
 	hub._.queue_all_yaml_autogens()
 	await hub._.execute_all_queued_generators()
-	print("ALL GENS COMPLETED")
 	hub._.generate_manifests()
 	return ERRORS
 
