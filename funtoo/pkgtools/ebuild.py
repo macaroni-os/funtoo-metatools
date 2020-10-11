@@ -19,6 +19,7 @@ def __init__(hub):
 	hub.MANIFEST_LINES = defaultdict(set)
 	hub.FETCH_SUBSYSTEM = "fastpull"
 
+
 class BreezyError(Exception):
 	def __init__(self, msg):
 		self.msg = msg

@@ -80,12 +80,9 @@ class Tree:
 			return
 		print(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
 		# use subprocess.call so we can see the output of autogen:
-		retcode = subprocess.call(
-			f"cd {autogen_path} && doit --release {self.hub.RELEASE} --kit {self.name} --branch {self.branch} --fastpull",
-			shell=True,
-		)
+		retcode = subprocess.call(f"cd {autogen_path} && doit --release {self.hub.RELEASE} --fastpull", shell=True,)
 		if retcode != 0:
-			raise GitTreeError("Autogen failed.")
+			raise GitTreeError(f"Autogen failed in {self.root} -- offset {src_offset}.")
 		self.autogenned = src_offset
 
 	def cleanTree(self):

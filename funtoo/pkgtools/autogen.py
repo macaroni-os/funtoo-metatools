@@ -54,6 +54,7 @@ BREEZYBUILDS_PENDING = defaultdict(list)
 BREEZYBUILD_TASKS_ACTIVE = defaultdict(list)
 BREEZYBUILD_SUB_INDEX_HANDOFF = {}
 
+
 def generate_manifests(hub):
 	"""
 	Once auto-generation is complete, this function will write all stored Manifest data to disk. We do this after
