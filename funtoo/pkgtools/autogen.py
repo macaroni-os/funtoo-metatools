@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
+import inspect
 import subprocess
 import os
 import traceback
@@ -51,7 +52,7 @@ important so each generator can wait for only its own tasks to complete.
 
 BREEZYBUILDS_PENDING = defaultdict(list)
 BREEZYBUILD_TASKS_ACTIVE = defaultdict(list)
-
+BREEZYBUILD_SUB_INDEX_HANDOFF = {}
 
 def generate_manifests(hub):
 	"""
@@ -147,12 +148,13 @@ async def execute_generator(
 	if generator_sub_path:
 		# This is an individual autogen.py. First grab the "base sub" (map the path), and then grab the actual sub-
 		# module we want by name.
-		generator_sub_base, sub_index = await hub._.acquire_sub(generator_sub_path)
+		generator_sub_base, sub_name = await hub._.acquire_sub(generator_sub_path)
 		generator_sub = getattr(generator_sub_base, generator_sub_name)
+		sub_index = generator_sub_path
 	else:
 		# This is an official generator that is built-in to pkgtools:
 		generator_sub = getattr(hub.generators, generator_sub_name)
-		sub_index = generator_sub_name
+		sub_index = inspect.getsourcefile(generator_sub)
 
 	# The generate_wrapper wraps the call to `generate()` (in autogen.py or the generator) and performs setup
 	# and post-tasks:
@@ -194,7 +196,6 @@ async def execute_generator(
 		pkginfo.update(base_pkginfo)
 		if template_path:
 			pkginfo["template_path"] = template_path
-		pkginfo["sub_index"] = sub_index
 
 		# Now that we have wrapped the generate method, we need to start it as an asyncio task and then we will wait
 		# for all our generate() calls to complete, outside this for loop.

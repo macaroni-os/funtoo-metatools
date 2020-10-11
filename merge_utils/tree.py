@@ -78,7 +78,7 @@ class Tree:
 		if not os.path.exists(autogen_path):
 			print("Skipping autogen as src_offset %s (in %s) doesn't exist!" % (src_offset, autogen_path))
 			return
-		print(f"Starting autogen {self.hub.AUTOGEN_OPTS} in src_offset {src_offset} (in {autogen_path})...")
+		print(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
 		# use subprocess.call so we can see the output of autogen:
 		retcode = subprocess.call(
 			f"cd {autogen_path} && doit --release {self.hub.RELEASE} --kit {self.name} --branch {self.branch} --fastpull",

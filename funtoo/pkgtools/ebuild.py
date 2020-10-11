@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import inspect
 import os
 import asyncio
 from asyncio import FIRST_COMPLETED
@@ -18,7 +18,6 @@ def __init__(hub):
 	HUB = hub
 	hub.MANIFEST_LINES = defaultdict(set)
 	hub.FETCH_SUBSYSTEM = "fastpull"
-
 
 class BreezyError(Exception):
 	def __init__(self, msg):
@@ -133,12 +132,7 @@ class BreezyBuild:
 		self.source_tree = self.hub.CONTEXT
 		self.output_tree = self.hub.OUTPUT_CONTEXT
 		self._pkgdir = None
-		self.sub_index = sub_index
-		try:
-			assert self.sub_index is not None
-		except AssertionError as ase:
-			raise ValueError("Please ensure that **pkginfo is passed to BreezyBuild. Special variable sub_index is needed.")
-
+		self.sub_index = None
 		self.template_args = kwargs
 		for kwarg in ["cat", "name", "version", "revision", "path"]:
 			if kwarg in kwargs:
@@ -213,6 +207,9 @@ class BreezyBuild:
 		self.artifacts = self.template_args["artifacts"] = await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks)
 
 	def push(self):
+		if self.sub_index is None:
+			# Use filename of caller as sub_index. Our pending BreezyBuilds are all organized by sub.
+			self.sub_index = inspect.getmodule(inspect.stack()[1][0]).__file__
 		self.hub.pkgtools.autogen.BREEZYBUILDS_PENDING[self.sub_index].append(self)
 
 	@property
