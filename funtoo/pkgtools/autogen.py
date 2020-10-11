@@ -151,7 +151,7 @@ async def execute_generator(
 		# module we want by name.
 		generator_sub_base, sub_name = await hub._.acquire_sub(generator_sub_path)
 		generator_sub = getattr(generator_sub_base, generator_sub_name)
-		sub_index = generator_sub_path
+		sub_index = generator_sub_path + "/" + generator_sub_name + ".py"
 	else:
 		# This is an official generator that is built-in to pkgtools:
 		generator_sub = getattr(hub.generators, generator_sub_name)
@@ -169,6 +169,7 @@ async def execute_generator(
 		await generator_sub.generate(**pkginfo)
 		global BREEZYBUILDS_PENDING
 		while len(BREEZYBUILDS_PENDING[sub_index]):
+			# popping a pushed BreezyBuild -- we'll start it but not wait for it to complete so we can start more...
 			bzb = BREEZYBUILDS_PENDING[sub_index].pop(0)
 			BREEZYBUILD_TASKS_ACTIVE[sub_index].append(asyncio.Task(bzb.generate()))
 
@@ -177,7 +178,6 @@ async def execute_generator(
 	print(f"Executing generator {sub_index}")
 
 	for base_pkginfo in pkginfo_list:
-
 		# Generate each specified package. First we create the pkginfo data that gets passed to generate. You can see
 		# that it can come from multiple places:
 		#
