@@ -132,10 +132,7 @@ async def gather_pending_tasks(hub, task_list):
 				else:
 					results.append(result)
 				count += 1
-			except (hub.pkgtools.fetch.FetchError, hub.pkgtools.ebuild.BreezyError) as e:
-				_, _, tb = sys.exc_info()
-				ERRORS.append((e, traceback.extract_tb(tb)))
-			except AssertionError as e:
+			except Exception as e:
 				_, _, tb = sys.exc_info()
 				ERRORS.append((e, traceback.extract_tb(tb)))
 		if not len(cur_tasks):
