@@ -184,7 +184,6 @@ class BreezyBuild:
 
 		"""
 
-		artifacts = []
 		fetch_tasks = []
 
 		for artifact in self.artifact_dicts:
@@ -206,6 +205,10 @@ class BreezyBuild:
 		# Wait for any artifacts that are still fetching:
 
 		self.artifacts = self.template_args["artifacts"] = await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks)
+
+	#       TODO: I have observed instances where self.artifacts does not get properly initialized. But can't always
+	#             reproduce.
+	# 		print("ARTIFACTS", self.artifacts)
 
 	def push(self):
 		if self.sub_index is None:
