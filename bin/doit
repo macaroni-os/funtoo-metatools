@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+import traceback
 
 import pop.hub
 import logging
@@ -30,16 +31,11 @@ if __name__ == "__main__":
 
 	if len(errors):
 		sys.stderr.write("\n\n")
-		for e, tb_info in errors:
-			if type(e) == hub.pkgtools.fetch.FetchError:
-				logging.error(repr(e))
-			elif type(e) == hub.pkgtools.ebuild.BreezyError:
-				logging.error(e.msg)
-			else:
-				logging.error(repr(e) + ": ")
-				for tb in tb_info:
-					filename, line, func, text = tb
-					logging.error(f"  file {filename} line {line}: {func}: {text}")
+		for e, exc_info in errors:
+			msg = getattr(e, "msg", None)
+			if msg is not None:
+				logging.error(f"Message: {msg}")
+			traceback.print_exception(*exc_info)
 		sys.stderr.write("\n\nErrors encountered.\n")
 		sys.exit(1)
 # TODO: add after-action report (listing any failures.)

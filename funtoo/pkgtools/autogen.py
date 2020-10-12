@@ -133,8 +133,7 @@ async def gather_pending_tasks(hub, task_list):
 					results.append(result)
 				count += 1
 			except Exception as e:
-				_, _, tb = sys.exc_info()
-				ERRORS.append((e, traceback.extract_tb(tb)))
+				ERRORS.append((e, sys.exc_info()))
 		if not len(cur_tasks):
 			break
 	return results

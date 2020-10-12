@@ -54,13 +54,8 @@ def flush_kit(hub, repo_obj, save=True, prune=True):
 		logging.info(
 			f"There have been {len(repo_obj.KIT_CACHE_RETRIEVED_ATOMS)} atoms read, {len(repo_obj.KIT_CACHE_MISSES)} cache misses and {len(repo_obj.KIT_CACHE_WRITES)} updates to items."
 		)
-		logging.info(
-			f"{len(repo_obj.KIT_CACHE_RETRIEVED_ATOMS)} total atoms have been retrieved from cache. Now going to prune..."
-		)
 		all_keys = set(repo_obj.KIT_CACHE.keys())
 		remove_keys = all_keys - (repo_obj.KIT_CACHE_RETRIEVED_ATOMS | repo_obj.KIT_CACHE_WRITES)
-		num_pruned = len(remove_keys)
-		logging.info(f"{num_pruned} items WILL BE pruned from {repo_obj.name} kit cache.")
 		extra_atoms = repo_obj.KIT_CACHE_RETRIEVED_ATOMS - all_keys
 		for key in remove_keys:
 			del repo_obj.KIT_CACHE[key]
