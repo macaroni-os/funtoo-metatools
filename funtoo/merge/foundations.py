@@ -109,8 +109,6 @@ def get_copyfiles_from_yaml(hub, kit_name):
 	copyfile_items = list(hub._.get_kit_items(kit_name, section="copyfiles"))
 	copy_tuple_dict = defaultdict(list)
 
-	print(eclass_items)
-	print(copyfile_items)
 	for src_repo, eclasses in eclass_items:
 		for eclass in eclasses:
 			copy_tuple_dict[src_repo].append((f"eclass/{eclass}.eclass", f"eclass/{eclass}.eclass"))

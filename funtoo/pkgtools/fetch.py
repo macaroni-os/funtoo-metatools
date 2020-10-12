@@ -87,9 +87,9 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 				continue
 			# if we got here, we are on our LAST retry attempt or retry is False:
 			logging.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
+			# TODO: these should be logged persistently so they can be investigated.
 			try:
 				got = await hub.cache.fetch.fetch_cache_read(fetch_method.__name__, fetchable)
-				logging.warning(repr(got))
 				return got["body"]
 			except CacheMiss as ce:
 				# raise original exception
