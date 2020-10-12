@@ -185,26 +185,33 @@ class BreezyBuild:
 		"""
 
 		fetch_tasks = []
+		completed_artifacts = []
 
 		for artifact in self.artifact_dicts:
 			if type(artifact) != Artifact:
 				artifact = Artifact(**artifact)
 
-			# This records that the artifact is used by this catpkg. This is used for the integrity database writes:
+			# This records that the artifact is used by this catpkg, because an Artifact can be shared among multiple
+			# catpkgs. This is used for the integrity database writes:
+
 			if self.catpkg not in artifact.catpkgs:
 				artifact.catpkgs.add(self.catpkg)
 
 			if not artifact.final_data:
 
-				async def lil_coroutine(a):
+				async def lil_coroutine(a, catpkg):
+					print(f"Calling ensure_completed on {catpkg}")
 					await self.hub.pkgtools.download.ensure_completed(self.catpkg, a)
 					return a
 
-				fetch_tasks.append(asyncio.Task(lil_coroutine(artifact)))
+				fetch_tasks.append(asyncio.Task(lil_coroutine(artifact, self.catpkg)))
+			else:
+				completed_artifacts.append(artifact)
 
 		# Wait for any artifacts that are still fetching:
 
-		self.artifacts = self.template_args["artifacts"] = await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks)
+		completed_artifacts += await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks)
+		self.artifacts = self.template_args["artifacts"] = completed_artifacts
 
 	#       TODO: I have observed instances where self.artifacts does not get properly initialized. But can't always
 	#             reproduce.
