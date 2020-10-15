@@ -2,9 +2,12 @@
 
 import asyncio
 import sys
+import traceback
 
 import pop.hub
 import logging
+
+from merge_utils.config import Configuration
 
 hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
@@ -15,25 +18,24 @@ int_g = ["doit", "pkgtools"]
 hub.pop.conf.integrate(int_g, cli="doit", roots=True, loader="yaml", logs=True)
 
 if __name__ == "__main__":
-	hub.pop.sub.add("funtoo.pkgtools", omit_class=False)
+
 	kwargs = {}
-	for arg in ["cacher", "fetcher", "temp_path", "out_path", "start_path"]:
+	for arg in ["fetcher", "out_path", "start_path", "release", "kit", "branch"]:
 		kwargs[arg] = hub.OPT["doit"][arg]
+	hub.MERGE_CONFIG = config = Configuration(fastpull=hub.OPT["doit"]["fastpull"])
+
+	hub.pop.sub.add("funtoo.merge")
+	hub.pop.sub.add("funtoo.pkgtools", omit_class=False)
 
 	errors = asyncio.get_event_loop().run_until_complete(hub.pkgtools.autogen.start(**kwargs))
 
 	if len(errors):
 		sys.stderr.write("\n\n")
-		for e, tb_info in errors:
-			if type(e) == hub.pkgtools.fetch.FetchError:
-				logging.error(repr(e))
-			elif type(e) == hub.pkgtools.ebuild.BreezyError:
-				logging.error(e.msg)
-			else:
-				logging.error(repr(e) + ": ")
-				for tb in tb_info:
-					filename, line, func, text = tb
-					logging.error(f"  file {filename} line {line}: {func}: {text}")
+		for e, exc_info in errors:
+			msg = getattr(e, "msg", None)
+			if msg is not None:
+				logging.error(f"Message: {msg}")
+			traceback.print_exception(*exc_info)
 		sys.stderr.write("\n\nErrors encountered.\n")
 		sys.exit(1)
 # TODO: add after-action report (listing any failures.)

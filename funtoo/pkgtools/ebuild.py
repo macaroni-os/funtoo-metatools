@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-
+import inspect
 import os
 import asyncio
+from asyncio import FIRST_COMPLETED
 
 import jinja2
 import logging
@@ -16,6 +17,7 @@ def __init__(hub):
 	global HUB
 	HUB = hub
 	hub.MANIFEST_LINES = defaultdict(set)
+	hub.FETCH_SUBSYSTEM = "fastpull"
 
 
 class BreezyError(Exception):
@@ -36,10 +38,27 @@ class Fetchable:
 
 
 class Artifact(Fetchable):
-	def __init__(self, url=None, final_name=None, **kwargs):
+	def __init__(self, url=None, final_name=None, final_path=None, **kwargs):
 		super().__init__(url=url, **kwargs)
 		self._final_name = final_name
 		self.final_data = None
+		self._final_path = final_path
+		self.catpkgs = set()
+
+	@property
+	def temp_path(self):
+		return os.path.join(self.hub.MERGE_CONFIG.fetch_download_path, f"{self.final_name}.__download__")
+
+	@property
+	def extract_path(self):
+		return self.hub.pkgtools.download.extract_path(self)
+
+	@property
+	def final_path(self):
+		if self._final_path:
+			return self._final_path
+		else:
+			return os.path.join(self.hub.MERGE_CONFIG.fetch_download_path, self.final_name)
 
 	@property
 	def final_name(self):
@@ -48,15 +67,11 @@ class Artifact(Fetchable):
 		else:
 			return self._final_name
 
-	@property
-	def extract_path(self):
-		return self.hub.pkgtools.download.extract_path(self)
-
 	async def fetch(self):
 		await self.hub.pkgtools.download.ensure_fetched(self)
 
 	def is_fetched(self):
-		return self.hub.pkgtools.download.is_fetched(self)
+		return os.path.exists(self.final_path)
 
 	async def ensure_fetched(self):
 		await self.fetch()
@@ -89,7 +104,7 @@ class Artifact(Fetchable):
 		return self.hub.pkgtools.download.cleanup(self)
 
 	def exists(self):
-		return self.hub.pkgtools.is_fetched(self)
+		return self.is_fetched()
 
 
 class BreezyBuild:
@@ -105,13 +120,20 @@ class BreezyBuild:
 	template_args = None
 
 	def __init__(
-		self, artifacts: list = None, template: str = None, template_text: str = None, template_path: str = None, **kwargs,
+		self,
+		artifacts: list = None,
+		template: str = None,
+		template_text: str = None,
+		template_path: str = None,
+		sub_index=None,
+		**kwargs,
 	):
 		global HUB
 		self.hub = HUB
 		self.source_tree = self.hub.CONTEXT
 		self.output_tree = self.hub.OUTPUT_CONTEXT
 		self._pkgdir = None
+		self.sub_index = None
 		self.template_args = kwargs
 		for kwarg in ["cat", "name", "version", "revision", "path"]:
 			if kwarg in kwargs:
@@ -142,40 +164,64 @@ class BreezyBuild:
 
 	async def setup(self):
 		"""
-		This method ensures that Artifacts are instantiated (if dictionaries were passed in instead of live
-		Artifact objects) -- and that their setup() method is called, which may actually do fetching, if the
-		local archive is not available for generating digests.
+		This method performs some special setup steps. We tend to treat Artifacts as stand-alone objects -- and they
+		can be -- such as if you instantiate an Artifact in `generate()` and fetch it because you need to extract it
+		and look inside it.
 
-		Note that this now parallelizes all downloads.
+		But when associated with a BreezyBuild, as is commonly the case, this means that there is a relationship between
+		the Artifact and the BreezyBuild.
+
+		In this scenario, we know that the Artifact is associated with a catpkg, and will be written out to a Manifest.
+		So this means we want to create some associations. We want to record that the Artifact is associated with the
+		catpkg of this BreezyBuild. We use this for writing new entries to the Distfile Integrity database for
+		to-be-fetched artifacts.
+
+		The `ensure_completed()` call will ensure the Artifact has hashes from the Distfile Integrity Database or is
+		fetched and hashes calculated.
+
+		TODO: if the file exists on disk, but there is no Distfile Integrity entry, we need to make sure that hashes
+		      are not just calculated -- the distfile integrity entry should be created as well.
+
 		"""
 
-		# TODO: if not fetched, we need to wait on something that will return when the file is actually
-		#       fetched.
-
-		futures = []
+		fetch_tasks = []
+		completed_artifacts = []
 
 		for artifact in self.artifact_dicts:
 			if type(artifact) != Artifact:
 				artifact = Artifact(**artifact)
 
-			async def lil_coroutine(a):
-				await a.ensure_fetched()
-				return a
+			# This records that the artifact is used by this catpkg, because an Artifact can be shared among multiple
+			# catpkgs. This is used for the integrity database writes:
 
-			futures.append(lil_coroutine(artifact))
+			if self.catpkg not in artifact.catpkgs:
+				artifact.catpkgs.add(self.catpkg)
 
-		# At this point, all artifacts are fetched:
-		self.artifacts = await asyncio.gather(*futures)
-		self.template_args["artifacts"] = self.artifacts
+			if not artifact.final_data:
+
+				async def lil_coroutine(a, catpkg):
+					print(f"Calling ensure_completed on {catpkg}")
+					await self.hub.pkgtools.download.ensure_completed(self.catpkg, a)
+					return a
+
+				fetch_tasks.append(asyncio.Task(lil_coroutine(artifact, self.catpkg)))
+			else:
+				completed_artifacts.append(artifact)
+
+		# Wait for any artifacts that are still fetching:
+
+		completed_artifacts += await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks)
+		self.artifacts = self.template_args["artifacts"] = completed_artifacts
+
+	#       TODO: I have observed instances where self.artifacts does not get properly initialized. But can't always
+	#             reproduce.
+	# 		print("ARTIFACTS", self.artifacts)
 
 	def push(self):
-		"""
-		Push means "do it soon". Anything pushed will be on a task queue which will get fired off at the end
-		of the autogen run. Tasks will run in parallel so this is a great way to improve performance if generating
-		a lot of catpkgs. Push all the catpkgs you want to generate and they will all get fired off at once.
-		"""
-		task = asyncio.create_task(self.generate())
-		self.hub.pkgtools.autogen.QUE.append(task)
+		if self.sub_index is None:
+			# Use filename of caller as sub_index. Our pending BreezyBuilds are all organized by sub.
+			self.sub_index = inspect.getmodule(inspect.stack()[1][0]).__file__
+		self.hub.pkgtools.autogen.BREEZYBUILDS_PENDING[self.sub_index].append(self)
 
 	@property
 	def pkgdir(self):
@@ -227,8 +273,6 @@ class BreezyBuild:
 		tpath = os.path.join(self.source_tree.root, self.cat, self.name, "templates")
 		return tpath
 
-	# TODO: we should really generate one Manifest per catpkg -- this does one per ebuild:
-
 	def record_manifest_lines(self):
 		"""
 		This method records literal Manifest output lines which will get written out later, because we may
@@ -267,7 +311,6 @@ class BreezyBuild:
 		If you don't call push() on your BreezyBuild, then you could choose to call the generate() method
 		directly instead. In that case it will run right away.
 		"""
-
 		if self.cat is None:
 			raise BreezyError("Please set 'cat' to the category name of this ebuild.")
 		if self.name is None:

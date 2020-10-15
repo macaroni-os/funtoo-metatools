@@ -3,16 +3,19 @@
 import asyncio
 import aiohttp
 
+"""
+This sub implements DNS resolution, and is used by the http.py sub.
+
+There is special code in get_resolver() to make sure that the Resolver is in the current ioloop.
+Since we use ThreadPools, this is required to ensure that the resolver works for each thread.
+"""
 
 RESOLVERS = {}
 
 
 def get_resolver(hub):
 	"""
-	Resolvers need to be local to the current ioloop. Since we use a ThreadPool, it may not be in the caller's
-	ioloop if we just instantiate a global resolver.
-
-	This should return a resolver local to the caller.
+	This returns a DNS resolver local to the ioloop of the caller.
 	"""
 	global RESOLVERS
 	loop = asyncio.get_event_loop()

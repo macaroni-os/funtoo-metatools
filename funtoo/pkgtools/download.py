@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import asyncio
 import hashlib
 import logging
@@ -6,46 +7,86 @@ import os
 import sys
 from subprocess import getstatusoutput
 
+"""
+This sub deals with the higher-level logic related to downloading of distfiles. Where the 'fetch.py'
+sub deals with grabbing HTTP data from APIs, this is much more geared towards grabbing tarballs that
+are bigger, and organizing them into a distfiles directory. This includes calculating cryptographic
+hashes on the resultant downloads and ensuring they match what we expect.
+
+The implementation is based around a class called `Download`.
+
+Because autogen is multi-threaded, it's possible for two autogens to try downloading the same file
+at the same time. If they create a `Download` object, this special class will do the magic of looking
+at `hub.DL_ACTIVE` for any active downloads of the same file, and if one exists, it will not fire
+off a new download but instead wait for the existing download to complete. So the 'downloader'
+(code trying to download the file) can remain ignorant of the fact that the download was already
+started previously.
+
+This allows multi-threaded downloads of potentially identical files to work without complication in
+the autogen.py files or generators so that this complexity does not have to be dealt with by those
+who are simply writing autogens.
+"""
+
 
 def __init__(hub):
+
 	hub.CHECK_DISK_HASHES = False
 	hub.DL_ACTIVE = {}
+	# This DL_ACTIVE_COUNT is used to limit the number of simultaneous downloads (to 24):
 	hub.DL_ACTIVE_COUNT = asyncio.Semaphore(value=24, loop=asyncio.get_event_loop())
 
 
-HASHES = ["sha512", "blake2b"]
+HASHES = ["sha256", "sha512", "blake2b"]
 
 # TODO: implement different download strategies with different levels of security. Maybe as a
 #       declarative pipeline.
 
 
-def get_final_path(hub, artifact):
-	return os.path.join(hub.TEMP_PATH, "distfiles", artifact.final_name)
+async def ensure_completed(hub, catpkg, artifact):
+	"""
+	This function ensures that we can 'complete' the artifact -- meaning we have its hash data in the integrity database.
+	If this hash data is not found, then we need to fetch the artifact.
+	"""
+	integrity_item = hub.merge.deepdive.get_distfile_integrity(catpkg, distfile=artifact.final_name)
+	if integrity_item is not None:
+		artifact.final_data = integrity_item["final_data"]
+	else:
+		await hub._.ensure_fetched(artifact, catpkg=catpkg)
 
 
-def _temp_path(hub, artifact):
-	return os.path.join(hub.TEMP_PATH, "distfiles", "%s.__download__" % artifact.final_name)
-
-
-def is_fetched(hub, artifact):
-	return os.path.exists(get_final_path(hub, artifact))
-
-
-async def ensure_fetched(hub, artifact):
-	if is_fetched(hub, artifact):
+async def ensure_fetched(hub, artifact, catpkg=None):
+	"""
+	This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
+	calculate its hashes or extract it.
+	"""
+	if artifact.is_fetched():
 		if artifact.final_data is not None:
 			return
 		else:
-			# TODO: put this in a threadpool to avoid multiple simultaneous hash calcs on same file:
-			artifact.record_final_data(await calc_hashes(hub, get_final_path(hub, artifact)))
+			# We will hit this condition only if for some reason we blew away our Distfile Integrity database or an
+			# entry for a distfile in it. In this scenario -- the file is fetched, so it's on disk, but we don't have
+			# any hashes for it yet. We want to re-populate the Distfile Integrity database if necessary so we don't
+			# keep recalculating hashes unnecessarily and they are persistently stored
+			#
+			# We can only do this if we are called from ensure_completed().
+			if catpkg:
+				integrity_item = hub.merge.deepdive.get_distfile_integrity(catpkg, distfile=artifact.final_name)
+				if integrity_item is not None:
+					artifact.final_data = integrity_item["final_data"]
+				else:
+					final_data = hub._.calc_hashes(artifact.final_path)
+					hub.merge.deepdive.store_distfile_integrity(catpkg, artifact.final_name, final_data)
+					artifact.record_final_data(final_data)
+			else:
+				final_data = hub._.calc_hashes(artifact.final_path)
+				artifact.record_final_data(final_data)
 	else:
 		if artifact.final_name in hub.DL_ACTIVE:
 			# Active download -- wait for it to finish:
-			print(f"Waiting for {artifact.final_name} to finish")
+			logging.info(f"Waiting for {artifact.final_name} to finish")
 			await hub.DL_ACTIVE[artifact.final_name].wait_for_completion(artifact)
 		else:
 			# No active download for this file -- start one:
-			print(f"Starting download of {artifact.final_name}")
 			dl_file = Download(hub, artifact)
 			await dl_file.download()
 
@@ -61,6 +102,10 @@ class Download:
 	The Download object will record all Artifacts that need this file, and arbitrate the download
 	of this file and update the Artifacts with the completion data when the download is complete.
 
+	A Download will be shared only if the Artifacts fetching the file are storing it as the same
+	final_name. So it's possible that if the final_name differs that files could be theoretically
+	downloaded multiple times or simultaneously and redundantly (but this rarely if ever happens,
+	just worth mentioning and a possible improvement in the future.)
 	"""
 
 	def __init__(self, hub, artifact):
@@ -83,8 +128,23 @@ class Download:
 		await self.hub.DL_ACTIVE_COUNT.acquire()
 		self.hub.DL_ACTIVE[self.final_name] = self
 		final_data = await _download(self.hub, self.artifacts[0])
+		integrity_keys = {}
 		for artifact in self.artifacts:
 			artifact.record_final_data(final_data)
+			for catpkg in artifact.catpkgs:
+				integrity_keys[(catpkg, artifact.final_name)] = True
+
+		# For every final_name referenced by a catpkg, create a distfile integrity entry. We use integrity_keys to
+		# avoid duplicate records.
+
+		for catpkg, final_name in integrity_keys.keys():
+			self.hub.merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
+
+		# We only need to insert once into fastpull since it is the same underlying file.
+
+		if self.hub.MERGE_CONFIG.fastpull_enabled:
+			self.hub.pkgtools.fastpull.download_completion_hook(final_data, self.artifacts[0].final_path)
+
 		del self.hub.DL_ACTIVE[self.final_name]
 		self.hub.DL_ACTIVE_COUNT.release()
 		for future in self.futures:
@@ -102,11 +162,11 @@ async def _download(hub, artifact):
 	filesize of the downloaded artifact.
 
 	"""
-
 	logging.info(f"Fetching {artifact.url}...")
-	os.makedirs(os.path.join(hub.TEMP_PATH, "distfiles"), exist_ok=True)
-	temp_path = _temp_path(hub, artifact)
-	final_path = get_final_path(hub, artifact)
+
+	temp_path = artifact.temp_path
+	os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+	final_path = artifact.final_path
 
 	fd = open(temp_path, "wb")
 	hashes = {}
@@ -142,7 +202,12 @@ async def _download(hub, artifact):
 
 
 def extract_path(hub, artifact):
-	return os.path.join(hub.TEMP_PATH, "distfile", "extract", artifact.final_name)
+	return os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name)
+
+
+def cleanup(hub, artifact):
+	# TODO: check for path stuff like ../.. in final_name to avoid security issues.
+	getstatusoutput("rm -rf " + os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name))
 
 
 def extract(hub, artifact):
@@ -151,18 +216,13 @@ def extract(hub, artifact):
 		artifact.fetch()
 	ep = extract_path(hub, artifact)
 	os.makedirs(ep, exist_ok=True)
-	cmd = "tar -C %s -xf %s" % (ep, get_final_path(hub, artifact))
+	cmd = "tar -C %s -xf %s" % (ep, artifact.final_path)
 	s, o = getstatusoutput(cmd)
 	if s != 0:
 		raise hub.pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
 
 
-def cleanup(hub, artifact):
-	# TODO: check for path stuff like ../.. in final_name to avoid security issues.
-	getstatusoutput("rm -rf " + os.path.join(hub.TEMP_PATH, "distfiles", "extract", artifact.final_name))
-
-
-async def calc_hashes(hub, fn):
+def calc_hashes(hub, fn):
 	hashes = {}
 	for h in HASHES:
 		hashes[h] = getattr(hashlib, h)()

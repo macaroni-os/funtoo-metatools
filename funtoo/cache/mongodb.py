@@ -26,27 +26,16 @@ __virtualname__ = "fetch"
 
 
 def __virtual__(hub):
-	cacher = getattr(hub, "CACHER", None)
-	return cacher == "mongodb"
+	return True
 
 
 def __init__(hub):
 	mc = MongoClient()
 	db_name = "metatools"
 	hub.MONGO_DB = getattr(mc, db_name)
-
 	hub.MONGO_FC = hub.MONGO_DB.fetch_cache
 	hub.MONGO_FC.create_index([("method_name", pymongo.ASCENDING), ("url", pymongo.ASCENDING)])
 	hub.MONGO_FC.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {"$exists": True}})
-
-	hub.MONGO_MC = hub.MONGO_DB.metadata_cache
-	hub.MONGO_MC.create_index("atom")
-	hub.MONGO_MC.create_index(
-		[("kit", pymongo.ASCENDING), ("category", pymongo.ASCENDING), ("package", pymongo.ASCENDING)]
-	)
-	hub.MONGO_MC.create_index("catpkg")
-	hub.MONGO_MC.create_index("relations")
-	hub.MONGO_MC.create_index("md5")
 
 
 async def fetch_cache_write(hub, method_name, fetchable, body=None, metadata_only=False):

@@ -149,16 +149,8 @@ if __name__ == "__main__":
 
 	hub.CPM_LOGGER = None
 
-	# Our autogen scripts will call "doit" (which actually hits this code base again, but as a separate process) and
-	# AUTOGEN_OPTS is used to define the correct arguments to supply to the "doit" call depending on what behavior
-	# we want:
-
-	hub.AUTOGEN_OPTS = [f"--temp-path={os.path.join(config.work_path, 'autogen')}"]
-	if prod:
-		hub.AUTOGEN_OPTS.append("--cacher=mongodb")
-	hub.AUTOGEN_OPTS = " ".join(hub.AUTOGEN_OPTS)
-
 	loop = asyncio.get_event_loop()
+	loop.set_debug(enabled=True)
 	loop.run_until_complete(main_thread())
 
 	# if len(hub.METADATA_ERRORS):
