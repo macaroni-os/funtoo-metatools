@@ -12,9 +12,6 @@ import yaml
 from yaml import safe_load
 import logging
 
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
-
 """
 The `PENDING_QUE` will be built up to contain a full list of all the catpkgs we want to autogen in the full run
 of 'doit'. We queue up everything first so that we have the ability to add QA checks, such as for catpkgs that
@@ -67,11 +64,9 @@ def generate_manifests(hub):
 		with open(manifest_file, "w") as myf:
 			pos = 0
 			while pos < len(manifest_lines):
-				if pos != 0:
-					myf.write("\n")
 				myf.write(manifest_lines[pos])
 				pos += 1
-		log.debug(f"Manifest {manifest_file} generated.")
+		logging.debug(f"Manifest {manifest_file} generated.")
 
 
 async def acquire_sub(hub, subpath):
@@ -110,6 +105,7 @@ def queue_all_indy_autogens(hub):
 				"pkginfo_list": [{"name": pkg_name, "cat": pkg_cat}],
 			}
 		)
+		logging.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
 async def gather_pending_tasks(hub, task_list):
@@ -162,6 +158,8 @@ async def execute_generator(
 			print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
 		else:
 			print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+		logging.debug(f"Using the following pkginfo for auto-generation: {pkginfo}")
+		logging.debug(f"Using sub-index: {sub_index}")
 		await generator_sub.generate(**pkginfo)
 		global BREEZYBUILDS_PENDING
 		while len(BREEZYBUILDS_PENDING[sub_index]):
@@ -171,7 +169,7 @@ async def execute_generator(
 
 	running_generate_wrappers = []
 
-	print(f"Executing generator {sub_index}")
+	logging.debug(f"Executing generator {generator_sub_name}")
 
 	for base_pkginfo in pkginfo_list:
 		# Generate each specified package. First we create the pkginfo data that gets passed to generate. You can see
@@ -285,11 +283,18 @@ def queue_all_yaml_autogens(hub):
 					defaults = {}
 
 				if "generator" in rule:
-					# A built-in generator name has been specified. Goody.
+					sub_path = os.path.join(yaml_base_path, "generators")
 					sub_name = rule["generator"]
-					sub_path = None
+					if os.path.exists(os.path.join(sub_path, rule["generator"] + ".py")):
+						# We found a generator in a "generators" directory next to the autogen.yaml that contains the
+						# generator.
+						logging.debug(f"Found generator {sub_name} in local tree.")
+					else:
+
+						sub_path = None
+						logging.debug(f"Using built-in generator {sub_name}.")
 				else:
-					# Use an ad-hoc 'generator.py' generator in the same dir as autogen.yaml:
+					# Fallback: Use an ad-hoc 'generator.py' generator in the same dir as autogen.yaml:
 					sub_name = "generator"
 					sub_path = yaml_base_path
 
@@ -305,6 +310,7 @@ def queue_all_yaml_autogens(hub):
 						"pkginfo_list": pkginfo_list,
 					}
 				)
+				logging.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
 def load_autogen_config(hub):

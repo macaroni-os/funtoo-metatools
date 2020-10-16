@@ -200,7 +200,6 @@ class BreezyBuild:
 			if not artifact.final_data:
 
 				async def lil_coroutine(a, catpkg):
-					print(f"Calling ensure_completed on {catpkg}")
 					await self.hub.pkgtools.download.ensure_completed(self.catpkg, a)
 					return a
 
@@ -212,10 +211,6 @@ class BreezyBuild:
 
 		completed_artifacts += await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks)
 		self.artifacts = self.template_args["artifacts"] = completed_artifacts
-
-	#       TODO: I have observed instances where self.artifacts does not get properly initialized. But can't always
-	#             reproduce.
-	# 		print("ARTIFACTS", self.artifacts)
 
 	def push(self):
 		if self.sub_index is None:

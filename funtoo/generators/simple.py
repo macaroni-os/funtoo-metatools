@@ -4,7 +4,7 @@ GLOBAL_DEFAULTS = {}
 
 
 async def generate(hub, **pkginfo):
-	ebuild = hub.pkgtools.ebuild.BreezyBuild(**pkginfo,)
+	ebuild = hub.pkgtools.ebuild.BreezyBuild(**pkginfo)
 	ebuild.push()
 
 
