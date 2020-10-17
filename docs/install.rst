@@ -1,0 +1,52 @@
+
+Installation
+============
+
+These instructions asssume you are using Funtoo Linux but should be easy to adapt
+to other distributions.
+
+Installing Latest Official Release
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Funtoo-metatools is easy to install. On Funtoo, it can simply be emerged::
+
+  # emerge metatools
+
+The primary executable, ``doit``, will now be in your path.
+
+Alternatively you can use ``pip3`` to pull it from PyPi::
+
+  $ pip3 install --user funtoo-metatools
+
+If you would like to create an isolated virtual environment for funtoo-metatools,
+you can use virtualenv as follows::
+
+  $ emerge virtualenv
+  $ virtualenv -p python3 venv
+  $ source venv/bin/activate
+  (venv) $ pip install funtoo-metatools
+
+From this point forward, whenever you want to use the virtualenv, simply
+source the activate script to enter your isolated python virtual environment.
+
+Installing Latest Development Sources
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you need the absolute latest features, you may want or need to install ``metatools``
+from git master. To do this, you will want to clone the repository locally::
+
+  # cd ~/development
+  # git clone ssh://git@code.funtoo.org:7999/~drobbins/funtoo-metatools.git
+
+Next, you will want to add something similar to the following to you shell init script,
+such as your ``./.bashrc`` file::
+
+  export PATH=$HOME/development/funtoo-metatools/bin:$PATH
+  export PYTHONPATH=$HOME/development/funtoo-metatools
+
+When these settings are active, your current shell will be able to find the binaries
+such as ``doit`` as well as the python modules in the live git repository.
+
+Finally, you will want to ensure that all dependent modules are installed. On Funtoo,
+this can be accomplished via ``emerge --onlydeps metatools``.
+
