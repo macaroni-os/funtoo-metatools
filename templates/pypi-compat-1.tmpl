@@ -1,3 +1,12 @@
+{#- Convert 2-space indents to tabs in the ebuild: #}
+{%- macro indented(lines, initial_indent=0, allow_empty=False) %}
+{%- for line in lines.split('\n') %}
+  {%- set indent_level = (line|length - line.lstrip(" ")|length) // 2 %}
+  {%- set newline = "\n" + "\t" * ( indent_level + initial_indent ) + line[indent_level*2:] -%}
+{{newline if ( line[indent_level*2:]|length or allow_empty ) and not line == lines else line }}
+{%- endfor %}
+{%- endmacro -%}
+
 # Distributed under the terms of the GNU General Public License v2
 
 EAPI={{eapi|default('7')}}
@@ -13,21 +22,21 @@ DESCRIPTION="{{desc|default('')}}"
 HOMEPAGE="{{homepage|default('')}}"
 SRC_URI="{{artifacts[0].src_uri}}"
 
-DEPEND="{{depend|default('')}}"
+DEPEND="{{indented(depend|default(''),1)}}"
 {%- if compat_ebuild %}
-RDEPEND="{{rdepend|default('')}} {% if blocker %}{{blocker}}{% endif %}"
+RDEPEND="{% if blocker %}{{blocker}}{% endif %}{{indented(rdepend|default(''),1)}}"
 {%- elif compat is defined %}
-RDEPEND="{{rdepend|default('')}} python_targets_python2_7? ( {{cat}}/{{name}}-compat ) {{rdepend_compat|default('')}}"
+RDEPEND="python_targets_python2_7? ( {{cat}}/{{name}}-compat ){{indented(rdepend|default(''),1)}}{{indented(rdepend_compat|default(''),1)}}"
 {%- else %}
   {%- if rdepend is defined %}
-RDEPEND="{{rdepend|default('')}}"
+RDEPEND="{{indented(rdepend|default(''),1)}}"
   {%- endif %}
 {%- endif %}
 {%- if pdepend is defined %}
-PDEPEND="{{pdepend|default('')}}"
+PDEPEND="{{indented(pdepend|default(''),1)}}"
 {%- endif %}
 {%- if bdepend is defined %}
-BDEPEND="{{bdepend|default('')}}"
+BDEPEND="{{indented(bdepend|default(''),1)}}"
 {%- endif %}
 
 {%- if compat_ebuild %}
@@ -46,11 +55,6 @@ KEYWORDS="{{keywords|default('*')}}"
 
 S="${WORKDIR}/{{pypi_name}}-${PV}"
 
-{# Convert 2-space indents to tabs in the ebuild: #}
 {%- if body is defined %}
-{%- for line in body.split('\n') %}
-  {%- set indent_level = (line|length - line.lstrip(" ")|length) // 2 %}
-  {%- set newline = "\t" * indent_level + line[indent_level*2:] %}
-{{newline}}
-{%- endfor %}
+{{indented(body,allow_empty=True)}}
 {%- endif %}
