@@ -117,7 +117,7 @@ class FindAndRemove(MergeStep):
 
 	async def run(self, tree):
 		for glob in self.globs:
-			cmd = f"find {tree.root} -name {glob} -exec rm -rf {{}} \\;"
+			cmd = f"find {tree.root} -name {glob} -exec rm -rf {{}} +"
 			runShell(cmd, abort_on_failure=False)
 
 
