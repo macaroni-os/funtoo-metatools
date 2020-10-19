@@ -24,7 +24,12 @@ SRC_URI="{{artifacts[0].src_uri}}"
 
 DEPEND="{{indented(depend|default(''),1)}}"
 {%- if compat_ebuild %}
-RDEPEND="{% if blocker %}{{blocker}}{% endif %}{{indented(rdepend|default(''),1)}}"
+  {%- if blocker %}
+    {%- set outstr = blocker + " " %}
+  {%- else %}
+    {%- set outstr = "" %}
+  {%- endif %}
+RDEPEND="{{outstr}}{{indented(rdepend|default(''),1)}}"
 {%- elif compat is defined %}
   {%- set outstr = "python_targets_python2_7? ( " + cat + "/" + name + "-compat )" %}
   {%- if rdepend is defined %}
