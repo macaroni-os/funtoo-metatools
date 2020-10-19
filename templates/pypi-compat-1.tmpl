@@ -26,7 +26,14 @@ DEPEND="{{indented(depend|default(''),1)}}"
 {%- if compat_ebuild %}
 RDEPEND="{% if blocker %}{{blocker}}{% endif %}{{indented(rdepend|default(''),1)}}"
 {%- elif compat is defined %}
-RDEPEND="python_targets_python2_7? ( {{cat}}/{{name}}-compat ){{indented(rdepend|default(''),1)}}{{indented(rdepend_compat|default(''),1)}}"
+  {%- set outstr = "python_targets_python2_7? ( " + cat + "/" + name + "-compat )" %}
+  {%- if rdepend is defined %}
+    {%- set outstr = outstr + "\n" + rdepend %}
+  {%- endif %}
+  {%- if rdepend_compat is defined %}
+    {%- set outstr = outstr + "\n" + rdepend_compat %}
+  {%- endif %}
+RDEPEND="{{indented(outstr,1)}}"
 {%- else %}
   {%- if rdepend is defined %}
 RDEPEND="{{indented(rdepend|default(''),1)}}"
@@ -38,11 +45,15 @@ PDEPEND="{{indented(pdepend|default(''),1)}}"
 {%- if bdepend is defined %}
 BDEPEND="{{indented(bdepend|default(''),1)}}"
 {%- endif %}
-
 {%- if compat_ebuild %}
 IUSE="{{iuse|default('')}}"
 {%- elif compat is defined %}
-IUSE="{{iuse|default('')}} python_targets_python2_7"
+  {%- if iuse is defined %}
+    {%- set iuse = iuse + " python_targets_python2_7" %}
+  {%- else %}
+    {%- set iuse = "python_targets_python2_7" %}
+  {%- endif %}
+IUSE="{{iuse|default('')}}"
 {%- else %}
 IUSE="{{iuse|default('')}}"
 {%- endif %}
