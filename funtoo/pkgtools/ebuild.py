@@ -155,12 +155,11 @@ class BreezyBuild:
 			self._template_path = template_path
 		if self.template_text is None and self.template is None:
 			self.template = self.name + ".tmpl"
-
 		if artifacts is None:
-			self.artifact_dicts = []
+			self.artifacts = []
 		else:
-			self.artifact_dicts = artifacts
-		self.artifacts = []
+			self.artifacts = artifacts
+		self.template_args["artifacts"] = artifacts
 
 	async def setup(self):
 		"""
@@ -184,10 +183,9 @@ class BreezyBuild:
 
 		"""
 
-		fetch_tasks = []
-		completed_artifacts = []
+		fetch_tasks_dict = {}
 
-		for artifact in self.artifact_dicts:
+		for artifact in self.artifacts:
 			if type(artifact) != Artifact:
 				artifact = Artifact(**artifact)
 
@@ -200,17 +198,13 @@ class BreezyBuild:
 			if not artifact.final_data:
 
 				async def lil_coroutine(a, catpkg):
-					await self.hub.pkgtools.download.ensure_completed(self.catpkg, a)
+					await self.hub.pkgtools.download.ensure_completed(catpkg, a)
 					return a
 
-				fetch_tasks.append(asyncio.Task(lil_coroutine(artifact, self.catpkg)))
-			else:
-				completed_artifacts.append(artifact)
+				fetch_tasks_dict[artifact] = asyncio.Task(lil_coroutine(artifact, self.catpkg))
 
 		# Wait for any artifacts that are still fetching:
-
-		completed_artifacts += await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks)
-		self.artifacts = self.template_args["artifacts"] = completed_artifacts
+		await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values())
 
 	def push(self):
 		if self.sub_index is None:
