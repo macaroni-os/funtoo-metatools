@@ -70,7 +70,6 @@ were created. These files are *not* added to git. They simply sit in your local 
 blow them away by running::
 
   $ git clean -fd
-  $ adsflk
 
 When doing developent, we actually *do not* want to commit the auto-generated ebuilds themselves to
 `kit-fixups`_ --
