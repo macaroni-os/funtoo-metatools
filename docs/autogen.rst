@@ -1,112 +1,85 @@
-Autogeneration Primer
-=====================
+Auto-generation
+===============
 
-The framework is designed to run in one of two modes -- either a 'stand-alone'
-or 'integrated' fashion.
+``metatools`` includes the ``doit`` command, which implements "auto-generation"
+of ebuilds. But what exactly is "auto-generation"?
 
-'Stand-alone' mode is designed to be easy-to-use for contributors to the
-upstream distribution such as Funtoo Linux. In this mode, contributors can write
-their own autogen scripts and test them locally before contributing a pull
-request, only needing to install a few python modules.
+In its broadest sense, "auto-generation" is the high-level creation of ebuilds.
+This can involve any number of advanced capabilities,
+such as querying GitHub_ or GitLab_ to find the latest version of a package,
+actually fetching source code and looking inside it, or using Jinja_ to generate
+ebuilds using templates. Typically, multiple approaches are used together.
 
-'Integrated' mode allows the funtoo-metatools technology to be used as part of a
-distribution such as Funtoo Linux's 'tree update' scripts, to fire off
-auto-generation en masse, and supports advanced features like resilient caching
-of HTTP requests in MongoDB and other distribution-class features.
-
-In whatever mode the tools are used, funtoo-metatools is designed to provide an
-elegant next-generation API for package creation and maintenance. *That* is the
-focus. It's time for a modern paradigm for automated maintenance of packages.
-That is what funtoo-metatools provides.
-
-Why not just use Ebuilds and Portage?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Ebuilds are great, and they have served Gentoo and Funtoo well, but they have
-limitations.
-
-For one, they are written in bash shell, which isn't the most modern language.
-Bash is slow and is unable to leverage advanced technologies easily. Also, with
-ebuilds, you are not really using pure bash -- you have to hook into Portage's
-bash-based framework, which is limited in functionality and has limited
-mechanisms for adding new functionality. Eclasses are one of those mechanisms to
-extend Portage functionality, by allowing OOP-like capabilities within bash.
-While respectable, they don't really compare to 'real' OOP. In addition, missing
-are modern programming constructs such as asynchronous programming, threads,
-etc. Portage's python code uses these behind-the-scenes, but they are not
-available to 'regular' ebuild writers. Wouldn't it be nice if the full power of
-a modern programming language were available to ebuild writers? That's what
-funtoo-metatools is all about -- extending all these technologies to you, so you
-can tap into the goodness of modern programming.
-
-Funtoo-metatools provides a framework for creating ebuilds which leverages the
-ubiquitous jinja2 templating engine, asynchronous code, and other advances. But
-what sets funtoo-metatools apart is the amount of thought and careful
-consideration that has gone into its architecture to ensure that it provides a
-very high-performance and maintainable code base for the future. A big part of
-this is the use of the ``pop`` framework.
-
+We use these capabilities to *reduce the manual labor required to
+maintain packages*. These capabilities
+exist to give us *leverage* over the complex world of software so that we
+can automate as much as possible, so we can do more with less.
 
 Performing Auto-Generation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To actually use these tools to auto-generate ebuilds, you can simply change
-directories into the ``example-overlay`` directory and run the ``doit``
-command::
+To actually use these tools to auto-generate ebuilds, it is recommended that you
+check out the `kit-fixups`_ repository, which is the master repository of Funtoo
+Linux. This repository is organized into directories for each kit, and sub-directories
+for each kit version, with ``current`` often used as a sub-directory name for kit
+version. So, for example, if we wanted to auto-generate all ebuilds in
+``core-kit/current``, we would do this::
 
+  $ cd development
+  $ git clone https://code.funtoo.org/bitbucket/scm/core/kit-fixups.git
+  $ cd kit-fixups/core-kit/curated
   $ doit
 
-When ``doit`` runs, it will attempt to auto-detect the root of the overlay you are
-currently in (a lot like how git will attempt to determine what git repo it is in.)
-Then, it will look for all ``autogen.py`` scripts and ``autogen.yaml`` files from
-from the current directory and deeper and execute these auto-generation scripts
-to generate ebuilds.
+In the above example, it will see that the directory ``kit-fixups/core-kit/curated``
+is an overlay that contains categories, and it will look inside it for all "autogens"
+and execute them.
 
-After running the command, you should be able to type ``git status`` to see all the
-files that were generated.
+When ``doit`` runs, it will determine its context by looking at the current working
+directory, similar to how the ``git`` command will find what git repository it is in by looking
+backwards from the current working directory. It will then fire off auto-generation in
+the current directory, looking in the current directory *and any sub-directories* for all
+autogens, and will execute them. You will see a lot of ``....`` being printed on the screen, which means
+that files are being downloaded. What is actually happening is that ``doit`` is querying
+Web APIs like GitHub and GitLab to find the latest versions of packages, and then downloading
+the source code tarballs (in ``metatools`` vernacular: "artifacts") for these packages, and a
+period is printed for each block of data received to show progress. Often times, multiple
+artifacts are being downloaded at the same time.
+Then, as the artifacts are received, ``doit`` creates ebuilds for these packages, and also creates ``Manifest`` files referencing
+the SHA512 and other digests of the downloaded Artifacts. You end up with ebuilds that you
+can test out by running ``ebuild foo-1.0.ebuild clean merge``.
 
-Using in Overlays
-~~~~~~~~~~~~~~~~~
+Where are these "autogens"? They are ``autogen.py`` files that exist in the repository. Think of our autogens as plug-ins, written in Python and leveraging the
+:ref:`POP Framework`, that contain
+a ``generate()`` function which can generate one or more ebuilds using the ``metatools``
+API. The ``metatools`` API, which we'll look at in a bit, is an extensible API that lets us query Web APIs, use
+Jinja and perform other neat tricks to generate ebuilds.
 
-The ``example-overlay`` directory is included only as an example, and the
-``doit`` command is capable of applying its magic to any overlay or kit. The
-tool will attempt to determine what directory it is in by looking for a
-``profiles/repo_name`` file in the current or parent directory, so if your
-overlay or kit is missing this file then ``doit`` won't be able to detect the
-overlay root. Simply create this file and add a single line containing the name
-of the repo, such as ``my-overlay``, for example.
+In addition to raw autogens, there are also ``autogen.yaml`` files which allow for creation of
+ebuilds *en masse*. In the YAML, you specify an autogen (also called a metatools "generator") plus packages and
+package-specific metadata to feed to that generator. When you feed package data to a generator, it
+spits out ebuilds. This is both highly efficient (it's fast) and also a nice way to generate
+ebuilds with little or no redundant code. ``metatools`` contains a number of built-in generators
+that can be used with the YAML system, such as generators that build ebuilds for Python packages on PyPi.
 
-Metatools is used extensively by Funtoo's `kit-fixups repository
-<https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse>`_.
+Go ahead and poke around inside `kit-fixups`_ and look at the ``autogen.py`` and
+``autogen.yaml`` files. You'll begin to get a sense for what they look like and and inkling of how everything
+works.
 
+Also type ``git status``. You should see that a bunch of ebuilds (along with ``Manifest`` files)
+were created. These files are *not* added to git. They simply sit in your local repo, and you can
+blow them away by running::
 
-Quick Usage
-~~~~~~~~~~~
+  $ git clean -fd
+  $ adsflk
 
-To use the tool, go into an autogen-enabled tree like Funtoo's kit-fixups
-repository and run ``doit``. This will auto-generate all ebuilds in the current
-directory and below.
+When doing developent, we actually *do not* want to actually commit the auto-generated ebuilds themselves to
+`kit-fixups`_ --
+we just want to commit the autogens (``autogen.py`` and ``autogen.yaml``.) There is a separate
+step, peformed by the ``merge-kits`` command, which actually updates the meta-repo and will
+commit the generated ebuilds to kits which are then pushed out to users. But for ``kit-fixups``,
+we're doing development, not updating the tree, so we just want to commit the autogens.
 
-For production usage, install and start ``mongodb``, and run ``doit
---cacher=mongodb``. This will tell the framework to cache all HTTP requests in
-MongoDB so that if an autogen script fails it will still be able to successfully
-generate ebuilds using cached data.
-
-Examples
-~~~~~~~~
-
-Next, take a look at the contents of the ``example-overlay`` directory. This is
-a Funtoo overlay or kit which contains a couple of catpkgs that perform
-auto-generation.
-
-The ``net-im/discord-bin/autogen.py`` script will auto-create a new version of a
-Discord package by grabbing the contents of an HTTP redirect which contains the
-name of the current version of Discord. The Discord artifact (aka SRC_URI) will
-then be downloaded, and new Discord ebuild generated with the proper version.
-The 'master' ebuild is stored in ``net-im/discord-bin/templates/discord.tmpl``
-and while jinja2 templating is supported, no templating features are used so the
-template is simply written out to the proper ebuild filename as-is.
-
-The ``x11-base/xorg-proto/autogen.py`` script is more complex, and actually
-generates around 30 ebuilds. This file is heavily commented and also takes
-advantage of jinja templating.
+.. _kit-fixups: https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse
+.. _GitLab: https://docs.gitlab.com/ee/api/
+.. _GitHub: https://developer.github.com/v3/
+.. _Jinja: https://jinja.palletsprojects.com/

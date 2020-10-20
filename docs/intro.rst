@@ -6,17 +6,34 @@ the auto-creation of Gentoo ebuilds, maintenance of an independent fork of
 Gentoo or Funtoo, or even building a non-Gentoo distribution. It contains
 several technology components, including:
 
-* ``doit``: A YAML and Jinja-based package auto-generation engine. See
-  :ref:`Autogeneration Primer`. This is used for auto-generation of
-  ebuilds.
+* ``doit``: A YAML and Jinja-based package pure Python auto-generation engine. See
+  :ref:`Auto-generation`.
+
+  This is used for auto-generation of
+  ebuilds. Auto-generation can mean one or more of the following:
+
+  * Querying upstream APIs such as GitHub_, GitLab_, PyPi_ and Web sites to find latest versions of packages.
+  * Leveraging Jinja_ to create ebuilds using templates.
+  * Downloading and extracting source code and inspecting build scripts to create ebuilds based on their contents. (example: `xorg-proto`_).
+
 * ``merge-kits``: A YAML-based mechanism to build and update a "meta-repo"
-  (ports tree) split into logical "kits".
-* ``fastpull``: An efficient HTTP engine, CDN infrastructure and Web spider.
-  This is used to download and manage source code artifacts, implement
+  (ports tree) split into logical "kits", assembling these kits from either
+  your own sets of packages or from third-party overlays and repositories.
+  ``merge-kits`` leverages multi-threading as well as ``doit`` to perform
+  auto-generation of ebuilds on a distro-wide scale.
+* ``fastpull``: An efficient HTTP spider and CDN infrastructure, used to
+  download and manage source code artifacts, implement
   source code traceability, and seed a content distribution network for
   download of source code.
 * ``deepdive``: Package analytics functionality. This allows the contents
-  of Funtoo or your distribution to be analyzed via MongoDB queries.
+  of Funtoo or your distribution to be analyzed via MongoDB queries to
+  understading relationships between packages.
+
+.. _GitLab: https://docs.gitlab.com/ee/api/
+.. _GitHub: https://developer.github.com/v3/
+.. _Jinja: https://jinja.palletsprojects.com/
+.. _PyPi: https://pypi.org/
+.. _xorg-proto: https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse/core-gl-kit/2.0-release/x11-base/xorg-proto/autogen.py
 
 POP Framework
 ~~~~~~~~~~~~~

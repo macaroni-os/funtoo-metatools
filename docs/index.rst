@@ -8,25 +8,30 @@ Welcome to Funtoo Metatools
 
 Funtoo metatools is a framework of powerful technologies created by Daniel
 Robbins, the creator of Gentoo Linux, which allows you to create and maintain an
-advanced Gentoo-based Linux distribution. See :ref:`What is Metatools?` for more
-details on what is and what it can do for you.
+advanced Gentoo-based Linux distribution.
 
 Funtoo Linux uses ``metatools`` extensively to perform all its automated
 functionality, including auto-creation of ebuilds, auto-creation of "kits" and
-"meta-repo", CDN mirroring of distfiles (source code artifacts) and advanced
-analytics.
+"meta-repo" from upstream repositories or locally-forked packages, CDN mirroring of distfiles (source code artifacts) and advanced
+analytics. Basically, it does 'all the things' related to creating and
+maintaining Funtoo Linux.
 
 You can use ``metatools`` as part of your own distribution infrastructure, or
-leverage it in your contributions to Funtoo Linux.
+leverage it as you contribute to Funtoo Linux.
+
+See :ref:`What is Metatools?` for more
+details on what is and what it can do for you. Learn more about the pluggable
+technology upon which ``metatools`` is based by reading :ref:`POP Framework`.
 
 Why is this Free?
 =================
 
-This technology is being released under an Open Source license (this software is
-released under the `Apache Software License, version 2
-<https://www.apache.org/licenses/LICENSE-2.0.txt>`_) along with
-easy-to-understand documentation based on the belief that software should be
-free to use and modify, and easy to understand and use.
+This technology, which contains essentially all the technology that
+comprises Funtoo Linux, is being released under an Open Source license (`Apache Software License, version 2`) along with
+easy-to-understand documentation, based on the belief that software should be
+free to use and modify, and easy to understand, use and extend. I want this technology
+to not just be 'Open Source' but be 'open' in the sense that it can be used, understood
+and enjoyed by others.
 
 Beyond the License
 ==================
@@ -41,22 +46,38 @@ result in people from around the world working together, and ultimately sharing
 source code.
 
 The choice of a software license is a means to facilitate this process, but the
-endeavor is much deeper than choosing to use an 'open' license. You can use a
-license, and even use it correctly, and still be undermining the pillars of true
+endeavor is much deeper than choosing to use an 'open' license. You can use
+this software, and even abide by its licensing terms, and still potentially undermine the pillars of true
 collaboration.
 
 I created Gentoo Linux and now Funtoo Linux with the to collaborate with you,
 and to have fun by working together towards common interests. I ask that you
 consider your own ethical commitment not just to the license, but to the
-projects that you use.
+projects that choose to use and support.
 
-I will defend your right to fork, because the source code license allows you to
-do so, and sometimes it is necessary, but it is also much better when we can all
-work together towards common goals.
+I will defend your right to fork, or simply take this code and do your own thing
+without giving anything in return,
+because the source code license allows you to
+do that. But choosing to spurn collaboration with upstream projects can be a frivolous
+exercise which negatively impacts the collaborative ecosystem that sustains
+Open Source and free software. We should all be trying our best not just to
+use free software, nor merely benefit from it, but to work
+together in the spirit of Open Source.
 
-It should always be our desire to work and collaborate with others openly, when
-possible.
+At its heart, Open Source is more than a license or source code. It is a shared code *of ethics* which governs our
+behavior and guides our actions towards one another:
 
+  |  **NOW this is the Law of the Jungle — as old and as true as the sky;**
+  |  **And the Wolf that shall keep it may prosper, but the Wolf that shall break it must die.**
+  |
+  |  **As the creeper that girdles the tree-trunk the Law runneth forward and back —**
+  |  **For the strength of the Pack is the Wolf, and the strength of the Wolf is the Pack.**
+  |
+  |  ― `Rudyard Kipling, The Jungle Book`_
+
+
+.. _Apache Software License, version 2: https://www.apache.org/licenses/LICENSE-2.0.txt
+.. _Rudyard Kipling, The Jungle Book: http://www.kiplingsociety.co.uk/poems_lawofjungle.htm
 
 .. toctree::
    :maxdepth: 2
