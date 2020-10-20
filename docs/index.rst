@@ -45,15 +45,14 @@ that form the foundation of Open Source and Free Software. These qualities
 result in people from around the world working together, and ultimately sharing
 source code.
 
-The choice of a software license is a means to facilitate this process, but the
-endeavor is much deeper than choosing to use an 'open' license. You can use
-this software, and even abide by its licensing terms, and still potentially undermine the pillars of true
+Said another way -- You can use this software, and even abide by its licensing terms,
+and still potentially undermine the pillars of true
 collaboration.
 
 I created Gentoo Linux and now Funtoo Linux with the to collaborate with you,
 and to have fun by working together towards common interests. I ask that you
 consider your own ethical commitment not just to the license, but to the
-projects that choose to use and support.
+projects that you choose to use, participate in and support.
 
 I will defend your right to fork, or simply take this code and do your own thing
 without giving anything in return,
@@ -61,8 +60,8 @@ because the source code license allows you to
 do that. But choosing to spurn collaboration with upstream projects can be a frivolous
 exercise which negatively impacts the collaborative ecosystem that sustains
 Open Source and free software. We should all be trying our best not just to
-use free software, nor merely benefit from it, but to work
-together in the spirit of Open Source.
+use free software, nor merely benefit personally from it, but to work
+together in the spirit of Open Source, as much as we are able.
 
 At its heart, Open Source is more than a license or source code. It is a shared code *of ethics* which governs our
 behavior and guides our actions towards one another:
@@ -75,6 +74,8 @@ behavior and guides our actions towards one another:
   |
   |  ― `Rudyard Kipling, The Jungle Book`_
 
+We should all be seeking to strengthen our "pack". This is the true meaning of
+collaboration, which is the heart of Open Source and free software.
 
 .. _Apache Software License, version 2: https://www.apache.org/licenses/LICENSE-2.0.txt
 .. _Rudyard Kipling, The Jungle Book: http://www.kiplingsociety.co.uk/poems_lawofjungle.htm
