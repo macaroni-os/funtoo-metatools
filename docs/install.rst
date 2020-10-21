@@ -12,7 +12,14 @@ Funtoo-metatools is easy to install. On Funtoo, it can simply be emerged::
 
   # emerge metatools
 
-The primary executable, ``doit``, will now be in your path.
+Recent version of metatools also require MongoDB to be installed and running locally. MongoDB is used by the ``doit``
+command to store distfile integrity hashes, as well as for maintaining a cache of HTTP API requests for more resilience
+related to network interruption. It is also used by ``deepdive`` to provide package analytics functionality.
+
+MongoDB can be installed and started on Funtoo Linux as follows::
+
+  # emerge mongodb
+  # rc-update add mongodb default && rc
 
 Alternatively you can use ``pip3`` to pull it from PyPi::
 

@@ -20,7 +20,7 @@ several technology components, including:
   (ports tree) split into logical "kits", assembling these kits from either
   your own sets of packages or from third-party overlays and repositories.
   ``merge-kits`` leverages multi-threading as well as ``doit`` to perform
-  auto-generation of ebuilds on a distro-wide scale.
+  auto-generation of ebuilds on a distro-wide scale. See :ref:`Working with Meta-Repo`.
 * ``fastpull``: An efficient HTTP spider and CDN infrastructure, used to
   download and manage source code artifacts, implement
   source code traceability, and seed a content distribution network for

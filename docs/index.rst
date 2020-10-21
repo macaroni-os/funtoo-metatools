@@ -87,6 +87,7 @@ collaboration, which is the heart of Open Source and free software.
    intro
    install
    autogen
+   meta-repo
 
 
 Indices and tables
