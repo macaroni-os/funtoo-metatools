@@ -42,26 +42,32 @@ HASHES = ["sha256", "sha512", "blake2b"]
 #       declarative pipeline.
 
 
-async def ensure_completed(hub, catpkg, artifact):
+async def ensure_completed(hub, catpkg, artifact) -> bool:
 	"""
 	This function ensures that we can 'complete' the artifact -- meaning we have its hash data in the integrity database.
 	If this hash data is not found, then we need to fetch the artifact.
+
+	This function returns True if we do indeed have the artifact available to us, and False if there was some error
+	which prevents this.
 	"""
 	integrity_item = hub.merge.deepdive.get_distfile_integrity(catpkg, distfile=artifact.final_name)
 	if integrity_item is not None:
 		artifact.final_data = integrity_item["final_data"]
+		return True
 	else:
-		await hub._.ensure_fetched(artifact, catpkg=catpkg)
+		return await hub._.ensure_fetched(artifact, catpkg=catpkg)
 
 
-async def ensure_fetched(hub, artifact, catpkg=None):
+async def ensure_fetched(hub, artifact, catpkg=None) -> bool:
 	"""
 	This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
 	calculate its hashes or extract it.
+
+	Returns a boolean with True indicating success and False failure.
 	"""
 	if artifact.is_fetched():
 		if artifact.final_data is not None:
-			return
+			return True
 		else:
 			# We will hit this condition only if for some reason we blew away our Distfile Integrity database or an
 			# entry for a distfile in it. In this scenario -- the file is fetched, so it's on disk, but we don't have
@@ -80,15 +86,16 @@ async def ensure_fetched(hub, artifact, catpkg=None):
 			else:
 				final_data = hub._.calc_hashes(artifact.final_path)
 				artifact.record_final_data(final_data)
+			return True
 	else:
 		if artifact.final_name in hub.DL_ACTIVE:
 			# Active download -- wait for it to finish:
 			logging.info(f"Waiting for {artifact.final_name} to finish")
-			await hub.DL_ACTIVE[artifact.final_name].wait_for_completion(artifact)
+			return await hub.DL_ACTIVE[artifact.final_name].wait_for_completion(artifact)
 		else:
 			# No active download for this file -- start one:
 			dl_file = Download(hub, artifact)
-			await dl_file.download()
+			return await dl_file.download()
 
 
 class Download:
@@ -106,6 +113,8 @@ class Download:
 	final_name. So it's possible that if the final_name differs that files could be theoretically
 	downloaded multiple times or simultaneously and redundantly (but this rarely if ever happens,
 	just worth mentioning and a possible improvement in the future.)
+
+	The
 	"""
 
 	def __init__(self, hub, artifact):
@@ -124,31 +133,57 @@ class Download:
 		self.futures.append(fut)
 		return fut
 
-	async def download(self):
+	async def download(self) -> bool:
+		"""
+		This method attempts to start a download. It hooks into DL_ACTIVE_COUNT which is used to limit the number
+		of simultaneous downloads.
+
+		Upon success, it will also record 'distfile integrity' entries into MongoDB on completion, and call any
+		download completion hook for fastpull (which is used to insert the resultant file into fastpull.)
+
+		Will return True on success and False on failure. Will also ensure that if others are waiting on this
+		file, they will get True on success and False on failure (self.futures holds futures for others waiting
+		on this file, and we will future.set_result() with the boolean return code as well.)
+		"""
 		await self.hub.DL_ACTIVE_COUNT.acquire()
 		self.hub.DL_ACTIVE[self.final_name] = self
-		final_data = await _download(self.hub, self.artifacts[0])
-		integrity_keys = {}
-		for artifact in self.artifacts:
-			artifact.record_final_data(final_data)
-			for catpkg in artifact.catpkgs:
-				integrity_keys[(catpkg, artifact.final_name)] = True
 
-		# For every final_name referenced by a catpkg, create a distfile integrity entry. We use integrity_keys to
-		# avoid duplicate records.
+		success = True
 
-		for catpkg, final_name in integrity_keys.keys():
-			self.hub.merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
+		try:
+			final_data = await _download(self.hub, self.artifacts[0])
+		except self.hub.pkgtools.fetch.FetchError as fe:
+			success = False
 
-		# We only need to insert once into fastpull since it is the same underlying file.
+		if success:
+			integrity_keys = {}
+			for artifact in self.artifacts:
+				artifact.record_final_data(final_data)
+				for catpkg in artifact.catpkgs:
+					integrity_keys[(catpkg, artifact.final_name)] = True
 
-		if self.hub.MERGE_CONFIG.fastpull_enabled:
-			self.hub.pkgtools.fastpull.download_completion_hook(final_data, self.artifacts[0].final_path)
+			# For every final_name referenced by a catpkg, create a distfile integrity entry. We use integrity_keys to
+			# avoid duplicate records.
+
+			for catpkg, final_name in integrity_keys.keys():
+				self.hub.merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
+
+			# We only need to insert once into fastpull since it is the same underlying file.
+
+			if self.hub.MERGE_CONFIG.fastpull_enabled:
+				self.hub.pkgtools.fastpull.download_completion_hook(final_data, self.artifacts[0].final_path)
 
 		del self.hub.DL_ACTIVE[self.final_name]
 		self.hub.DL_ACTIVE_COUNT.release()
+
 		for future in self.futures:
-			future.set_result(None)
+			future.set_result(success)
+
+		return success
+
+
+def extract_path(hub, artifact):
+	return os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name)
 
 
 async def _download(hub, artifact):
@@ -160,6 +195,9 @@ async def _download(hub, artifact):
 
 	Upon success, the function will update the Artifact's hashes dict to contain hashes and
 	filesize of the downloaded artifact.
+
+	Will raise hub.pkgtools.fetch.FetchError if there was some kind of error downloading. Caller
+	needs to catch and handle this.
 
 	"""
 	logging.info(f"Fetching {artifact.url}...")
@@ -186,6 +224,7 @@ async def _download(hub, artifact):
 		sys.stdout.flush()
 
 	await hub.pkgtools.http.http_fetch_stream(artifact.url, on_chunk)
+
 	sys.stdout.write("x")
 	sys.stdout.flush()
 	fd.close()
@@ -199,10 +238,6 @@ async def _download(hub, artifact):
 	# TODO: this is likely a good place for GPG verification. Implement.
 
 	return final_data
-
-
-def extract_path(hub, artifact):
-	return os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name)
 
 
 def cleanup(hub, artifact):

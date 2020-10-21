@@ -2,6 +2,7 @@
 import inspect
 import os
 import asyncio
+import sys
 from asyncio import FIRST_COMPLETED
 
 import jinja2
@@ -198,13 +199,16 @@ class BreezyBuild:
 			if not artifact.final_data:
 
 				async def lil_coroutine(a, catpkg):
-					await self.hub.pkgtools.download.ensure_completed(catpkg, a)
-					return a
+					return a, await self.hub.pkgtools.download.ensure_completed(catpkg, a)
 
 				fetch_tasks_dict[artifact] = asyncio.Task(lil_coroutine(artifact, self.catpkg))
 
 		# Wait for any artifacts that are still fetching:
-		await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values())
+		completion_list = await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values())
+		for artifact, status in completion_list:
+			if status is False:
+				logging.error(f"Artifact for url {artifact.url} referenced in {artifact.catpkgs} could not be fetched.")
+				sys.exit(1)
 
 	def push(self):
 		if self.sub_index is None:
