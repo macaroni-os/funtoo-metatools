@@ -75,6 +75,7 @@ async def generate(hub, **pkginfo):
 	json_dict = json.loads(json_data, object_pairs_hook=OrderedDict)
 	add_ebuild(hub, json_dict, compat_ebuild=False, **pkginfo)
 	if "compat" in pkginfo and pkginfo["compat"]:
+		print("pushing for " + pkginfo["compat"])
 		add_ebuild(hub, json_dict, compat_ebuild=True, **pkginfo)
 
 

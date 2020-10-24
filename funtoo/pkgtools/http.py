@@ -44,6 +44,7 @@ async def http_fetch_stream(hub, url, on_chunk):
 	performed. A FetchError will be raised if any error occurs. If this function
 	returns successfully then the download completed successfully.
 	"""
+	logging.info(f"Starting fetch stream of {url}")
 	try:
 		async with httpx.AsyncClient() as client:
 			r = await client.get(url, headers=hub._.get_fetch_headers(), auth=hub._.get_auth_tuple(url))

@@ -252,7 +252,7 @@ class GitTree(Tree):
 		origin_check: bool = False,
 		destfix: bool = False,
 		reclone: bool = False,
-		pull: bool = True,
+		pull: bool = True
 	):
 
 		# note that if create=True, we are in a special 'local create' mode which is good for testing. We create the repo locally from
@@ -303,18 +303,10 @@ class GitTree(Tree):
 				print("Error: tree %s does not exist, but no clone URL specified. Exiting." % self.root)
 				sys.exit(1)
 
-		# create local tracking branches for all remote branches. - we want to do this for every initialization.
-		result = run(f"(cd {self.root} && git branch -r | grep -v /HEAD)")
-		if result.returncode != 0:
-			# if repo is totally uninitialized (like gitolite wildrepo) -- initialize it with a first commit.
-			print("Attempting to initialize git repository for first use...")
-			runShell(
-				"(cd %s && touch README && git add README && git commit -a -m 'first commit' && git push %s)"
-				% (self.root, self.forcepush)
-			)
-			runShell(f"(cd {self.root} && git branch -r | grep -v /HEAD)")
-		for branch in result.stdout.split():
-			branch = branch.split("/")[-1]
+		# At the very least, create a local branch for the branch we're interested in.
+		init_branches = [self.branch]
+
+		for branch in init_branches:
 			if not self.localBranchExists(branch):
 				runShell(f"( cd {self.root} && git checkout {branch})")
 
