@@ -109,7 +109,7 @@ still something useful when doing stand-alone auto-generation. The ``doit`` comm
   The path to where the templates are located for this autogen, i.e. the ``templates`` directory next to
   the ``autogen.py``
 
-While this "pkginfo" construct doesn't seem to useful right now, it will soon once you start to take
+While this "pkginfo" construct doesn't seem to be the most useful thing right now, it will soon once you start to take
 advantage of advanced autogen features. For now, it at least helps
 us to avoid having to explicitly passing ``name``, ``cat`` and ``template_path`` to our ``BreezyBuild`` --
 these are arguments that our ``BreezyBuild`` expects and we can simply "pass along" what was auto-detected
