@@ -52,7 +52,8 @@ Here is a full example of an ``autogen.py`` that implements auto-generation of t
     ebuild.push()
 
 
-The ``doit`` command, when run, will find this ``autogen.py`` file, map it as a plugin, and execute its ``generate()``
+The ``doit`` command, when run in the same directory in the ``autogen.py`` or in a parent directory that
+is still in the repo, will find this ``autogen.py`` file, map it as a plugin, and execute its ``generate()``
 method. This particular auto-generation plugin will perform the following actions:
 
 1. Query GitHub's API to determine the latest tag in the ``gentoo/hwids`` repository.
@@ -91,8 +92,8 @@ will actually result in action.
 What will end up happening is that the ``BreezyBuild`` will ensure that all of its source code artifacts have
 been downloaded ("fetched") and then it will use this to create a ``Manifest`` as well as the ebuild itself.
 
-pkginfo
--------
+pkginfo Basics
+--------------
 
 You will notice that our main ``generate`` function contains an argument called ``**pkginfo``. You
 will also notice that we pass ``**pkginfo`` to our ``BreezyBuild``, as well as other additional information.
@@ -114,5 +115,143 @@ advantage of advanced autogen features. For now, it at least helps
 us to avoid having to explicitly passing ``name``, ``cat`` and ``template_path`` to our ``BreezyBuild`` --
 these are arguments that our ``BreezyBuild`` expects and we can simply "pass along" what was auto-detected
 for us rather than specifying them manually.
+
+Querying APIs
+-------------
+
+It is not required that you query APIs to determine the latest version of a package to build, but this is
+often what is done in an ``autogen.py`` file. To this end, the official method to grab data from a remote
+API is ``hub.pkgtools.fetch.get_page()``. Since this is an ``async`` function, it must be ``await``ed.
+If what you are retrieving is JSON, then you should pass ``is_json=True`` as a keyword argument, and you
+will get decoded JSON as a return value. Otherwise, you will get a string and will be able to perform
+additional processing. For HTML data, typically people will use the ``re`` (regular expression) module
+to extract data, and ``lxml`` or ``xmltodict`` can be used for parsing XML data.
+
+There is also a ``refresh_interval`` keyword argument which can be used to limit updates to the remote
+resource to a certain time interval. For example, this is used with the ``brave-bin`` autogen to ensure
+that we only get updates every 5 days (they update the Brave browser daily and this update interval
+is a bit too much for us)::
+
+ ..code-block:: python
+
+   json_dict = await hub.pkgtools.fetch.get_page(
+     "https://api.github.com/repos/brave/brave-browser/releases", is_json=True, refresh_interval=timedelta(days=5)
+   )
+
+HTTP Tricks
+-----------
+
+Sometimes, it is necessary to grab the destination of a HTTP redirect, because the version of an
+artifact will be in the redirected-to URL itself. For example, let's assume that when you go to
+``https://foo.bar.com/latest.tar.gz``, you are instantly redirected to ``https://foo.bar.com/myfile-3002.tar.gz``.
+To grab the redirected-to URL, you can use the following method::
+
+ ..code-block: python
+
+  next_url = await hub.pkgtools.fetch.get_url_from_redirect("https://foo.bar.com/latest.tar.gz")
+
+``next_url`` will now contain the string ``https://foo.bar.com/myfile-3002.tar.gz``, and you can
+pull it apart using standard Python string operators and methods to get the version from it.
+
+Note that both the `Zoom-bin autogen`_ and `Discord-bin autogen`_ use this technique.
+
+Using Jinja in Templates
+------------------------
+
+Up until now, we have not really talked about Templates. Templates contain the actual literal content
+of your ebuild, but can include Jinja processing statements such as variables and even conditionals and
+loops. *Everything passed to your ``BreezyBuild``* can be expanded as a Jinja variable. For example,
+you can use the following variables inside your template:
+
+``{{cat}}``
+  Will expand to package category.
+``{{name}}``
+  Will expand to package name (without version).
+``{{version}}``
+  Will expand to package version.
+``{{artifacts[0].src_uri}}``
+  Will expand to the string to be included in the ``SRC_URI`` for the first (and possibly only) Artifact.
+``SRC_URI="{{artifacts|map(attribute='src_uri')|join(' ')}}"``
+  Will expand to be your full ``SRC_URI`` definition assuming you don't have any conditional ones based on
+  ``USE`` variables.
+
+It's important to note that in some cases, you will not even need to use a single Jinja-ism in your
+template, and can simply have the entire literal ebuild as the contents of your template. The
+`Discord-bin autogen`_ template is like this and simply contains the contents of the ebuild, because
+the only thing that changes between new Jinja versions is the filename of the ebuild, but not anything
+in the ebuild itself. So we don't need to expand any variables.
+
+But when we get into more advanced examples, particularly YAML-based auto-generation, Jinja tends to
+be used more heavily.
+
+Here are some other Jinja constructs you may find useful::
+
+ ..code-block:: python
+
+  {%- if myvar is defined %}
+  myvar is defined.
+  {%- else %}
+  myvar is not defined.
+  {%- endif %}
+
+  {%- if foo == "bar" %}
+  This text will only be included if the variable "foo" equals the string "bar".
+  {%- elif foo == "oni" %}
+  Hmmm... foo is oni?
+  {%- endif %}
+
+  {%- for file in mylist %}
+  {{file}}
+  {%- endfor %}
+
+You can see that Jinja gives you a lot of power to generate the final representation of the ebuild that you
+want. Remember that you can always pass new keyword arguments to the constructor for ``BreezyBuild`` and
+then access them in your templates. For more information on what Jinja can do, browse the
+`official Jinja Documentation`_ or look in the kit-fixups repo for interesting examples.
+
+
+Using Multiple Templates or BreezyBuilds
+----------------------------------------
+
+As mentioned earlier, you can place templates in the `templates/` directory next to your autogen, and
+by default, the ``BreezyBuild`` will use the template with the same name as your package. To change this, you
+can pass the ``template="anothertemplate.tmpl"`` keyword argument to your ``BreezyBuild`` or pass a different
+``name`` to your ``BreezyBuild`` (``name`` is normally part of the ``**pkginfo`` dict.) You might want
+to do this if you are using your ``autogen.py`` to generate *more than one* ebuild -- which is perfectly
+legal and supported. In this case, you will want to vary the ``name`` and/or ``cat`` arguments that get
+passed to ``BreezyBuild`` (these typically come via ``**pkginfo``) to specify a new package name and/or
+category. Remember to call ``.push()`` for every ebuild you want to generate. See the `Virtualbox-bin Autogen`_
+for an example.
+
+Introspecting Inside Artifacts
+------------------------------
+
+You may be wondering if it is possible to grab a source tarball, look inside it, and parse things like
+``Makefile`` or ``meson.build`` files to base your build steps on stuff *inside* the Artifact. Yes, this
+is definitely possible. To do it, you will first want to define an ``Artifact`` all by itself, and then
+call its ``ensure_fetched()`` or ``fetch()`` async method. You can then unpack it and inspect its contents::
+
+ ..code-block:: python
+
+  import os
+  import glob
+
+  async def generate(hub, **pkginfo):
+    my_artifact = Artifact(url="https://foo.bar.com/myfile-1.0.tar.gz")
+    await my_artifact.ensure_fetched()
+    my_artifact.extract()
+    for meson_file in glob.iglob(os.path.join(my_artifact.extract_path, "*/meson.build"):
+      ...
+    my_artifact.cleanup()
+
+See our `xorg-proto Autogen`_ for an example of this. It downloads ``xorg-proto`` and introspects inside
+it to generate a bunch of stub ebuilds for each protocol supported by ``xorg-proto``.
+
+
+.. _Virtualbox-bin Autogen: https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse/core-kit/curated/app-emulation/virtualbox-bin/autogen.py
+.. _xorg-proto Autogen: https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse/core-gl-kit/2.0-release/x11-base/xorg-proto/autogen.py
+.. _Zoom-bin Autogen: https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse/net-kit/curated/net-im/zoom-bin/autogen.py
+.. _Discord-bin Autogen: https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse/net-kit/curated/net-im/discord-bin/autogen.py
+.. _official Jinja Documentation: https://jinja.palletsprojects.com
 
 
