@@ -15,8 +15,8 @@ maintain packages*. These capabilities
 exist to give us *leverage* over the complex world of software so that we
 can automate as much as possible, so we can do more with less.
 
-Performing Auto-Generation
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Running Auto-Generation
+~~~~~~~~~~~~~~~~~~~~~~~
 
 To actually use these tools to auto-generate ebuilds, it is recommended that you
 check out the `kit-fixups`_ repository, which is the master repository of Funtoo
@@ -77,6 +77,8 @@ we just want to commit the autogens (``autogen.py`` and ``autogen.yaml``.) There
 step, peformed by the ``merge-kits`` command, which updates the meta-repo and will
 commit the generated ebuilds to kits which are then pushed out to users. But for ``kit-fixups``,
 we're doing development, not updating the tree, so we just want to commit the autogens.
+
+.. include:: autogen-dev.rst
 
 .. _kit-fixups: https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse
 .. _GitLab: https://docs.gitlab.com/ee/api/
