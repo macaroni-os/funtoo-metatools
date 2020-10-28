@@ -1,15 +1,30 @@
 #!/usr/bin/env python3
-
+import asyncio
 from urllib.parse import urlparse
-import httpx
+import aiohttp
+from tornado import httpclient
+from tornado.httpclient import HTTPRequest
 import sys
 import logging
+import socket
 
 """
 This sub implements lower-level HTTP fetching logic, such as actually grabbing the data, sending the
 proper headers and authentication, etc.
 """
 
+RESOLVERS = {}
+
+
+def get_resolver(hub):
+	"""
+	This returns a DNS resolver local to the ioloop of the caller.
+	"""
+	global RESOLVERS
+	loop = asyncio.get_event_loop()
+	if id(loop) not in RESOLVERS:
+		RESOLVERS[id(loop)] = aiohttp.AsyncResolver(nameservers=["1.1.1.1", "1.0.0.1"], timeout=5, tries=3)
+	return RESOLVERS[id(loop)]
 
 http_data_timeout = 60
 chunk_size = 262144
@@ -22,19 +37,19 @@ def get_fetch_headers(hub):
 	return {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
 
 
-def get_auth_tuple(hub, url):
+def get_auth_kwargs(hub, url):
 	"""
 	Keyword arguments to aiohttp ClientSession.get() for authentication to certain URLs based on configuration
 	in ~/.autogen (YAML format.)
 	"""
-
+	kwargs = {}
 	if "authentication" in hub.AUTOGEN_CONFIG:
 		parsed_url = urlparse(url)
 		if parsed_url.hostname in hub.AUTOGEN_CONFIG["authentication"]:
 			auth_info = hub.AUTOGEN_CONFIG["authentication"][parsed_url.hostname]
 			logging.warning(f"Using authentication (username {auth_info['username']}) for {url}")
-			return auth_info["username"], auth_info["password"]
-	return None
+			kwargs = {"auth": aiohttp.BasicAuth(auth_info["username"], auth_info["password"])}
+	return kwargs
 
 
 async def http_fetch_stream(hub, url, on_chunk):
@@ -44,17 +59,29 @@ async def http_fetch_stream(hub, url, on_chunk):
 	performed. A FetchError will be raised if any error occurs. If this function
 	returns successfully then the download completed successfully.
 	"""
+	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub._.get_resolver(), ssl=False)
 	try:
-		async with httpx.AsyncClient() as client:
-			r = await client.get(url, headers=hub._.get_fetch_headers(), auth=hub._.get_auth_tuple(url))
-			if r.status_code != 200:
-				raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch Error {r.status_code}: {r.reason_phrase}")
-			for data in r.iter_bytes():
-				sys.stdout.write(".")
-				sys.stdout.flush()
-				on_chunk(data)
-	except httpx.HTTPError as e:
-		raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch error - httpx exeption: {repr(e)}")
+		async with aiohttp.ClientSession(connector=connector) as http_session:
+			async with http_session.get(
+				url, headers=hub._.get_fetch_headers(), timeout=None, **hub._.get_auth_kwargs(url)
+			) as response:
+				if response.status != 200:
+					reason = (await response.text()).strip()
+					raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}")
+				while True:
+					try:
+						chunk = await response.content.read(chunk_size)
+						if not chunk:
+							break
+						else:
+							sys.stdout.write(".")
+							sys.stdout.flush()
+							on_chunk(chunk)
+					except aiohttp.EofStream:
+						pass
+	except AssertionError:
+		raise hub.pkgtools.fetch.FetchError(url, f"Unable to fetch: internal aiohttp assertion failed")
+	return None
 
 
 async def http_fetch(hub, url):
@@ -62,14 +89,16 @@ async def http_fetch(hub, url):
 	This is a non-streaming HTTP fetcher that will properly convert the request to a Python
 	string and return the entire content as a string.
 	"""
-	try:
-		async with httpx.AsyncClient() as client:
-			r = await client.get(url, headers=hub._.get_fetch_headers(), auth=hub._.get_auth_tuple(url))
-			if r.status_code != 200:
-				raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch Error {r.status_code}: {r.reason_phrase}")
-			return r.text
-	except httpx.HTTPError as e:
-		raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch error - httpx exeption: {repr(e)}")
+	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub._.get_resolver(), ssl=False)
+	async with aiohttp.ClientSession(connector=connector) as http_session:
+		async with http_session.get(
+			url, headers=hub._.get_fetch_headers(), timeout=None, **hub._.get_auth_kwargs(url)
+		) as response:
+			if response.status != 200:
+				reason = (await response.text()).strip()
+				raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason}")
+			return await response.text()
+	return None
 
 
 async def get_page(hub, url):
@@ -85,6 +114,7 @@ async def get_page(hub, url):
 		if isinstance(e, hub.pkgtools.fetch.FetchError):
 			raise e
 		else:
+			raise e
 			raise hub.pkgtools.fetch.FetchError(url, f"Couldn't get_page due to exception {repr(e)}")
 
 
@@ -95,16 +125,15 @@ async def get_url_from_redirect(hub, url):
 	when you want to grab the '1.3.2' without downloading the file (yet).
 	"""
 	logging.info(f"Getting redirect URL from {url}...")
+	http_client = httpclient.AsyncHTTPClient()
 	try:
-		async with httpx.AsyncClient() as client:
-			r = await client.get(url, headers=hub._.get_fetch_headers(), auth=hub._.get_auth_tuple(url), allow_redirects=False)
-			if r.status_code != 200:
-				raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch Error {r.status_code}: {r.reason_phrase}")
-			return r.headers["location"]
-	except KeyError:
-		raise hub.pkgtools.fetch.FetchError(url, "Couldn't find redirect information.")
-	except httpx.HTTPError as e:
-		raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch error - httpx exeption: {repr(e)}")
+		req = HTTPRequest(url=url, follow_redirects=False)
+		await http_client.fetch(req)
+	except httpclient.HTTPError as e:
+		if e.response.code == 302:
+			return e.response.headers["location"]
+	except Exception as e:
+		raise hub.pkgtools.fetch.FetchError(url, f"Couldn't get_url_from_redirect due to exception {repr(e)}")
 
 
 # vim: ts=4 sw=4 noet
