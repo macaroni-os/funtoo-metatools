@@ -130,9 +130,9 @@ to extract data, and ``lxml`` or ``xmltodict`` can be used for parsing XML data.
 There is also a ``refresh_interval`` keyword argument which can be used to limit updates to the remote
 resource to a certain time interval. For example, this is used with the ``brave-bin`` autogen to ensure
 that we only get updates every 5 days (they update the Brave browser daily and this update interval
-is a bit too much for us)::
+is a bit too much for us):
 
- ..code-block:: python
+.. code-block:: python
 
    json_dict = await hub.pkgtools.fetch.get_page(
      "https://api.github.com/repos/brave/brave-browser/releases", is_json=True, refresh_interval=timedelta(days=5)
@@ -144,11 +144,12 @@ HTTP Tricks
 Sometimes, it is necessary to grab the destination of a HTTP redirect, because the version of an
 artifact will be in the redirected-to URL itself. For example, let's assume that when you go to
 ``https://foo.bar.com/latest.tar.gz``, you are instantly redirected to ``https://foo.bar.com/myfile-3002.tar.gz``.
-To grab the redirected-to URL, you can use the following method::
+To grab the redirected-to URL, you can use the following method:
 
- ..code-block: python
+.. code-block:: python
 
   next_url = await hub.pkgtools.fetch.get_url_from_redirect("https://foo.bar.com/latest.tar.gz")
+
 
 ``next_url`` will now contain the string ``https://foo.bar.com/myfile-3002.tar.gz``, and you can
 pull it apart using standard Python string operators and methods to get the version from it.
@@ -184,9 +185,9 @@ in the ebuild itself. So we don't need to expand any variables.
 But when we get into more advanced examples, particularly YAML-based auto-generation, Jinja tends to
 be used more heavily.
 
-Here are some other Jinja constructs you may find useful::
+Here are some other Jinja constructs you may find useful:
 
- ..code-block:: python
+.. code-block:: python
 
   {%- if myvar is defined %}
   myvar is defined.
@@ -229,9 +230,9 @@ Introspecting Inside Artifacts
 You may be wondering if it is possible to grab a source tarball, look inside it, and parse things like
 ``Makefile`` or ``meson.build`` files to base your build steps on stuff *inside* the Artifact. Yes, this
 is definitely possible. To do it, you will first want to define an ``Artifact`` all by itself, and then
-call its ``ensure_fetched()`` or ``fetch()`` async method. You can then unpack it and inspect its contents::
+call its ``ensure_fetched()`` or ``fetch()`` async method. You can then unpack it and inspect its contents:
 
- ..code-block:: python
+.. code-block:: python
 
   import os
   import glob
