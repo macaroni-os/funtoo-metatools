@@ -138,6 +138,30 @@ is a bit too much for us):
      "https://api.github.com/repos/brave/brave-browser/releases", is_json=True, refresh_interval=timedelta(days=5)
    )
 
+If you run ``merge-kits``, or even ``doit`` in a repository that hits the GitHub API a lot, you will
+quickly discover that GitHub has rate limiting for unauthenticated API requests. To address this, it is
+possible to specify authentication for GitHub by creating a ``~/.autogen`` file as follows::
+
+  authentication:
+  api.github.com:
+    username: mygithub_username
+    password: 123409809abcda098ad098a0v0a98098098d09d
+
+In the above file, which is in YAML format, specify a *personal access token* value for *password*. In
+the GitHub UI, you can create personal access tokens by navigating to:
+
+1. Settings
+2. Developer Settings
+3. Personal Access Tokens
+
+When this is set up, ``doit`` will now authenticate to GitHub for every GitHub API call, which should result
+in no more 'access denied' messages.
+
+The ``~/.autogen`` ``authentication`` section is totally extensible. If you find new sites that require
+authentication, just put the necessary credentials in the file. If the API request matches the specified hostname,
+the credentials will be used. The credentials are passed using HTTP basic authentication.
+
+
 HTTP Tricks
 -----------
 
