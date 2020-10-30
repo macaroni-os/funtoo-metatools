@@ -24,6 +24,8 @@ def add_ebuild(hub, json_dict=None, **pkginfo):
 	local_pkginfo = pkginfo.copy()
 	artifact_url = None
 
+	hub.pkgtools.pyhelper.expand_pydeps(local_pkginfo)
+
 	if "version" not in local_pkginfo or local_pkginfo["version"] == "latest":
 		local_pkginfo["version"] = json_dict["info"]["version"]
 		artifact_url = sdist_artifact_url(json_dict["releases"], local_pkginfo["version"])

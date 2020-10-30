@@ -187,7 +187,7 @@ be used more heavily.
 
 Here are some other Jinja constructs you may find useful:
 
-.. code-block:: python
+.. code-block:: jinja
 
   {%- if myvar is defined %}
   myvar is defined.

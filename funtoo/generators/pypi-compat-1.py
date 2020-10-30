@@ -33,6 +33,8 @@ def add_ebuild(hub, json_dict=None, compat_ebuild=False, **pkginfo):
 	local_pkginfo["compat_ebuild"] = compat_ebuild
 	artifact_url = None
 
+	hub.pkgtools.pyhelper.expand_pydeps(local_pkginfo)
+
 	if compat_ebuild:
 		local_pkginfo["python_compat"] = "python2_7"
 		local_pkginfo["version"] = local_pkginfo["compat"]

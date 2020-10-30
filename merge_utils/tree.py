@@ -252,7 +252,7 @@ class GitTree(Tree):
 		origin_check: bool = False,
 		destfix: bool = False,
 		reclone: bool = False,
-		pull: bool = True
+		pull: bool = True,
 	):
 
 		# note that if create=True, we are in a special 'local create' mode which is good for testing. We create the repo locally from
