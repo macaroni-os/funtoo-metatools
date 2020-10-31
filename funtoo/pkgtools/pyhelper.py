@@ -1,6 +1,39 @@
 #!/usr/bin/env python3
 
 
+def sdist_artifact_url(hub, releases, version):
+	# Sometimes a version does not have a source tarball. This function lets us know if our version is legit.
+	# Returns artifact_url for version, or None if no sdist release was available.
+	for artifact in releases[version]:
+		if artifact["packagetype"] == "sdist":
+			return artifact["url"]
+	return None
+
+
+def pypi_get_artifact_url(hub, pkginfo, json_dict, strict=True):
+	"""
+	A more robust version of ``sdist_artifact_url``.
+
+	Look in JSON data ``json_dict`` retrieved from pypi for the proper sdist artifact for the package specified in
+	pkginfo. If ``strict`` is True, will insist on the ``version`` defined in ``pkginfo``, otherwise, will be flexible
+	and fall back to most recent sdist.
+	"""
+	artifact_url = sdist_artifact_url(hub, json_dict["releases"], pkginfo["version"])
+	if artifact_url is None:
+		if not strict:
+			# dang, the latest official release doesn't have a source tarball. Let's scan for the most recent release with a source tarball:
+			for version in reversed(json_dict["releases"].keys()):
+				artifact_url = sdist_artifact_url(hub, json_dict["releases"], version)
+				if artifact_url is not None:
+					pkginfo["version"] = version
+					break
+		else:
+			raise AssertionError(f"Could not find a source distribution for {pkginfo['name']} version {pkginfo['version']}")
+	else:
+		artifact_url = sdist_artifact_url(hub, json_dict["releases"], pkginfo["version"])
+	return artifact_url
+
+
 def pyspec_to_cond_dep_args(pg):
 	"""
 	This method takes something like "py:all" or "py:2,3_7,3_8" and converts it to a list of arguments that should
