@@ -20,7 +20,9 @@
 project = 'funtoo-metatools'
 copyright = '2020, Daniel Robbins'
 author = 'Daniel Robbins'
-
+html_context = {
+    "project_url" : "https://projects.funtoo.org/metatools"
+}
 # The full version, including alpha/beta/rc tags
 release = '0.1'
 
@@ -51,11 +53,11 @@ html_static_path = ['_static']
 master_doc = 'index'
 
 
-import sphinx_rtd_theme
+import sphinx_funtoo_theme
 
 extensions = [
-    "sphinx_rtd_theme",
+    "sphinx_funtoo_theme",
     'sphinx.ext.autosectionlabel'
 ]
 
-html_theme = "sphinx_rtd_theme"
+html_theme = "sphinx_funtoo_theme"
