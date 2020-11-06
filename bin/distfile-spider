@@ -11,6 +11,14 @@ hub = pop.hub.Hub()
 
 if __name__ == "__main__":
 
+	# It would be nice if the distfile-spider could simply scan a pre-generated meta-repo, look at all the kits,
+	# grab SHA512's from the Manifest files, and get to work. Unfortunately, the distfile-spider needs sha512sums
+	# as well as the URLs for downloading each of them. This SRC_URI data is stored in the kit-cache, so it becomes
+	# necessary to have the tuple of each SRC_URI with the sha512 for that particular file.
+
+	# We should likely correlate this information when we add info to the kit-cache. Then we can do a post-tree-
+	# regen scan of the kit-cache and use this information to populate the spider with stuff to download.
+
 	hub.pop.sub.add("funtoo.pkgtools")
 	hub.pop.sub.add("funtoo.infra")
 

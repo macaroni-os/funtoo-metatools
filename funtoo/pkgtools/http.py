@@ -26,6 +26,7 @@ def get_resolver(hub):
 		RESOLVERS[id(loop)] = aiohttp.AsyncResolver(nameservers=["1.1.1.1", "1.0.0.1"], timeout=5, tries=3)
 	return RESOLVERS[id(loop)]
 
+
 http_data_timeout = 60
 chunk_size = 262144
 

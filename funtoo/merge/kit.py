@@ -90,10 +90,7 @@ async def get_deepdive_kit_items(hub, kit_dict=None):
 	This function will read on-disk metadata for a particular kit, and process it, splitting it into individual
 	records for performing a bulk insert into MongoDB, for example. It will return a big collection of dicts
 	in a list, ready for insertion. As part of this scan, Manifest data will be read from disk and hashes will
-	be added to each record. This last Manifest scan was added so that we could implement fastpull, but the
-	fastpull architecture has since evolved so that we shouldn't need to extract data from Manifests. The original
-	idea is that what is in the Manifests is what we should send to fastpull. But fastpull is integrated more
-	deeply now. And in fact, we need to re-do our manifest handling.
+	be added to each record.
 
 	We use this after a kit has been generated. We then grab the JSON of the metadata cache and prep it for
 	writing into MongoDB.

@@ -88,7 +88,6 @@ AUXDB_LINES = sorted(
 
 
 def get_md5(filename):
-
 	"""
 	Simple function to get an md5 hex digest of a file.
 	"""
@@ -100,7 +99,6 @@ def get_md5(filename):
 
 
 def strip_rev(hub, s):
-
 	"""
 	A short function to strip the revision from the end of an ebuild, returning either
 	`( 'string_with_revision_missing', '<revision_num_as_string>' )` or
@@ -133,7 +131,6 @@ def get_catpkg_from_cpvs(hub, cpv_list):
 
 
 def get_eapi_of_ebuild(hub, ebuild_path):
-
 	"""
 	This function is used to parse the first few lines of the ebuild looking for an EAPI=
 	line. This is annoying but necessary.
@@ -163,32 +160,26 @@ def get_eapi_of_ebuild(hub, ebuild_path):
 		return _parse_eapi_ebuild_head(fobj.readlines())
 
 
-def extract_manifest_hashes(hub, cp_dir):
+def extract_manifest_hashes(hub, man_file):
 	"""
-	Given a catpkg directory as an argument, attempt to open `Manifest` and extract sha512 (preferred) or
-	sha256 hashes for each DIST entry, and return these in a dict.
+	Given a manifest path as an argument, attempt to open `Manifest` and extract all digests for each
+	DIST entry, and return this info along with filesize in a dict.
 	"""
 	man_info = {}
-	man_file = os.path.join(cp_dir, "/Manifest")
 	if os.path.exists(man_file):
-		man_f = open(man_file, "r")
-		for line in man_f.readlines():
-			ls = line.split()
-			if len(ls) <= 3 or ls[0] != "DIST":
-				continue
-			try:
-				digest_index = ls.index("SHA512") + 1
-				digest_type = "sha512"
-			except ValueError:
-				try:
-					digest_index = ls.index("SHA256") + 1
-					digest_type = "sha256"
-				except ValueError:
-					print("Error: Manifest file %s has invalid format: " % man_file)
-					print(" ", line)
+		with open(man_file, "r") as man_f:
+			for line in man_f.readlines():
+				ls = line.split()
+				if len(ls) <= 3 or ls[0] != "DIST":
 					continue
-			man_info[ls[1]] = {"size": ls[2], "digest": ls[digest_index], "digest_type": digest_type}
-		man_f.close()
+				pos = 3
+				digests = {}
+				while pos < len(ls):
+					hash_type = ls[pos]
+					hash_digest = ls[pos + 1]
+					digests[hash_type] = hash_digest
+					pos += 2
+				man_info[ls[1]] = {"size": ls[2], "digests": digests}
 	return man_info
 
 
@@ -291,7 +282,6 @@ def get_catpkg_relations_from_depstring(hub, depstring):
 
 
 class EclassHashCollection:
-
 	"""
 	This is just a simple class for storing the path where we grabbed all the eclasses from plus
 	the mapping from eclass name (ie. 'eutils') to the hexdigest of the generated hash.
@@ -361,7 +351,6 @@ def extract_ebuild_metadata(hub, repo_obj, atom, ebuild_path=None, env=None, ecl
 
 
 def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths=None, write_cache=False):
-
 	"""
 	This function will grab metadata from a single ebuild pointed to by `ebuild_path` and
 	return it as a dictionary.
@@ -369,10 +358,6 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 	If `write_cache` is True, a `metadata/md5-cache/cat/pvr` file will be written out to the
 	repository as well. If `write_cache` is True, then `eclass_paths` and `eclass_hashes`
 	must be supplied.
-
-	If `treedata` is True, additional data will be generated based on the metadata (currently
-	this includes a 'relations' field that contains a set of catpkgs referenced by dependency
-	strings.) This treedata record will be returned instead of just the simpler metadata.
 
 	This function sets up a clean environment and spawns a bash process which runs `ebuild.sh`,
 	which is a file from Portage that processes the ebuild and eclasses and outputs the metadata
@@ -385,16 +370,25 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 	basespl = ebuild_path.split("/")
 	atom = basespl[-3] + "/" + basespl[-1][:-7]
 	ebuild_md5 = get_md5(ebuild_path)
+	cp_dir = ebuild_path[: ebuild_path.rfind("/")]
+	manifest_path = cp_dir + "/Manifest"
+
+	if not os.path.exists(manifest_path):
+		manifest_md5 = None
+	else:
+		# TODO: this is a potential area of performance improvement. Multiple ebuilds in a single catpkg
+		#       directory will result in get_md5() being called on the same Manifest file multiple times
+		#       during a run. Cache might be good here.
+		manifest_md5 = get_md5(manifest_path)
 
 	# Try to see if we already have this metadata in our kit metadata cache.
-	existing = hub.cache.metadata.get_atom(repo, atom, ebuild_md5, eclass_hashes)
+	existing = hub.cache.metadata.get_atom(repo, atom, ebuild_md5, manifest_md5, eclass_hashes)
 	repo.KIT_CACHE_RETRIEVED_ATOMS.add(atom)
 
 	if existing:
-
 		infos = existing["metadata"]
 		metadata_out = existing["metadata_out"]
-		# TODO: Note - this may be a 'dud' existing entry where there was a metadata failure previously.
+	# TODO: Note - this may be a 'dud' existing entry where there was a metadata failure previously.
 	else:
 		sys.stdout.write("*")
 		sys.stdout.flush()
@@ -450,7 +444,7 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 					metadata_out += key + "=" + infos[key] + "\n"
 			if len(eclass_out):
 				metadata_out += "_eclasses_=" + eclass_out[1:] + "\n"
-			metadata_out += "_md5_=" + get_md5(ebuild_path) + "\n"
+			metadata_out += "_md5_=" + ebuild_md5 + "\n"
 
 		# Extended metadata calculation:
 
@@ -474,6 +468,10 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 		td_out["metadata"] = infos
 		td_out["md5"] = ebuild_md5
 		td_out["metadata_out"] = metadata_out
+		td_out["manifest_md5"] = manifest_md5
+		if infos and manifest_md5 is not None and "SRC_URI" in infos:
+			td_out["files_by_uri"] = extract_uris(hub, infos["SRC_URI"])
+			td_out["files_by_hash"] = extract_manifest_hashes(hub, manifest_path)
 		hub.cache.metadata.update_atom(repo, td_out)
 
 	if infos and write_cache:
@@ -488,7 +486,6 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 
 
 def catpkg_generator(hub, repo_path=None):
-
 	"""
 	This function is a generator that will scan a specified path for all valid category/
 	package directories (catpkgs). It will yield paths to these directories. It defines
@@ -513,7 +510,6 @@ def catpkg_generator(hub, repo_path=None):
 
 
 def ebuild_generator(ebuild_src=None):
-
 	"""
 
 	This function is a generator that scans the specified path for ebuilds and yields all
@@ -535,7 +531,6 @@ def ebuild_generator(ebuild_src=None):
 
 
 def get_eclass_hashes(hub, eclass_sourcedir):
-
 	"""
 
 	For generating metadata, we need md5 hashes of all eclasses for writing out into the metadata.
@@ -555,8 +550,13 @@ def get_eclass_hashes(hub, eclass_sourcedir):
 	return eclass_hashes
 
 
-def gen_cache(hub, repo):
+# TODO: maybe change this name to post_actions(). And integrate Manifest generation here. We want
+#       to avoiding having MANIFEST_LINES or integrate MANIFEST_LINES better into the kit-cache.
+#       This is not ABSOLUTELY necessary but may make things a bit simpler. MANIFEST_LINES was
+#       created before we had the kit-cache and deepdive.
 
+
+def gen_cache(hub, repo):
 	"""
 
 	Generate md5-cache metadata from a bunch of ebuilds.

@@ -5,6 +5,11 @@ import logging
 import os
 import sys
 
+# Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
+# version, we'll consider the kit cache stale and regenerate it.
+
+CACHE_DATA_VERSION = "1.0.0"
+
 
 def get_outpath(hub, repo_obj):
 	os.makedirs(os.path.join(hub.MERGE_CONFIG.temp_path, "kit_cache"), exist_ok=True)
@@ -13,12 +18,16 @@ def get_outpath(hub, repo_obj):
 
 def fetch_kit(hub, repo_obj):
 	"""
-	Grab cached metadata for an entire kit from MongoDB, with a single query.
+	Grab cached metadata for an entire kit from serialized JSON, with a single query.
 	"""
 	outpath = hub._.get_outpath(repo_obj)
 	if os.path.exists(outpath):
 		with open(outpath, "r") as f:
-			atoms = json.loads(f.read())
+			kit_cache_data = json.loads(f.read())
+			if "cache_data_version" not in kit_cache_data or kit_cache_data["cache_data_version"] != CACHE_DATA_VERSION:
+				atoms = {}
+			else:
+				atoms = kit_cache_data["atoms"]
 	else:
 		atoms = {}
 	repo_obj.KIT_CACHE = atoms
@@ -64,23 +73,28 @@ def flush_kit(hub, repo_obj, save=True, prune=True):
 			logging.error(f"{extra_atoms}")
 			sys.exit(1)
 	outpath = hub._.get_outpath(repo_obj)
-	outdata = repo_obj.KIT_CACHE
+	outdata = {"cache_data_version": CACHE_DATA_VERSION, "atoms": repo_obj.KIT_CACHE}
 	with open(outpath, "w") as f:
 		f.write(json.dumps(outdata))
 
 
-def get_atom(hub, repo_obj, atom, md5, eclass_hashes):
+def get_atom(hub, repo_obj, atom, md5, manifest_md5, eclass_hashes):
 	"""
 	Read from our in-memory kit metadata cache. Return something if available, else None.
 
 	This will validate that our in-memory record has a matching md5 and that md5s of all
-	eclasses match. Otherwise we treat this as a cache miss.
+	eclasses match. AND the md5 of the Manifest (if any exists) matches.
+	Otherwise we treat this as a cache miss.
 	"""
 	existing = None
 	if atom in repo_obj.KIT_CACHE and repo_obj.KIT_CACHE[atom]["md5"] == md5:
 		existing = repo_obj.KIT_CACHE[atom]
-		if existing["eclasses"]:
-			bad = False
+		bad = False
+		if "manifest_md5" not in existing:
+			bad = True
+		elif manifest_md5 != existing["manifest_md5"]:
+			bad = True
+		elif existing["eclasses"]:
 			for eclass, md5 in existing["eclasses"]:
 				if eclass not in eclass_hashes:
 					bad = True
@@ -88,9 +102,9 @@ def get_atom(hub, repo_obj, atom, md5, eclass_hashes):
 				if eclass_hashes[eclass] != md5:
 					bad = True
 					break
-			if bad:
-				# stale cache entry, don't use.
-				existing = None
+		if bad:
+			# stale cache entry, don't use.
+			existing = None
 	return existing
 
 
