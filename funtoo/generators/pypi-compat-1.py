@@ -22,7 +22,10 @@ def add_ebuild(hub, json_dict=None, compat_ebuild=False, **pkginfo):
 	local_pkginfo = pkginfo.copy()
 	assert "python_compat" in local_pkginfo, f"python_compat is not defined in {local_pkginfo}"
 	local_pkginfo["compat_ebuild"] = compat_ebuild
-	artifact_url = None
+	if "inherit" not in local_pkginfo:
+		local_pkginfo["inherit"] = []
+	if "distutils-r1" not in local_pkginfo["inherit"]:
+		local_pkginfo["inherit"].append("distutils-r1")
 
 	hub.pkgtools.pyhelper.expand_pydeps(local_pkginfo)
 
