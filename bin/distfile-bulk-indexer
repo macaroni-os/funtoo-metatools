@@ -4,8 +4,13 @@
 # add them to fastpull.
 
 import logging
+import multiprocessing
 import os
 import sys
+from concurrent.futures._base import as_completed
+from concurrent.futures.thread import ThreadPoolExecutor
+from queue import Queue
+
 import pop.hub
 from merge_utils.config import Configuration
 
@@ -13,13 +18,36 @@ hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
 hub = pop.hub.Hub()
 
+num_indexers = multiprocessing.cpu_count()
+main_queue = Queue(maxsize=1000)
+terminus = "ALL_DONE_WITH_WORK"
 
-def main_thread(path):
+def file_walker(path):
 	for root, dirs, files in os.walk(path, topdown=False):
 		for name in files:
-			in_path = os.path.join(root, name)
-			print(in_path)
-			hub.pkgtools.fastpull.inject_into_fastpull(in_path, symlink=True)
+			main_queue.put(os.path.join(root,name))
+	for count in range(0, num_indexers):
+		main_queue.put(terminus)
+
+def file_indexer():
+	while True:
+		next_file = main_queue.get()
+		if next_file == terminus:
+			break
+		print(next_file)
+		hub.pkgtools.fastpull.inject_into_fastpull(next_file, symlink=True)
+
+def main_thread(path):
+	futures = []
+	with ThreadPoolExecutor() as executor:
+		futures.append(executor.submit(file_walker, path))
+		for count in range(0, num_indexers):
+			futures.append(executor.submit(file_indexer))
+
+		for future in as_completed(futures):
+			sys.stdout.write("x")
+			sys.stdout.flush()
+		print("Indexing complete.")
 
 
 if __name__ == "__main__":
