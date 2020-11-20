@@ -171,7 +171,7 @@ class Download:
 			# We only need to insert once into fastpull since it is the same underlying file.
 
 			if self.hub.MERGE_CONFIG.fastpull_enabled:
-				self.hub.pkgtools.inject_into_fastpull(self.artifacts[0].final_path, final_data=final_data)
+				self.hub.pkgtools.fastpull.inject_into_fastpull(self.artifacts[0].final_path, final_data=final_data)
 
 		del self.hub.DL_ACTIVE[self.final_name]
 		self.hub.DL_ACTIVE_COUNT.release()
