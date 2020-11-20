@@ -7,6 +7,7 @@ import logging
 import os
 import sys
 import pop.hub
+from merge_utils.config import Configuration
 
 hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
@@ -24,4 +25,5 @@ def main_thread(path):
 if __name__ == "__main__":
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools")
+	hub.MERGE_CONFIG = config = Configuration()
 	main_thread(sys.argv[1])
