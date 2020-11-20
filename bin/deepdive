@@ -29,7 +29,7 @@ if __name__ == "__main__":
 		hub, "kit-fixups", config.branch("kit-fixups"), url=config.kit_fixups, root=config.source_trees + "/kit-fixups",
 	)
 	hub.META_REPO = meta_repo = GitTree(
-		hub, "meta-repo", branch=hub.RELEASE, url=config.meta_repo, root=config.dest_trees + "/meta-repo", origin_check=True
+		hub, "meta-repo", branch=hub.RELEASE, url=config.meta_repo, root=config.dest_trees + "/meta-repo", origin_check=False
 	)
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools")
@@ -55,8 +55,6 @@ if __name__ == "__main__":
 				update_futures.append(future)
 			for future in as_completed(update_futures):
 				kit_dict, items_to_insert = future.result()
-				for item in items_to_insert:
-					print(json.dumps(item, indent=4))
 				if len(items_to_insert):
 					hub.DEEPDIVE.insert_many(items_to_insert)
 				else:

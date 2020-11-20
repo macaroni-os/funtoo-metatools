@@ -175,7 +175,7 @@ def extract_manifest_hashes(hub, man_file):
 				pos = 3
 				digests = {}
 				while pos < len(ls):
-					hash_type = ls[pos]
+					hash_type = ls[pos].lower()
 					hash_digest = ls[pos + 1]
 					digests[hash_type] = hash_digest
 					pos += 2
