@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 
 from urllib.parse import urlparse
-import httpx
+
+HAS_HTTPX = True
+try:
+	import httpx
+except ImportError:
+	HAS_HTTPX = False
+
 import sys
 import logging
 
@@ -9,6 +15,15 @@ import logging
 This sub implements lower-level HTTP fetching logic, such as actually grabbing the data, sending the
 proper headers and authentication, etc.
 """
+
+def __virtual__(hub):
+	# We are just unconditionally disabling this for now:
+	return False, ""
+
+	if HAS_HTTPX:
+		return True, ""
+	else:
+		return False, "httpx is required for this plugin."
 
 
 http_data_timeout = 60
