@@ -111,7 +111,7 @@ if __name__ == "__main__":
 		hub.PUSH = False
 		hub.MIRROR = False
 		hub.META_REPO = meta_repo = hub.GIT_CLASS(
-			hub, name="meta-repo", branch=config.branch("meta-repo"), root=config.dest_trees + "/meta-repo"
+			hub, name="meta-repo", branch=hub.RELEASE, root=config.dest_trees + "/meta-repo"
 		)
 		hub.NEST_KITS = True
 	else:
