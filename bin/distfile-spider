@@ -20,8 +20,9 @@ if __name__ == "__main__":
 	# regen scan of the kit-cache and use this information to populate the spider with stuff to download.
 
 	hub.pop.sub.add("funtoo.pkgtools")
-	hub.pop.sub.add("funtoo.infra")
+	hub.pop.sub.add("funtoo.merge")
 
 	nodep_catpkgs = dict()
 	for pypak in hub.DEEPDIVE.find({}):
-		print(pypak["catpkg"])
+		if "distfile" in pypak:
+			print(pypak["distfile"])

@@ -36,6 +36,7 @@ def __init__(hub):
 	dd.create_index("catpkg")
 	dd.create_index("relations")
 	dd.create_index("md5")
+	dd.create_index("files.name", partialFilterExpression={"files": {"$exists": True}})
 
 	di = hub.DISTFILE_INTEGRITY = mc.metatools.distfile_integrity
 	di.create_index([("category", pymongo.ASCENDING), ("package", pymongo.ASCENDING), ("distfile", pymongo.ASCENDING)])
