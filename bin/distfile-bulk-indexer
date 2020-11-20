@@ -1,0 +1,26 @@
+#!/usr/bin/python3
+
+# The purpose of this executable is to point to a directory path with existing distfiles, and grab them all and
+# add them to fastpull.
+
+import logging
+import os
+import sys
+import pop.hub
+
+hub_logger = logging.getLogger("pop.hub")
+hub_logger.setLevel(logging.DEBUG)
+hub = pop.hub.Hub()
+
+
+def main_thread(path):
+	for root, dirs, files in os.walk(path, topdown=False):
+		for name in files:
+			in_path = os.path.join(root, name)
+			print(in_path)
+			hub.pkgtools.fastpull.inject_into_fastpull(in_path)
+
+
+if __name__ == "__main__":
+	hub.pop.sub.add("funtoo.pkgtools")
+	main_thread(sys.argv[1])

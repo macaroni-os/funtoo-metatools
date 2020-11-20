@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import asyncio
+import json
 import logging
 import os
 import sys
@@ -54,6 +55,8 @@ if __name__ == "__main__":
 				update_futures.append(future)
 			for future in as_completed(update_futures):
 				kit_dict, items_to_insert = future.result()
+				for item in items_to_insert:
+					print(json.dumps(item, indent=4))
 				if len(items_to_insert):
 					hub.DEEPDIVE.insert_many(items_to_insert)
 				else:

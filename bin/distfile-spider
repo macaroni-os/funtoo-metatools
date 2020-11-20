@@ -23,10 +23,5 @@ if __name__ == "__main__":
 	hub.pop.sub.add("funtoo.infra")
 
 	nodep_catpkgs = dict()
-	for pypak in hub.DEEPDIVE.find({"category": sys.argv[1]}):
-		dep_on_me = hub.DEEPDIVE.count_documents({"relations": {"$in": [pypak["catpkg"]]}})
-		if dep_on_me == 0:
-			nodep_catpkgs[pypak["catpkg"]] = pypak["kit"]
-
-	for item in sorted(list(nodep_catpkgs.keys())):
-		print(item, nodep_catpkgs[item])
+	for pypak in hub.DEEPDIVE.find({}):
+		print(pypak["catpkg"])

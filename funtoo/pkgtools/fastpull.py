@@ -79,8 +79,16 @@ def complete_artifact(hub, artifact):
 	return artifact
 
 
-def download_completion_hook(hub, final_data, final_path):
-	fastpull_path = hub._.get_disk_path(final_data)
+def inject_into_fastpull(hub, final_path, final_data=None):
+	"""
+	Given a file pointed to by final_path, insert this file into the fastpull database. We will take care of generating
+	hashes (final_data) if none are passed to us. We use this to determine the name of the file in fastpull (based on
+	sha512.)
+	"""
+	if final_data is None:
+		final_data = hub.pkgtools.download.calc_hashes(final_path)
+
+	fastpull_path = get_disk_path(hub, final_data)
 	if not os.path.exists(fastpull_path):
 		try:
 			os.makedirs(os.path.dirname(fastpull_path), exist_ok=True)

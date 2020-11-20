@@ -3,8 +3,6 @@ import inspect
 import os
 import asyncio
 import sys
-from asyncio import FIRST_COMPLETED
-
 import jinja2
 import logging
 from collections import defaultdict

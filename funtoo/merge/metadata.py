@@ -185,18 +185,21 @@ def extract_manifest_hashes(hub, man_file):
 
 def extract_uris(hub, src_uri):
 	"""
-	This function will take a SRC_URI value from an ebuild, and it will return a list of actual URIs from this string.
-	This will strip out all conditionals.
+	This function will take a SRC_URI value from an ebuild, and it will return a dictionary in the following format:
 
-	The returned data is in a special format. It's in a dictionary of lists. The key to the dictionary is the final
-	name of the file that would be written to disk. The list contains URIs for downloading this file. The data is
-	structured this way because SRC_URI can contain multiple alternate download URIs for a single artifact.
+	{ "filename1.tar.gz" : { "src_uri" : [ "https://url1", "https//url2" ] } }
+
+	All possible download locations will be returned for files in the format above.
+
+	Note that in the code below, a "blob" is simply a piece of parsed SRC_URI information that *may* be a URL.
 	"""
-	fn_urls = defaultdict(list)
+	fn_urls = {}
 
 	def record_fn_url(my_fn, p_blob):
-		if p_blob not in fn_urls[my_fn]:
-			fn_urls[my_fn].append(p_blob)
+		if my_fn not in fn_urls:
+			fn_urls[my_fn] = {"src_uri": [p_blob]}
+		else:
+			fn_urls[my_fn]["src_uri"].append(p_blob)
 
 	blobs = src_uri.split()
 	prev_blob = None
@@ -350,6 +353,25 @@ def extract_ebuild_metadata(hub, repo_obj, atom, ebuild_path=None, env=None, ecl
 		return None
 
 
+def get_filedata(hub, src_uri, manifest_path):
+	"""
+	MongoDB is happiest when we don't use filenames as keys, since they have periods in them which is not allowed.
+	This normalizes our filedata for MongoDB. `extract_uris` and `extract_manifest_hashes` are all indexed by filename,
+	but instead we want to return a list consisting of dictionaries. We move the key inside each dict.
+
+	{"file1.tar.gz" : { ... }} -> [ { "name" : "file1.tar.gz", ... }, ... ]
+	"""
+	filedata = {}
+	filedata.update(extract_uris(hub, src_uri))
+	filedata.update(extract_manifest_hashes(hub, manifest_path))
+
+	outdata = []
+	for fn, datums in filedata.items():
+		datums["name"] = fn
+		outdata.append(datums)
+	return outdata
+
+
 def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths=None, write_cache=False):
 	"""
 	This function will grab metadata from a single ebuild pointed to by `ebuild_path` and
@@ -470,8 +492,7 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 		td_out["metadata_out"] = metadata_out
 		td_out["manifest_md5"] = manifest_md5
 		if infos and manifest_md5 is not None and "SRC_URI" in infos:
-			td_out["files_by_uri"] = extract_uris(hub, infos["SRC_URI"])
-			td_out["files_by_hash"] = extract_manifest_hashes(hub, manifest_path)
+			td_out["files"] = get_filedata(hub, infos["SRC_URI"], manifest_path)
 		hub.cache.metadata.update_atom(repo, td_out)
 
 	if infos and write_cache:
