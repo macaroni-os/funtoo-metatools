@@ -79,7 +79,7 @@ def complete_artifact(hub, artifact):
 	return artifact
 
 
-def inject_into_fastpull(hub, final_path, final_data=None):
+def inject_into_fastpull(hub, final_path, final_data=None, symlink=False):
 	"""
 	Given a file pointed to by final_path, insert this file into the fastpull database. We will take care of generating
 	hashes (final_data) if none are passed to us. We use this to determine the name of the file in fastpull (based on
@@ -92,7 +92,10 @@ def inject_into_fastpull(hub, final_path, final_data=None):
 	if not os.path.exists(fastpull_path):
 		try:
 			os.makedirs(os.path.dirname(fastpull_path), exist_ok=True)
-			os.link(final_path, fastpull_path)
+			if symlink:
+				os.symlink(final_path, fastpull_path)
+			else:
+				os.link(final_path, fastpull_path)
 		except Exception as e:
 			# Multiple doits running in parallel, trying to link the same file -- could cause exceptions:
 			logging.error(f"Exception encountered when trying to link into fastpull (may be harmless) -- {repr(e)}")

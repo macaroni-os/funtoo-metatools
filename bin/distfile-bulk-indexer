@@ -18,7 +18,7 @@ def main_thread(path):
 		for name in files:
 			in_path = os.path.join(root, name)
 			print(in_path)
-			hub.pkgtools.fastpull.inject_into_fastpull(in_path)
+			hub.pkgtools.fastpull.inject_into_fastpull(in_path, symlink=True)
 
 
 if __name__ == "__main__":
