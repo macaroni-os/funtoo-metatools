@@ -47,7 +47,7 @@ requested_by (kit, branch, atom, date?) would be cool.
 
 def get_disk_path(hub, final_data):
 	sh = final_data["hashes"]["sha512"]
-	return os.path.join(hub.MERGE_CONFIG.fastpull_path, sh[:2], sh[2:4], sh[4:], sh)
+	return os.path.join(hub.MERGE_CONFIG.fastpull_path, sh[:2], sh[2:4], sh[4:6], sh)
 
 
 def complete_artifact(hub, artifact):
