@@ -197,7 +197,13 @@ class BreezyBuild:
 			if not artifact.final_data:
 
 				async def lil_coroutine(a, catpkg):
-					return a, await self.hub.pkgtools.download.ensure_completed(catpkg, a)
+					if self.hub.MERGE_CONFIG.fastpull_enabled:
+						# Force us to actually *have* the artifact so we can inject it into fastpull.
+						# TODO: handle situations where we re-fetch, and final data hashes are different than
+						#       what's in the integrity DB!
+						return a, await self.hub.pktools.download.ensure_fetched(catpkg, a)
+					else:
+						return a, await self.hub.pkgtools.download.ensure_completed(catpkg, a)
 
 				fetch_tasks_dict[artifact] = asyncio.Task(lil_coroutine(artifact, self.catpkg))
 
