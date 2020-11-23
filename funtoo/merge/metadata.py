@@ -376,7 +376,6 @@ def get_filedata(hub, src_uri, manifest_path):
 	for fn, datums in filedata.items():
 		datums["name"] = fn
 		outdata.append(datums)
-	print(outdata)
 	return outdata
 
 
