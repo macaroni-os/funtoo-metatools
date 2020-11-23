@@ -70,7 +70,7 @@ async def main_thread():
 					if len(slash_split) == 0:
 						# invalid, continue
 						continue
-					elif slash_split[0] not in [ "http", "https", "ftp" ]:
+					elif slash_split[0] not in [ "http:", "https:", "ftp:" ]:
 						continue
 					a = hub.pkgtools.ebuild.Artifact(url = file["src_uri"][0], final_name=file["name"])
 					await a.ensure_fetched()
