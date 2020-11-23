@@ -80,8 +80,8 @@ async def http_fetch_stream(hub, url, on_chunk):
 							on_chunk(chunk)
 					except aiohttp.EofStream:
 						pass
-	except AssertionError:
-		raise hub.pkgtools.fetch.FetchError(url, f"Unable to fetch: internal aiohttp assertion failed")
+	except Exception as e:
+		raise hub.pkgtools.fetch.FetchError(url, f"{e.__class__.__name__}: {str(e)}")
 	return None
 
 
