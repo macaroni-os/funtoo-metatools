@@ -2,7 +2,7 @@
 
 # The purpose of this executable is to point to a directory path with existing distfiles, and grab them all and
 # add them to fastpull.
-
+import asyncio
 import logging
 import multiprocessing
 import os
@@ -37,7 +37,9 @@ def file_indexer():
 		print(next_file)
 		hub.pkgtools.fastpull.inject_into_fastpull(next_file, symlink=True)
 
-def main_thread(path):
+
+
+async def main_thread():
 	size_exists =0
 	size_todo = 0
 	for pkg in hub.DEEPDIVE.find({}):
@@ -55,10 +57,17 @@ def main_thread(path):
 						dp = hub.pkgtools.fastpull.get_disk_path(final_data=file)
 						if os.path.exists(dp):
 							size_exists += sz_bytes
+							continue
 						else:
 							size_todo += sz_bytes
 					else:
-						print(f"** no size for {file}")
+						# skip
+						continue
+					if file["src_uri"][0].startswith("mirror://"):
+						# skip for now
+						continue
+					a = hub.pkgtools.ebuild.Artifact(url = file["src_uri"][0], final_name=file["name"])
+					await a.ensure_fetched()
 	print(f"{size_exists} bytes existing.")
 	print(f"{size_todo} bytes to download.")
 
@@ -78,4 +87,6 @@ if __name__ == "__main__":
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools")
 	hub.MERGE_CONFIG = config = Configuration()
-	main_thread(sys.argv[1])
+	loop = asyncio.get_event_loop()
+	loop.set_debug(enabled=True)
+	loop.run_until_complete(main_thread())
