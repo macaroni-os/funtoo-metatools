@@ -68,6 +68,7 @@ async def main_thread():
 						continue
 					a = hub.pkgtools.ebuild.Artifact(url = file["src_uri"][0], final_name=file["name"])
 					await a.ensure_fetched()
+					print(file)
 	print(f"{size_exists} bytes existing.")
 	print(f"{size_todo} bytes to download.")
 
@@ -87,6 +88,6 @@ if __name__ == "__main__":
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools", omit_class=False)
 	hub.MERGE_CONFIG = config = Configuration()
+	hub.pkgtools.autogen.load_autogen_config()
 	loop = asyncio.get_event_loop()
-	loop.set_debug(enabled=True)
 	loop.run_until_complete(main_thread())
