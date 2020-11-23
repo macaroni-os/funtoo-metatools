@@ -41,6 +41,9 @@ def main_thread(path):
 	size_exists =0
 	size_todo = 0
 	for pkg in hub.DEEPDIVE.find({}):
+		if pkg["kit"] == "nokit":
+			continue
+		print(pkg["kit"])
 		if "files" in pkg:
 			for file in pkg["files"]:
 				if "src_uri" in file:
