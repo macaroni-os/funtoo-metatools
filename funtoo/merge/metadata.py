@@ -179,7 +179,7 @@ def extract_manifest_hashes(hub, man_file):
 					hash_digest = ls[pos + 1]
 					digests[hash_type] = hash_digest
 					pos += 2
-				man_info[ls[1]] = {"size": ls[2], "digests": digests}
+				man_info[ls[1]] = {"size": ls[2], "hashes": digests}
 	return man_info
 
 
@@ -215,11 +215,15 @@ def extract_uris(hub, src_uri):
 			continue
 		if blob == "->":
 			# We found a http://foo -> bar situation. Handle it:
-			fn = blobs[pos + 1]
+			try:
+				fn = blobs[pos + 1]
+			except IndexError:
+				# A -> at the end of a SRC_URI. Shouldn't happen but you never know.
+				fn = None
 			if fn is not None:
 				record_fn_url(fn, prev_blob)
 				prev_blob = None
-				pos += 2
+			pos += 2
 		else:
 			# Process previous item:
 			if prev_blob:
@@ -361,14 +365,18 @@ def get_filedata(hub, src_uri, manifest_path):
 
 	{"file1.tar.gz" : { ... }} -> [ { "name" : "file1.tar.gz", ... }, ... ]
 	"""
-	filedata = {}
-	filedata.update(extract_uris(hub, src_uri))
-	filedata.update(extract_manifest_hashes(hub, manifest_path))
+
+	filedata = extract_manifest_hashes(hub, manifest_path)
+	for fn, sub_dict in extract_uris(hub, src_uri).items():
+		if fn not in filedata:
+			filedata[fn] = {}
+		filedata[fn].update(sub_dict)
 
 	outdata = []
 	for fn, datums in filedata.items():
 		datums["name"] = fn
 		outdata.append(datums)
+	print(outdata)
 	return outdata
 
 

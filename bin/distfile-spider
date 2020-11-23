@@ -1,28 +1,78 @@
 #!/usr/bin/python3
 
+# The purpose of this executable is to point to a directory path with existing distfiles, and grab them all and
+# add them to fastpull.
+
 import logging
+import multiprocessing
+import os
 import sys
+from concurrent.futures._base import as_completed
+from concurrent.futures.thread import ThreadPoolExecutor
+from queue import Queue
 
 import pop.hub
+from merge_utils.config import Configuration
 
 hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
 hub = pop.hub.Hub()
 
+num_indexers = multiprocessing.cpu_count()
+main_queue = Queue(maxsize=1000)
+terminus = "ALL_DONE_WITH_WORK"
+
+def file_walker(path):
+	for root, dirs, files in os.walk(path, topdown=False):
+		for name in files:
+			main_queue.put(os.path.join(root,name))
+	for count in range(0, num_indexers):
+		main_queue.put(terminus)
+
+def file_indexer():
+	while True:
+		next_file = main_queue.get()
+		if next_file == terminus:
+			break
+		print(next_file)
+		hub.pkgtools.fastpull.inject_into_fastpull(next_file, symlink=True)
+
+def main_thread(path):
+	size_exists =0
+	size_todo = 0
+	for pkg in hub.DEEPDIVE.find({}):
+		if "files" in pkg:
+			for file in pkg["files"]:
+				if "src_uri" in file:
+					if "digests" in file:
+						# compat with deepdive change
+						file["hashes"] = file["digests"]
+					if "size" in file and "sha512" in file["hashes"]:
+						sz_bytes = int(file["size"])
+						dp = hub.pkgtools.fastpull.get_disk_path(final_data=file)
+						if os.path.exists(dp):
+							size_exists += sz_bytes
+						else:
+							size_todo += sz_bytes
+					else:
+						print(f"** no size for {file}")
+	print(f"{size_exists} bytes existing.")
+	print(f"{size_todo} bytes to download.")
+
+	#futures = []
+	#with ThreadPoolExecutor() as executor:
+	#	futures.append(executor.submit(file_walker, path))
+	#	for count in range(0, num_indexers):
+	#		futures.append(executor.submit(file_indexer))
+#
+#		for future in as_completed(futures):
+#			sys.stdout.write("x")
+#			sys.stdout.flush()
+#		print("Indexing complete.")
+
+
 if __name__ == "__main__":
-
-	# It would be nice if the distfile-spider could simply scan a pre-generated meta-repo, look at all the kits,
-	# grab SHA512's from the Manifest files, and get to work. Unfortunately, the distfile-spider needs sha512sums
-	# as well as the URLs for downloading each of them. This SRC_URI data is stored in the kit-cache, so it becomes
-	# necessary to have the tuple of each SRC_URI with the sha512 for that particular file.
-
-	# We should likely correlate this information when we add info to the kit-cache. Then we can do a post-tree-
-	# regen scan of the kit-cache and use this information to populate the spider with stuff to download.
-
-	hub.pop.sub.add("funtoo.pkgtools")
 	hub.pop.sub.add("funtoo.merge")
-
-	nodep_catpkgs = dict()
-	for pypak in hub.DEEPDIVE.find({}):
-		if "distfile" in pypak:
-			print(pypak["distfile"])
+	hub.pop.sub.add("funtoo.pkgtools")
+	hub.MERGE_CONFIG = config = Configuration()
+	main_thread(sys.argv[1])
