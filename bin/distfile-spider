@@ -85,7 +85,7 @@ async def main_thread():
 
 if __name__ == "__main__":
 	hub.pop.sub.add("funtoo.merge")
-	hub.pop.sub.add("funtoo.pkgtools")
+	hub.pop.sub.add("funtoo.pkgtools", omit_class=False)
 	hub.MERGE_CONFIG = config = Configuration()
 	loop = asyncio.get_event_loop()
 	loop.set_debug(enabled=True)
