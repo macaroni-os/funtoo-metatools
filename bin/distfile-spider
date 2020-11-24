@@ -43,7 +43,7 @@ async def main_thread():
 	size_exists =0
 	size_todo = 0
 	for pkg in hub.DEEPDIVE.find({}):
-		if pkg["kit"] == "nokit":
+		if pkg["kit"] in [ "games-kit", "nokit"]:
 			continue
 		print(pkg["kit"])
 		if "files" in pkg:
