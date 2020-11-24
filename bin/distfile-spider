@@ -90,14 +90,10 @@ async def distfile_queuer():
 						continue
 					a = hub.pkgtools.ebuild.Artifact(url=real_uri, final_name=file["name"])
 					if not a.is_fetched():
-						yield a
+						tasks.append(Task(a.ensure_fetched))
 
 	print(f"{size_exists} bytes existing.")
 	print(f"{size_todo} bytes to download.")
-
-async def main_thread():
-	async for artifact in distfile_queuer():
-		tasks.append(Task(artifact.ensure_fetched()))
 
 if __name__ == "__main__":
 	hub.pop.sub.add("funtoo.merge")
