@@ -2,11 +2,18 @@
 
 # The purpose of this executable is to point to a directory path with existing distfiles, and grab them all and
 # add them to fastpull.
+
+# TODO: current architecture involves running merge-kits and then distfile-spider all on a separate system. But
+#       this can create issues with files that are periodically synced such as vivaldi and vim, which are not
+#       always current. This means we may want a different architecture here where we remotely send data to
+#       the distfile spider and it works in a "dumb" capacity to do what it's told.
+
 import asyncio
 import logging
 import multiprocessing
 import os
 import sys
+from asyncio import Task
 from concurrent.futures._base import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 from queue import Queue
@@ -39,8 +46,8 @@ def file_indexer():
 
 
 
-async def main_thread():
-	size_exists =0
+async def distfile_queuer():
+	size_exists = 0
 	size_todo = 0
 	for pkg in hub.DEEPDIVE.find({}):
 		if pkg["kit"] in [ "games-kit", "nokit"]:
@@ -73,8 +80,8 @@ async def main_thread():
 					elif slash_split[0] not in [ "http:", "https:", "ftp:" ]:
 						continue
 					a = hub.pkgtools.ebuild.Artifact(url = file["src_uri"][0], final_name=file["name"])
-					await a.ensure_fetched()
-					print(file)
+					if not a.is_fetched():
+						yield a
 	print(f"{size_exists} bytes existing.")
 	print(f"{size_todo} bytes to download.")
 
@@ -96,4 +103,8 @@ if __name__ == "__main__":
 	hub.MERGE_CONFIG = config = Configuration()
 	hub.pkgtools.autogen.load_autogen_config()
 	loop = asyncio.get_event_loop()
-	loop.run_until_complete(main_thread())
+	tasks = []
+	# create tons of tasks
+	async for a in distfile_queuer():
+		tasks.append(Task(a.ensure_fetched()))
+	completion_list = hub.pkgtools.autogen.gather_pending_tasks(tasks)
