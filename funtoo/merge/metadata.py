@@ -35,6 +35,36 @@ def display_error_summary(hub):
 		logging.warning(f"Metadata errors logged to {hub.MERGE_CONFIG.temp_path}.")
 
 
+def get_thirdpartymirrors(hub, repo_path):
+	mirr_dict = {}
+	with open(os.path.join(repo_path, "profiles/thirdpartymirrors", "r")) as f:
+		lines = f.readlines()
+		for line in lines:
+			ls = line.split()
+			mirr_dict[ls[0]] = ls[1:]
+	return mirr_dict
+
+
+def iter_thirdpartymirror(hub, mirr_dict, mirror):
+	if mirror not in mirr_dict:
+		return None
+	for mirr_url in mirr_dict[mirror]:
+		yield mirr_url
+
+
+def expand_thirdpartymirror(hub, mirr_dict, url):
+
+	non_mirr_part = url[10:]
+	mirr_split = non_mirr_part.split("/")
+	mirror = mirr_split[0]
+	rest_of_url = "/".join(mirr_split[1:])
+	if mirror not in mirr_dict:
+		return None
+	for mirr_url in mirr_dict[mirror]:
+		final_url = mirr_url + "/" + rest_of_url
+		return final_url
+
+
 class MetadataError:
 	def __init__(self, repo=None, ebuild_path=None, output=None, msg=None):
 		self.repo = repo

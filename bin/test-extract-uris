@@ -10,8 +10,9 @@ hub = pop.hub.Hub()
 uri_strs = [
 	"https://foo.bar.com/blah-1.0.tar.gz",
 	"https://foo.bar.com/blah-1.0.tar.bz2 https://foo.fart.com/blegh-2.0.tar.gz",
-	"https://foo.bar.com/same-1.0.tar.gz https://foo.fart.com/same-1.0.tar.gz"
+	"https://foo.bar.com/same-1.0.tar.gz https://foo.fart.com/same-1.0.tar.gz",
 ]
+
 
 def main_thread():
 	for uri_str in uri_strs:

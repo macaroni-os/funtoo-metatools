@@ -29,12 +29,14 @@ num_indexers = multiprocessing.cpu_count()
 main_queue = Queue(maxsize=1000)
 terminus = "ALL_DONE_WITH_WORK"
 
+
 def file_walker(path):
 	for root, dirs, files in os.walk(path, topdown=False):
 		for name in files:
-			main_queue.put(os.path.join(root,name))
+			main_queue.put(os.path.join(root, name))
 	for count in range(0, num_indexers):
 		main_queue.put(terminus)
+
 
 def file_indexer():
 	while True:
@@ -45,12 +47,14 @@ def file_indexer():
 		hub.pkgtools.fastpull.inject_into_fastpull(next_file, symlink=True)
 
 
-
 async def distfile_queuer():
 	size_exists = 0
 	size_todo = 0
+	tp_mirrors = hub.merge.metadata.get_thirdpartymirrors(
+		os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit/profiles/thirdpartymirrors")
+	)
 	for pkg in hub.DEEPDIVE.find({}):
-		if pkg["kit"] in [ "games-kit", "nokit"]:
+		if pkg["kit"] in ["games-kit", "nokit"]:
 			continue
 		print(pkg["kit"])
 		if "files" in pkg:
@@ -71,30 +75,21 @@ async def distfile_queuer():
 						# skip
 						continue
 					if file["src_uri"][0].startswith("mirror://"):
-						# skip for now
-						continue
-					slash_split = file["src_uri"][0].split("/")
+						real_uri = hub.merge.metadata.expand_thirdpartymirror(tp_mirrors, file["src_uri"][0])
+					else:
+						real_uri = file["src_uri"][0]
+					slash_split = real_uri.split("/")
 					if len(slash_split) == 0:
 						# invalid, continue
 						continue
-					elif slash_split[0] not in [ "http:", "https:", "ftp:" ]:
+					elif slash_split[0] not in ["http:", "https:", "ftp:"]:
 						continue
-					a = hub.pkgtools.ebuild.Artifact(url = file["src_uri"][0], final_name=file["name"])
+					a = hub.pkgtools.ebuild.Artifact(url=file["src_uri"][0], final_name=file["name"])
 					if not a.is_fetched():
 						yield a
 	print(f"{size_exists} bytes existing.")
 	print(f"{size_todo} bytes to download.")
 
-	#futures = []
-	#with ThreadPoolExecutor() as executor:
-	#	futures.append(executor.submit(file_walker, path))
-	#	for count in range(0, num_indexers):
-	#		futures.append(executor.submit(file_indexer))
-#
-#		for future in as_completed(futures):
-#			sys.stdout.write("x")
-#			sys.stdout.flush()
-#		print("Indexing complete.")
 
 async def main_thread():
 	tasks = []
