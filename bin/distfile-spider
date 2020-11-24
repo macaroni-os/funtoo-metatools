@@ -13,7 +13,7 @@ import logging
 import multiprocessing
 import os
 import sys
-from asyncio import Task
+from asyncio import Queue, Task, FIRST_COMPLETED
 from concurrent.futures._base import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 from queue import Queue
@@ -90,14 +90,14 @@ async def distfile_queuer():
 						continue
 					a = hub.pkgtools.ebuild.Artifact(url=real_uri, final_name=file["name"])
 					if not a.is_fetched():
-						await a.ensure_fetched()
+						yield a
+
 	print(f"{size_exists} bytes existing.")
 	print(f"{size_todo} bytes to download.")
 
-
 async def main_thread():
-	await distfile_queuer()
-
+	async for artifact in distfile_queuer():
+		tasks.append(Task(artifact.ensure_fetched()))
 
 if __name__ == "__main__":
 	hub.pop.sub.add("funtoo.merge")
@@ -105,6 +105,9 @@ if __name__ == "__main__":
 	hub.MERGE_CONFIG = config = Configuration()
 	hub.pkgtools.autogen.load_autogen_config()
 	loop = asyncio.get_event_loop()
-	loop.run_until_complete(main_thread())
+	tasks = []
+	tasks.append(Task(distfile_queuer()))
+	loop.run_until_complete(tasks)
+
 
 # vim: ts=4 sw=4 noet

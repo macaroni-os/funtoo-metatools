@@ -119,7 +119,7 @@ async def gather_pending_tasks(hub, task_list):
 	if not len(cur_tasks):
 		return []
 	while True:
-		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
+		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_COMPLETED)
 		for done_item in done_list:
 			try:
 				result = done_item.result()
