@@ -51,7 +51,7 @@ async def distfile_queuer():
 	size_exists = 0
 	size_todo = 0
 	tp_mirrors = hub.merge.metadata.get_thirdpartymirrors(
-		os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit/profiles/thirdpartymirrors")
+		os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit")
 	)
 	for pkg in hub.DEEPDIVE.find({}):
 		if pkg["kit"] in ["games-kit", "nokit"]:
