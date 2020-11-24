@@ -96,6 +96,13 @@ async def distfile_queuer():
 #			sys.stdout.flush()
 #		print("Indexing complete.")
 
+async def main_thread():
+	tasks = []
+	# create tons of tasks
+	async for a in distfile_queuer():
+		tasks.append(Task(a.ensure_fetched()))
+	completion_list = hub.pkgtools.autogen.gather_pending_tasks(tasks)
+
 
 if __name__ == "__main__":
 	hub.pop.sub.add("funtoo.merge")
@@ -103,8 +110,4 @@ if __name__ == "__main__":
 	hub.MERGE_CONFIG = config = Configuration()
 	hub.pkgtools.autogen.load_autogen_config()
 	loop = asyncio.get_event_loop()
-	tasks = []
-	# create tons of tasks
-	async for a in distfile_queuer():
-		tasks.append(Task(a.ensure_fetched()))
-	completion_list = hub.pkgtools.autogen.gather_pending_tasks(tasks)
+	loop.run_until_complete(main_thread())
