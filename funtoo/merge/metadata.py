@@ -62,6 +62,8 @@ def expand_thirdpartymirror(hub, mirr_dict, url):
 		print("Mirror", mirror, "not found")
 		return None
 	for mirr_url in mirr_dict[mirror]:
+		if mirror == "gentoo" and mirr_url.startswith("https://fastpull-us"):
+			continue
 		final_url = mirr_url.rstrip("/") + "/" + rest_of_url
 		return final_url
 

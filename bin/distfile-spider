@@ -83,14 +83,15 @@ async def distfile_queuer():
 					slash_split = real_uri.split("/")
 					if len(slash_split) == 0:
 						# invalid, continue
-						print("Invalid, skipping.")
+						print(f"Invalid, skipping. {real_uri}")
 						continue
 					elif slash_split[0] not in ["http:", "https:", "ftp:"]:
-						print("URL invalid, skipping.")
+						print(f"URL invalid, skipping: {real_uri}")
 						continue
 					a = hub.pkgtools.ebuild.Artifact(url=real_uri, final_name=file["name"])
 					if not a.is_fetched():
-						tasks.append(Task(a.ensure_fetched))
+						print(real_uri, file["name"])
+						#await a.ensure_fetched()
 
 	print(f"{size_exists} bytes existing.")
 	print(f"{size_todo} bytes to download.")
@@ -101,9 +102,7 @@ if __name__ == "__main__":
 	hub.MERGE_CONFIG = config = Configuration()
 	hub.pkgtools.autogen.load_autogen_config()
 	loop = asyncio.get_event_loop()
-	tasks = []
-	tasks.append(Task(distfile_queuer()))
-	loop.run_until_complete(tasks)
+	loop.run_until_complete(distfile_queuer())
 
 
 # vim: ts=4 sw=4 noet
