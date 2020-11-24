@@ -37,7 +37,7 @@ def display_error_summary(hub):
 
 def get_thirdpartymirrors(hub, repo_path):
 	mirr_dict = {}
-	with open(os.path.join(repo_path, "profiles/thirdpartymirrors", "r")) as f:
+	with open(os.path.join(repo_path, "profiles/thirdpartymirrors"), "r") as f:
 		lines = f.readlines()
 		for line in lines:
 			ls = line.split()
