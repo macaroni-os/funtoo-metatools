@@ -101,7 +101,7 @@ async def main_thread():
 	# create tons of tasks
 	async for a in distfile_queuer():
 		tasks.append(Task(a.ensure_fetched()))
-	completion_list = hub.pkgtools.autogen.gather_pending_tasks(tasks)
+	completion_list = await hub.pkgtools.autogen.gather_pending_tasks(tasks)
 
 
 if __name__ == "__main__":
