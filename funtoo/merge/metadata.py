@@ -54,14 +54,15 @@ def iter_thirdpartymirror(hub, mirr_dict, mirror):
 
 def expand_thirdpartymirror(hub, mirr_dict, url):
 
-	non_mirr_part = url[10:]
+	non_mirr_part = url[9:]
 	mirr_split = non_mirr_part.split("/")
 	mirror = mirr_split[0]
 	rest_of_url = "/".join(mirr_split[1:])
 	if mirror not in mirr_dict:
+		print("Mirror", mirror, "not found")
 		return None
 	for mirr_url in mirr_dict[mirror]:
-		final_url = mirr_url + "/" + rest_of_url
+		final_url = mirr_url.rstrip("/") + "/" + rest_of_url
 		return final_url
 
 
@@ -745,3 +746,5 @@ def do_package_use_line(hub, pkg, def_python, bk_python, imps):
 		else:
 			out = "%s python_single_target_%s python_targets_%s" % (pkg, imps[0], imps[0])
 	return out
+
+# vim: ts=4 sw=4 noet

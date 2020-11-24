@@ -56,7 +56,6 @@ async def distfile_queuer():
 	for pkg in hub.DEEPDIVE.find({}):
 		if pkg["kit"] in ["games-kit", "nokit"]:
 			continue
-		print(pkg["kit"])
 		if "files" in pkg:
 			for file in pkg["files"]:
 				if "src_uri" in file:
@@ -84,22 +83,20 @@ async def distfile_queuer():
 					slash_split = real_uri.split("/")
 					if len(slash_split) == 0:
 						# invalid, continue
+						print("Invalid, skipping.")
 						continue
 					elif slash_split[0] not in ["http:", "https:", "ftp:"]:
+						print("URL invalid, skipping.")
 						continue
-					a = hub.pkgtools.ebuild.Artifact(url=file["src_uri"][0], final_name=file["name"])
+					a = hub.pkgtools.ebuild.Artifact(url=real_uri, final_name=file["name"])
 					if not a.is_fetched():
-						yield a
+						await a.ensure_fetched()
 	print(f"{size_exists} bytes existing.")
 	print(f"{size_todo} bytes to download.")
 
 
 async def main_thread():
-	tasks = []
-	# create tons of tasks
-	async for a in distfile_queuer():
-		tasks.append(Task(a.ensure_fetched()))
-	completion_list = await hub.pkgtools.autogen.gather_pending_tasks(tasks)
+	await distfile_queuer()
 
 
 if __name__ == "__main__":
@@ -109,3 +106,5 @@ if __name__ == "__main__":
 	hub.pkgtools.autogen.load_autogen_config()
 	loop = asyncio.get_event_loop()
 	loop.run_until_complete(main_thread())
+
+# vim: ts=4 sw=4 noet
