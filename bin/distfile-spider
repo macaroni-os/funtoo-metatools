@@ -76,6 +76,9 @@ async def distfile_queuer():
 						continue
 					if file["src_uri"][0].startswith("mirror://"):
 						real_uri = hub.merge.metadata.expand_thirdpartymirror(tp_mirrors, file["src_uri"][0])
+						if real_uri is None:
+							print(f"{file['src_uri'][0]} expanded to None, skipping.")
+							continue
 					else:
 						real_uri = file["src_uri"][0]
 					slash_split = real_uri.split("/")
