@@ -1,8 +1,15 @@
 #!/usr/bin/python3
+#
+# This command will show all packages in a category (such as 'dev-perl', which is specified
+# as the command-line argument) upon which no other packages depend.
 
 # The output of this command can be used to remove things from packages.yaml as follows:
 #
-# for x in $(deepquery); do echo Removing $x; sed -i -e "\|- ${x}\$|d" packages.yaml ; done
+# for x in $(deepquery dev-haskell); do echo Removing $x; sed -i -e "\|- ${x}\$|d" packages.yaml ; done
+#
+# For an independent kit, you can use the following:
+#
+# for x in $(deepquery dev-perl | cut -f1 -d' '); do git rm -rf $x; done
 
 import logging
 import sys
