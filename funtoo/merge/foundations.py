@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-from collections import defaultdict
 
+from collections import defaultdict
 import yaml
 import os
 
@@ -9,12 +9,9 @@ from merge_utils.steps import GenerateRepoMetadata, SyncDir, ThirdPartyMirrors, 
 
 def __init__(hub):
 	hub.FDATA = None
-	# Packages.yaml, which is specific to each kit. This is used so we only need to read it once:
-	hub.PDATA_NAME = None
-	hub.PDATA = None
 
 
-def get_kit_pre_post_steps(hub, kit_dict):
+def get_kit_pre_post_steps(hub, ctx):
 	kit_steps = {
 		"core-kit": {
 			"pre": [
@@ -30,7 +27,7 @@ def get_kit_pre_post_steps(hub, kit_dict):
 		},
 		# masters of core-kit for regular kits and nokit ensure that masking settings set in core-kit for catpkgs in other kits are applied
 		# to the other kits. Without this, mask settings in core-kit apply to core-kit only.
-		"regular-kits": {"pre": [GenerateRepoMetadata(kit_dict["name"], masters=["core-kit"], priority=500),]},
+		"regular-kits": {"pre": [GenerateRepoMetadata(ctx.kit.name, masters=["core-kit"], priority=500),]},
 		"all-kits": {
 			"pre": [SyncFiles(hub.FIXUP_REPO.root, {"COPYRIGHT.txt": "COPYRIGHT.txt", "LICENSE.txt": "LICENSE.txt",}),]
 		},
@@ -40,7 +37,7 @@ def get_kit_pre_post_steps(hub, kit_dict):
 	out_pre_steps = []
 	out_post_steps = []
 
-	kd = kit_dict["name"]
+	kd = ctx.kit.name
 	if kd in kit_steps:
 		if "pre" in kit_steps[kd]:
 			out_pre_steps += kit_steps[kd]["pre"]
@@ -48,7 +45,7 @@ def get_kit_pre_post_steps(hub, kit_dict):
 			out_post_steps += kit_steps[kd]["post"]
 
 	# a 'regular kit' is not core-kit or nokit -- if we have pre or post steps for them, append these steps:
-	if kit_dict["name"] not in ["core-kit", "nokit"] and "regular-kits" in kit_steps:
+	if kd not in ["core-kit", "nokit"] and "regular-kits" in kit_steps:
 		if "pre" in kit_steps["regular-kits"]:
 			out_pre_steps += kit_steps["regular-kits"]["pre"]
 		if "post" in kit_steps["regular-kits"]:
@@ -69,43 +66,48 @@ def grab_fdata(hub):
 			hub.FDATA = yaml.safe_load(f)
 
 
-def grab_pdata(hub, kit_name):
-	if hub.PDATA is None or hub.PDATA_NAME != kit_name:
-		fn = f"{hub.FIXUP_REPO.root}/{kit_name}/packages.yaml"
-		with open(fn, "r") as f:
-			hub.PDATA = yaml.safe_load(f)
-		hub.PDATA_NAME = kit_name
+def grab_pdata(hub, ctx):
+	pdata = getattr(ctx, "PDATA", None)
+	if pdata is not None:
+		# already loaded
+		return
+	# Try to use branch-specific packages.yaml if it exists. Fall back to global kit-specific YAML:
+	fn = f"{hub.FIXUP_REPO.root}/{ctx.kit.name}/{ctx.kit.branch}/packages.yaml"
+	if not os.path.exists(fn):
+		fn = f"{hub.FIXUP_REPO.root}/{ctx.kit.name}/packages.yaml"
+	with open(fn, "r") as f:
+		ctx["PDATA"] = yaml.safe_load(f)
 
 
-def get_kit_items(hub, kit_name, section="packages"):
-	hub.merge.foundations.grab_pdata(kit_name)
-	if section in hub.PDATA:
-		for package_set in hub.PDATA[section]:
+def get_kit_items(hub, ctx, section="packages"):
+	hub.merge.foundations.grab_pdata(ctx)
+	if section in ctx.PDATA:
+		for package_set in ctx.PDATA[section]:
 			repo_name = list(package_set.keys())[0]
 			packages = package_set[repo_name]
 			yield repo_name, packages
 
 
-def get_excludes_from_yaml(hub, kit_name):
+def get_excludes_from_yaml(hub, ctx):
 	"""
 	Grabs the excludes: section from packages.yaml, which is used to remove stuff from the resultant
 	kit that accidentally got copied by merge scripts (due to a directory looking like an ebuild
 	directory, for example.)
 	"""
-	hub.merge.foundations.grab_pdata(kit_name)
-	if "exclude" in hub.PDATA:
-		return hub.PDATA["exclude"]
+	hub.merge.foundations.grab_pdata(ctx)
+	if "exclude" in ctx.PDATA:
+		return ctx.PDATA["exclude"]
 	else:
 		return []
 
 
-def get_copyfiles_from_yaml(hub, kit_name):
+def get_copyfiles_from_yaml(hub, ctx):
 	"""
 	Parses the 'eclasses' and 'copyfiles' sections in a kit's YAML and returns a list of files to
 	copy from each source repository in a tuple format.
 	"""
-	eclass_items = list(hub._.get_kit_items(kit_name, section="eclasses"))
-	copyfile_items = list(hub._.get_kit_items(kit_name, section="copyfiles"))
+	eclass_items = list(hub._.get_kit_items(ctx, section="eclasses"))
+	copyfile_items = list(hub._.get_kit_items(ctx, section="copyfiles"))
 	copy_tuple_dict = defaultdict(list)
 
 	for src_repo, eclasses in eclass_items:
@@ -118,8 +120,8 @@ def get_copyfiles_from_yaml(hub, kit_name):
 	return copy_tuple_dict
 
 
-def get_kit_packages(hub, kit_name):
-	return hub._.get_kit_items(kit_name)
+def get_kit_packages(hub, ctx):
+	return hub._.get_kit_items(ctx)
 
 
 def python_kit_settings(hub):

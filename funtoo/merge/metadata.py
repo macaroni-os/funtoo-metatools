@@ -749,4 +749,5 @@ def do_package_use_line(hub, pkg, def_python, bk_python, imps):
 			out = "%s python_single_target_%s python_targets_%s" % (pkg, imps[0], imps[0])
 	return out
 
+
 # vim: ts=4 sw=4 noet

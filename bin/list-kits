@@ -1,0 +1,27 @@
+#!/usr/bin/python3
+
+import logging
+import pop.hub
+
+from merge_utils.config import Configuration
+from merge_utils.tree import GitTree, AutoCreatedGitTree
+
+hub_logger = logging.getLogger("pop.hub")
+hub_logger.setLevel(logging.DEBUG)
+hub = pop.hub.Hub()
+
+
+if __name__ == "__main__":
+	hub.pop.sub.add("funtoo.merge")
+	hub.MERGE_CONFIG = config = Configuration()
+	hub.RELEASE = "1.4-release"
+	hub.FIXUP_REPO = GitTree(
+		hub,
+		"kit-fixups",
+		config.branch("kit-fixups"),
+		url=config.kit_fixups,
+		root="/home/drobbins/development/kit-fixups-dr",
+	)
+
+	for kit_group in hub.merge.foundations.kit_groups():
+		print(kit_group)
