@@ -79,36 +79,46 @@ def sizeof_fmt(num, suffix="B"):
 	return "%.1f%s%s" % (num, "Yi", suffix)
 
 
-def print_summary(ctx, full=False):
-	print(f"* Kit {ctx.kit.name} branch {ctx.kit.branch}: ")
-	print(f"      Total bytes: {sizeof_fmt(ctx.stats.bytes_exist + ctx.stats.bytes_todo)}")
-	print(f"      Total files: {ctx.stats.files_exist + ctx.stats.files_todo}")
-	print(f"          Skipped: {ctx.stats.skipped_files}")
-	print(f"   Skipped digest: {len(ctx.stats.skip.no_digest)}")
-	print(f"  Skipped src_uri: {len(ctx.stats.skip.no_src_uri)}")
-	if full:
-		print(ctx.stats.skip.no_src_uri)
-	print(f"     Skipped size: {len(ctx.stats.skip.no_size)}")
-	print(f"   Skipped sha512: {len(ctx.stats.skip.no_sha512)}")
+def print_summary(stats, kit=None, full=False):
+	if kit is not None:
+		print(f"* Kit {kit.name} branch {kit.branch}:")
+	else:
+		print("* Global Statistics:")
+	print(f"      Total bytes: {sizeof_fmt(stats.bytes_exist + stats.bytes_todo)}")
+	print(f"      Total files: {stats.files_exist + stats.files_todo}")
+	print(f"   Skipped digest: {len(stats.skip.no_digest)}")
+	print(f"  Skipped src_uri: {len(stats.skip.no_src_uri)}")
+	print(f"     Skipped size: {len(stats.skip.no_size)}")
+	print(f"   Skipped sha512: {len(stats.skip.no_sha512)}")
 	print()
 
 
+def create_stats():
+	return NamespaceDict(
+		{
+			"bytes_exist": 0,
+			"bytes_todo": 0,
+			"files_exist": 0,
+			"files_todo": 0,
+			"skip": NamespaceDict({"no_digest": set(), "no_src_uri": set(), "no_size": set(), "no_sha512": set()}),
+		}
+	)
+
+
+def add_stats(main_stats, new_stats):
+	for key in ["bytes_exist", "bytes_todo", "files_exist", "files_todo"]:
+		main_stats[key] += new_stats[key]
+	for skip_key in ["no_digest", "no_src_uri", "no_size", "no_sha512"]:
+		main_stats.skip[key] = main_stats.skip[skip_key] | new_stats.skip[skip_key]
+
+
 async def distfile_queuer():
+	global_stats = create_stats()
 	for kit_group in hub.KIT_GROUPS:
 		ctx = NamespaceDict()
 		ctx["kit"] = kit = NamespaceDict(kit_group)
-		ctx["stats"] = stats = NamespaceDict(
-			{
-				"bytes_exist": 0,
-				"bytes_todo": 0,
-				"files_exist": 0,
-				"files_todo": 0,
-				"skipped_files": 0,
-				"skip": NamespaceDict({"no_digest": set(), "no_src_uri": set(), "no_size": set(), "no_sha512": set()}),
-			}
-		)
+		ctx["stats"] = stats = create_stats()
 		for pkg in hub.DEEPDIVE.find({"kit": kit.name, "branch": kit.branch}):
-			skipped = True
 			if "files" in pkg:
 				for file in pkg["files"]:
 
@@ -140,13 +150,12 @@ async def distfile_queuer():
 					else:
 						stats.bytes_todo += sz_bytes
 						stats.files_todo += 1
-					skipped = False
-			if skipped:
-				stats.skipped_files += 1
-		if ctx.kit.name == "mate-kit":
-			print_summary(ctx, full=True)
+		if ctx.kit.name == "perl-kit":
+			print_summary(ctx.stats, ctx.kit, full=True)
 		else:
-			print_summary(ctx)
+			print_summary(ctx.stats, ctx.kit)
+		add_stats(global_stats, stats)
+	print_summary(global_stats)
 
 
 if __name__ == "__main__":
