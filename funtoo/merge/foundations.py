@@ -67,7 +67,7 @@ def grab_fdata(hub):
 
 
 def grab_pdata(hub, ctx):
-	pdata = getattr(ctx, "PDATA", None)
+	pdata = ctx.get("PDATA", None)
 	if pdata is not None:
 		# already loaded
 		return
