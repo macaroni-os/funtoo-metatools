@@ -9,13 +9,11 @@
 #       the distfile spider and it works in a "dumb" capacity to do what it's told.
 
 import asyncio
+import json
 import logging
 import multiprocessing
 import os
 import sys
-from asyncio import Queue, Task, FIRST_COMPLETED
-from concurrent.futures._base import as_completed
-from concurrent.futures.thread import ThreadPoolExecutor
 from queue import Queue
 
 import pop.hub
@@ -79,7 +77,7 @@ def sizeof_fmt(num, suffix="B"):
 	return "%.1f%s%s" % (num, "Yi", suffix)
 
 
-def print_summary(stats, kit=None, full=False):
+def print_summary(stats, kit=None):
 	if kit is not None:
 		print(f"* Kit {kit.name} branch {kit.branch}:")
 	else:
@@ -124,8 +122,9 @@ def add_stats(main_stats, new_stats):
 		main_stats.skip[key] = main_stats.skip[skip_key] | new_stats.skip[skip_key]
 
 
-async def distfile_queuer():
+async def distfile_stats():
 	global_stats = create_stats()
+	out = []
 	for kit_group in hub.KIT_GROUPS:
 		ctx = NamespaceDict()
 		ctx["kit"] = kit = NamespaceDict(kit_group)
@@ -162,17 +161,21 @@ async def distfile_queuer():
 					else:
 						stats.bytes_todo += sz_bytes
 						stats.files_todo += 1
-		if ctx.kit.name == "perl-kit":
-			print_summary(ctx.stats, ctx.kit, full=True)
-		else:
-			print_summary(ctx.stats, ctx.kit)
+						if hub.OUT is not None:
+							out.append(file)
+		print_summary(ctx.stats, ctx.kit)
 		add_stats(global_stats, stats)
 	print_summary(global_stats)
+	return out
 
 
 if __name__ == "__main__":
+	sub_name = os.path.basename(sys.argv[0])
+	int_g = [sub_name, "pkgtools"]
+	hub.pop.conf.integrate(int_g, cli=sub_name, roots=True, loader="yaml", logs=False)
+
 	hub.MERGE_CONFIG = config = Configuration()
-	hub.RELEASE = "1.4-release"
+	hub.RELEASE = hub.OPT["distfile-tool"]["release"]
 	hub.FIXUP_REPO = GitTree(
 		hub, "kit-fixups", config.branch("kit-fixups"), url=config.kit_fixups, root=config.source_trees + "/kit-fixups",
 	)
@@ -184,16 +187,19 @@ if __name__ == "__main__":
 	hub.pkgtools.autogen.load_autogen_config()
 	hub.FIXUP_REPO.initialize()
 	hub.KIT_GROUPS = list(hub.merge.foundations.kit_groups())
+	hub.OUT = hub.OPT["distfile-tool"]["out"]
 	tp_mirrors = hub.merge.metadata.get_thirdpartymirrors(
 		os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit")
 	)
 
-	for group in hub.KIT_GROUPS:
-		print("GROUPY", group)
-
 	loop = asyncio.get_event_loop()
 
-	loop.run_until_complete(distfile_queuer())
+	out = loop.run_until_complete(distfile_stats())
+	if hub.OUT:
+		with open(hub.OUT, "w") as f:
+			f.write(json.dumps(out))
+			print(f"Listing of missing files JSON written to {hub.OUT}.")
+
 
 
 # vim: ts=4 sw=4 noet
