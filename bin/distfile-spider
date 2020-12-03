@@ -84,8 +84,20 @@ def print_summary(stats, kit=None, full=False):
 		print(f"* Kit {kit.name} branch {kit.branch}:")
 	else:
 		print("* Global Statistics:")
-	print(f"      Total bytes: {sizeof_fmt(stats.bytes_exist + stats.bytes_todo)}")
+	tot_bytes = stats.bytes_exist + stats.bytes_todo
+	if tot_bytes == 0:
+		tot_bytes_complete = "N/A"
+	else:
+		tot_bytes_complete = f"{stats.bytes_exist * 100 / tot_bytes:2f}%"
+	tot_files = stats.files_exist + stats.files_todo
+	if tot_files == 0:
+		tot_files_complete = "N/A"
+	else:
+		tot_files_complete = f"{stats.files_exist * 100 / tot_files:2f}%"
+	print(f"      Total bytes: {sizeof_fmt(tot_bytes)}")
 	print(f"      Total files: {stats.files_exist + stats.files_todo}")
+	print(f" Percent Complete: {tot_bytes_complete} (by size)")
+	print(f"                   {tot_files_complete} (by count)")
 	print(f"   Skipped digest: {len(stats.skip.no_digest)}")
 	print(f"  Skipped src_uri: {len(stats.skip.no_src_uri)}")
 	print(f"     Skipped size: {len(stats.skip.no_size)}")
