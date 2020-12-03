@@ -392,6 +392,24 @@ def extract_ebuild_metadata(hub, repo_obj, atom, ebuild_path=None, env=None, ecl
 
 def get_filedata(hub, src_uri, manifest_path):
 	"""
+	This function is given `src_uri` which is the literal `SRC_URI` data from an ebuild, and a path to a `Manifest`
+	for the catpkg.
+
+	What is returned is a list of dictionaries. Each dictionary represents a file that will be downloaded for a
+	particular ebuild.
+
+	Each dictionary has the following keys:
+
+	*. `name` (dest. filename),
+	*. `src_uri` (a list of URIs to download the file, and may include 'mirror://' URLs),
+	*. `size` (size of file in bytes)
+	*. `hashes` (digests from the `Manifest` file associated with this file.
+
+	Note that any files that appear in the `Manifest` but not in `SRC_URI` are ignored. This function is purely
+	intended to "complete" the `SRC_URI` data with data that is in the `Manifest`.
+
+	This function uses two sub-functions to do most of the dirty work, and then merges the results.
+
 	MongoDB is happiest when we don't use filenames as keys, since they have periods in them which is not allowed.
 	This normalizes our filedata for MongoDB. `extract_uris` and `extract_manifest_hashes` are all indexed by filename,
 	but instead we want to return a list consisting of dictionaries. We move the key inside each dict.
@@ -400,15 +418,18 @@ def get_filedata(hub, src_uri, manifest_path):
 	"""
 
 	filedata = extract_manifest_hashes(hub, manifest_path)
-	for fn, sub_dict in extract_uris(hub, src_uri).items():
-		if fn not in filedata:
-			filedata[fn] = {}
-		filedata[fn].update(sub_dict)
+	extracted_uris = extract_uris(hub, src_uri)
+
+	for fn, sub_dict in extracted_uris.items():
+		# just augment SRC_URI data with Manifest data, if available.
+		if fn in filedata:
+			extracted_uris[fn].update(filedata[fn])
 
 	outdata = []
-	for fn, datums in filedata.items():
+	for fn, datums in extracted_uris.items():
 		datums["name"] = fn
 		outdata.append(datums)
+
 	return outdata
 
 
@@ -494,9 +515,9 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 					eclass_out += f"\t{eclass_name}\t{eclass_hashes[eclass_name]}"
 					eclass_tuples.append((eclass_name, eclass_hashes[eclass_name]))
 				except KeyError as ke:
-					print(f"When processing {ebuild_path}:")
-					print(f"Could not find eclass '{eclass_name}' (from '{infos['INHERITED']}')")
-					sys.exit(1)
+					hub._.record_misc_error(
+						repo=repo, msg=f"Can't find eclass {eclass_name} when processing {ebuild_path}", ebuild_path=ebuild_path
+					)
 
 		metadata_out = ""
 		if infos:

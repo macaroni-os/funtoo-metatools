@@ -51,10 +51,6 @@ def flush_kit(hub, repo_obj, save=True, prune=True):
 	If there were changes, and if `prune` is True, any unaccessed (unread) item will be removed from the cache.
 	This is intended to clean out stale entries during tree regeneration.
 	"""
-	if not save:
-		hub.KIT_CACHE = {}
-		return
-
 	if prune:
 		num_pruned = 0
 		# anything that was not accessed, remove from cache.
@@ -71,7 +67,6 @@ def flush_kit(hub, repo_obj, save=True, prune=True):
 		if len(extra_atoms):
 			logging.error("THERE ARE EXTRA ATOMS THAT WERE RETRIEVED BUT NOT IN CACHE!")
 			logging.error(f"{extra_atoms}")
-			sys.exit(1)
 	outpath = hub._.get_outpath(repo_obj)
 	outdata = {"cache_data_version": CACHE_DATA_VERSION, "atoms": repo_obj.KIT_CACHE}
 	with open(outpath, "w") as f:

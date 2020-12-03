@@ -1,16 +1,13 @@
 #!/usr/bin/python3
-
 import asyncio
-import json
+import concurrent
 import logging
-import os
-import sys
-from collections import defaultdict, OrderedDict
 from concurrent.futures import as_completed
+from concurrent.futures._base import ALL_COMPLETED
 from concurrent.futures.thread import ThreadPoolExecutor
-from datetime import datetime
 
 import pop.hub
+from dict_tools.data import NamespaceDict
 
 from funtoo.pkgtools.thread import run_async_adapter
 from merge_utils.config import Configuration
@@ -19,6 +16,18 @@ from merge_utils.tree import GitTree, AutoCreatedGitTree
 hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
 hub = pop.hub.Hub()
+
+
+async def insert_kit(ctx):
+	ctx, items_to_insert = await hub.merge.kit.get_deepdive_kit_items(ctx)
+	result = hub.DEEPDIVE.insert_many(items_to_insert)
+	print(f"kit {ctx.kit.name} - inserted {len(result.inserted_ids)} items.")
+	if len(items_to_insert) != len(result.inserted_ids):
+		raise KeyError("Number of inserted items does not match!")
+
+
+async def foo(ctx):
+	print(ctx.kit.name)
 
 
 if __name__ == "__main__":
@@ -37,25 +46,13 @@ if __name__ == "__main__":
 
 	hub.META_REPO.initialize()
 	hub.FIXUP_REPO.initialize()
-
 	hub.KIT_GROUPS = list(hub.merge.foundations.kit_groups())
 	pipeline_keys, pipeline_groups = hub.merge.sources.get_kits_in_correct_processing_order()
 
 	hub.DEEPDIVE.delete_many({})
 
-	# This will generate core-kit, as well as all other kits:
 	for source in pipeline_keys:
 		kit_dict_list = pipeline_groups[source]
-		update_futures = []
-		with ThreadPoolExecutor(max_workers=4) as executor:
-			# Initialize sources based on the settings of the first kit in the group (they are all identical)
-			kit_dict = kit_dict_list[0]
-			for kit_dict in kit_dict_list:
-				future = executor.submit(run_async_adapter, hub.merge.kit.get_deepdive_kit_items, kit_dict)
-				update_futures.append(future)
-			for future in as_completed(update_futures):
-				kit_dict, items_to_insert = future.result()
-				if len(items_to_insert):
-					hub.DEEPDIVE.insert_many(items_to_insert)
-				else:
-					print(f"****** WARNING: got zero items from {kit_dict['name']} branch {kit_dict['branch']}")
+		for kit_dict in kit_dict_list:
+			ctx = NamespaceDict({"kit": NamespaceDict(kit_dict)})
+			asyncio.get_event_loop().run_until_complete(insert_kit(ctx))

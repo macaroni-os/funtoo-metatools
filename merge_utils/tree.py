@@ -7,6 +7,10 @@ import sys
 debug = True
 
 
+class ShellError(Exception):
+	pass
+
+
 def run(args, env=None):
 	if env:
 		result = subprocess.run(args, shell=True, env=env, capture_output=True, encoding="utf-8")
@@ -29,7 +33,7 @@ def runShell(cmd_list, abort_on_failure=True, env=None):
 		print("output:")
 		print(result.stdout)
 		if abort_on_failure:
-			sys.exit(1)
+			raise ShellError("Aborted due to failed command.")
 		else:
 			return False
 	return True
@@ -179,7 +183,7 @@ class Tree:
 			print("retval is: %s" % retval)
 			print(cp)
 			print("Commit failed.")
-			sys.exit(1)
+			raise ShellError("Aborting due to failed command.")
 		if push is True:
 			self.mirrorLocalBranches()
 
@@ -301,7 +305,7 @@ class GitTree(Tree):
 			else:
 				# we've run out of options
 				print("Error: tree %s does not exist, but no clone URL specified. Exiting." % self.root)
-				sys.exit(1)
+				raise ShellError("Aborted due to failed command.")
 
 		# At the very least, create a local branch for the branch we're interested in.
 		init_branches = [self.branch]

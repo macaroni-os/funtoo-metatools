@@ -19,7 +19,10 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from queue import Queue
 
 import pop.hub
+from dict_tools.data import NamespaceDict
+
 from merge_utils.config import Configuration
+from merge_utils.tree import GitTree
 
 hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
@@ -47,62 +50,128 @@ def file_indexer():
 		hub.pkgtools.fastpull.inject_into_fastpull(next_file, symlink=True)
 
 
+async def do_distfile_fetch(file):
+	if file["src_uri"][0].startswith("mirror://"):
+		real_uri = hub.merge.metadata.expand_thirdpartymirror(tp_mirrors, file["src_uri"][0])
+		if real_uri is None:
+			print(f"{file['src_uri'][0]} expanded to None, skipping.")
+			return
+	else:
+		real_uri = file["src_uri"][0]
+	slash_split = real_uri.split("/")
+	if len(slash_split) == 0:
+		# invalid, continue
+		print(f"Invalid, skipping. {real_uri}")
+		return
+	elif slash_split[0] not in ["http:", "https:", "ftp:"]:
+		print(f"URL invalid, skipping: {real_uri}")
+		return
+	a = hub.pkgtools.ebuild.Artifact(url=real_uri, final_name=file["name"])
+	if not a.is_fetched():
+		print(real_uri, file["name"])
+
+
+def sizeof_fmt(num, suffix="B"):
+	for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
+		if abs(num) < 1024.0:
+			return "%3.1f%s%s" % (num, unit, suffix)
+		num /= 1024.0
+	return "%.1f%s%s" % (num, "Yi", suffix)
+
+
+def print_summary(ctx, full=False):
+	print(f"* Kit {ctx.kit.name} branch {ctx.kit.branch}: ")
+	print(f"      Total bytes: {sizeof_fmt(ctx.stats.bytes_exist + ctx.stats.bytes_todo)}")
+	print(f"      Total files: {ctx.stats.files_exist + ctx.stats.files_todo}")
+	print(f"          Skipped: {ctx.stats.skipped_files}")
+	print(f"   Skipped digest: {len(ctx.stats.skip.no_digest)}")
+	print(f"  Skipped src_uri: {len(ctx.stats.skip.no_src_uri)}")
+	if full:
+		print(ctx.stats.skip.no_src_uri)
+	print(f"     Skipped size: {len(ctx.stats.skip.no_size)}")
+	print(f"   Skipped sha512: {len(ctx.stats.skip.no_sha512)}")
+	print()
+
+
 async def distfile_queuer():
-	size_exists = 0
-	size_todo = 0
-	tp_mirrors = hub.merge.metadata.get_thirdpartymirrors(
-		os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit")
-	)
-	for pkg in hub.DEEPDIVE.find({}):
-		if pkg["kit"] in ["games-kit", "nokit"]:
-			continue
-		if "files" in pkg:
-			for file in pkg["files"]:
-				if "src_uri" in file:
+	for kit_group in hub.KIT_GROUPS:
+		ctx = NamespaceDict()
+		ctx["kit"] = kit = NamespaceDict(kit_group)
+		ctx["stats"] = stats = NamespaceDict(
+			{
+				"bytes_exist": 0,
+				"bytes_todo": 0,
+				"files_exist": 0,
+				"files_todo": 0,
+				"skipped_files": 0,
+				"skip": NamespaceDict({"no_digest": set(), "no_src_uri": set(), "no_size": set(), "no_sha512": set()}),
+			}
+		)
+		for pkg in hub.DEEPDIVE.find({"kit": kit.name, "branch": kit.branch}):
+			skipped = True
+			if "files" in pkg:
+				for file in pkg["files"]:
+
+					if "src_uri" not in file:
+						stats.skip.no_src_uri.add(pkg["atom"])
+						continue
+
+					if not "digests" in file and not "hashes" in file:
+						stats.skip.no_digest.add(pkg["atom"])
+						continue
+
 					if "digests" in file:
 						# compat with deepdive change
 						file["hashes"] = file["digests"]
-					if "size" in file and "sha512" in file["hashes"]:
-						sz_bytes = int(file["size"])
-						dp = hub.pkgtools.fastpull.get_disk_path(final_data=file)
-						if os.path.exists(dp):
-							size_exists += sz_bytes
-							continue
-						else:
-							size_todo += sz_bytes
-					else:
-						# skip
-						continue
-					if file["src_uri"][0].startswith("mirror://"):
-						real_uri = hub.merge.metadata.expand_thirdpartymirror(tp_mirrors, file["src_uri"][0])
-						if real_uri is None:
-							print(f"{file['src_uri'][0]} expanded to None, skipping.")
-							continue
-					else:
-						real_uri = file["src_uri"][0]
-					slash_split = real_uri.split("/")
-					if len(slash_split) == 0:
-						# invalid, continue
-						print(f"Invalid, skipping. {real_uri}")
-						continue
-					elif slash_split[0] not in ["http:", "https:", "ftp:"]:
-						print(f"URL invalid, skipping: {real_uri}")
-						continue
-					a = hub.pkgtools.ebuild.Artifact(url=real_uri, final_name=file["name"])
-					if not a.is_fetched():
-						print(real_uri, file["name"])
-						# await a.ensure_fetched()
 
-	print(f"{size_exists} bytes existing.")
-	print(f"{size_todo} bytes to download.")
+					if not "size" in file:
+						stats.skip.no_size.add(pkg["atom"])
+						continue
+
+					if not "sha512" in file["hashes"]:
+						stats.skip.no_sha512.add(pkg["atom"])
+						continue
+
+					sz_bytes = int(file["size"])
+					dp = hub.pkgtools.fastpull.get_disk_path(final_data=file)
+					if os.path.exists(dp):
+						stats.bytes_exist += sz_bytes
+						stats.files_exist += 1
+					else:
+						stats.bytes_todo += sz_bytes
+						stats.files_todo += 1
+					skipped = False
+			if skipped:
+				stats.skipped_files += 1
+		if ctx.kit.name == "mate-kit":
+			print_summary(ctx, full=True)
+		else:
+			print_summary(ctx)
 
 
 if __name__ == "__main__":
+	hub.MERGE_CONFIG = config = Configuration()
+	hub.RELEASE = "1.4-release"
+	hub.FIXUP_REPO = GitTree(
+		hub, "kit-fixups", config.branch("kit-fixups"), url=config.kit_fixups, root=config.source_trees + "/kit-fixups",
+	)
+
+	hub.pop.sub.add("funtoo.cache")
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools", omit_class=False)
-	hub.MERGE_CONFIG = config = Configuration()
+
 	hub.pkgtools.autogen.load_autogen_config()
+	hub.FIXUP_REPO.initialize()
+	hub.KIT_GROUPS = list(hub.merge.foundations.kit_groups())
+	tp_mirrors = hub.merge.metadata.get_thirdpartymirrors(
+		os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit")
+	)
+
+	for group in hub.KIT_GROUPS:
+		print("GROUPY", group)
+
 	loop = asyncio.get_event_loop()
+
 	loop.run_until_complete(distfile_queuer())
 
 

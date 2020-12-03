@@ -83,7 +83,7 @@ def copy_from_fixups_steps(hub, ctx):
 	return steps
 
 
-async def get_deepdive_kit_items(hub, kit_dict=None):
+async def get_deepdive_kit_items(hub, ctx):
 
 	"""
 	This function will read on-disk metadata for a particular kit, and process it, splitting it into individual
@@ -95,7 +95,7 @@ async def get_deepdive_kit_items(hub, kit_dict=None):
 	writing into MongoDB.
 	"""
 
-	repo_obj = await hub._.checkout_kit(kit_dict, pull=False)
+	repo_obj = await checkout_kit(hub, ctx, pull=False)
 
 	# load on-disk JSON metadata cache into memory:
 	hub.cache.metadata.fetch_kit(repo_obj)
@@ -110,11 +110,11 @@ async def get_deepdive_kit_items(hub, kit_dict=None):
 			sys.stdout.flush()
 			bulk_insert.append(json_data)
 	except KeyError as ke:
-		print(f"Encountered error when processing {kit_dict['name']} {kit_dict['branch']}")
+		print(f"Encountered error when processing {ctx.kit.name} {ctx.kit.branch}")
 		raise ke
 	hub.cache.metadata.flush_kit(repo_obj, save=False)
-	print(f"Got {len(bulk_insert)} items to bulk insert for {kit_dict['name']} branch {kit_dict['branch']}.")
-	return kit_dict, bulk_insert
+	print(f"Got {len(bulk_insert)} items to bulk insert for {ctx.kit.name} branch {ctx.kit.branch}.")
+	return ctx, bulk_insert
 
 
 async def checkout_kit(hub, ctx, pull=None):
