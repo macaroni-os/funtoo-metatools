@@ -132,6 +132,8 @@ async def checkout_kit(hub, ctx, pull=None):
 			# AutoCreatedGitTree (we had to pull it.) But it will diverge from upstream. So we can't really
 			# keep pulling in upstream changes:
 			kwargs["pull"] = False
+		else:
+			kwargs["pull"] = True
 	else:
 		# For auto-generated kits, if we are in 'dev mode' then simply create a Tree from scratch.
 		git_class = getattr(hub, "GIT_CLASS", GitTree)

@@ -360,7 +360,7 @@ class GitTree(Tree):
 	def do_pull(self):
 		if not self.pulled:
 			# we are on the right branch, but we want to make sure we have the latest updates
-			runShell("(cd %s && git pull --no-force --all || true)" % self.root)
+			runShell("(cd %s && git pull --ff-only || true)" % self.root)
 			self.pulled = True
 
 	def getRemoteURL(self, remote):
