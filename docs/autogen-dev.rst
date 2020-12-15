@@ -143,9 +143,9 @@ quickly discover that GitHub has rate limiting for unauthenticated API requests.
 possible to specify authentication for GitHub by creating a ``~/.autogen`` file as follows::
 
   authentication:
-  api.github.com:
-    username: mygithub_username
-    password: 123409809abcda098ad098a0v0a98098098d09d
+    api.github.com:
+      username: mygithub_username
+      password: 123409809abcda098ad098a0v0a98098098d09d
 
 In the above file, which is in YAML format, specify a *personal access token* value for *password*. In
 the GitHub UI, you can create personal access tokens by navigating to:
