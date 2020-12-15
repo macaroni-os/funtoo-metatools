@@ -360,7 +360,7 @@ class GitTree(Tree):
 	def do_pull(self):
 		if not self.pulled:
 			# we are on the right branch, but we want to make sure we have the latest updates
-			runShell("(cd %s && git pull --ff-only || true)" % self.root)
+			runShell("(cd %s && git pull --ff-only)" % self.root)
 			self.pulled = True
 
 	def getRemoteURL(self, remote):
@@ -442,6 +442,7 @@ class GitTree(Tree):
 				else:
 					runShell("(cd %s && git checkout -b %s)" % (self.root, branch))
 				self.cleanTree()
+				self.do_pull()
 			else:
 				old_head = self.head()
 				self.do_pull()

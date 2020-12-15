@@ -9,7 +9,6 @@ from merge_utils.steps import (
 	SyncDir,
 	SyncFiles,
 	InsertEbuilds,
-	GitCheckout,
 	CleanTree,
 	CopyFiles,
 	PruneLicenses,
@@ -156,10 +155,6 @@ async def checkout_kit(hub, ctx, pull=None):
 
 	out_tree = git_class(hub, ctx.kit.name, branch=branch, root=root, **kwargs)
 	out_tree.initialize()
-
-	# Phase 1: prep the kit
-	steps = [GitCheckout(branch)]
-	await out_tree.run(steps)
 	return out_tree
 
 

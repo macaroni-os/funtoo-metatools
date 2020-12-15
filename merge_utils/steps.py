@@ -622,25 +622,6 @@ class GenCache(MergeStep):
 		tree.hub.merge.metadata.gen_cache(tree)
 
 
-class GitCheckout(MergeStep):
-	def __init__(self, branch):
-		self.branch = branch
-
-	async def run(self, tree):
-		runShell(
-			"(cd %s && git checkout %s || git checkout -b %s --track origin/%s || git checkout -b %s)"
-			% (tree.root, self.branch, self.branch, self.branch, self.branch)
-		)
-
-
-class CreateBranch(MergeStep):
-	def __init__(self, branch):
-		self.branch = branch
-
-	async def run(self, tree):
-		runShell("( cd %s && git checkout -b %s --track origin/%s )" % (tree.root, self.branch, self.branch))
-
-
 class Minify(MergeStep):
 	"""Minify removes ChangeLogs and shrinks Manifests."""
 
