@@ -27,6 +27,10 @@ we don't need to arbitrate/lock access to the Distfile Integrity DB. The Archite
 """
 
 
+def __virtual__(hub):
+	return hub.merge.HAS_MONGO
+
+
 def __init__(hub):
 	mc = MongoClient()
 

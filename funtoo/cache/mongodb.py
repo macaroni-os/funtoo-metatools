@@ -2,13 +2,9 @@
 
 from datetime import datetime
 
-try:
-	import pymongo
-	import pymongo.errors
-	from pymongo import MongoClient
-except ImportError:
-	pass
-
+import pymongo
+import pymongo.errors
+from pymongo import MongoClient
 
 """
 
@@ -26,7 +22,7 @@ __virtualname__ = "fetch"
 
 
 def __virtual__(hub):
-	return True
+	return hub.cache.HAS_MONGO
 
 
 def __init__(hub):

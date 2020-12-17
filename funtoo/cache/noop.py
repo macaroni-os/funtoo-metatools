@@ -4,7 +4,7 @@ __virtualname__ = "fetch"
 
 
 def __virtual__(hub):
-	return False
+	return not hub.cache.HAS_MONGO
 
 
 def __init__(hub):

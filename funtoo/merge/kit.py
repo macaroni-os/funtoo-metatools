@@ -132,6 +132,8 @@ async def checkout_kit(hub, ctx, pull=None):
 			kwargs["url"] = ctx.kit.url
 		else:
 			kwargs["url"] = hub.MERGE_CONFIG.url(ctx.kit.name, kind="indy")
+		if ctx.kit.get("commit_sha1", None):
+			kwargs["commit_sha1"] = ctx.kit.commit_sha1
 		if not getattr(hub, "PROD", False):
 			# If generating indy kits locally, the indy kit was sourced from the Internet, so it's not an
 			# AutoCreatedGitTree (we had to pull it.) But it will diverge from upstream. So we can't really
