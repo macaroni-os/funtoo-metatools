@@ -118,6 +118,9 @@ async def get_deepdive_kit_items(hub, ctx):
 
 async def checkout_kit(hub, ctx, pull=None):
 
+	# For Sabayon, if ctx.kit has a URL, we use that. This allows us to checkout anything as a "kit"
+	# for leveraging our kit-cache pipeline.
+
 	kind = ctx.kit.kind
 	branch = ctx.kit.branch
 	kwargs = {}
@@ -125,7 +128,10 @@ async def checkout_kit(hub, ctx, pull=None):
 	if kind == "independent":
 		# For independent kits, we must clone the source tree
 		git_class = GitTree
-		kwargs["url"] = hub.MERGE_CONFIG.url(ctx.kit.name, kind="indy")
+		if ctx.kit.get("url", None):
+			kwargs["url"] = ctx.kit.url
+		else:
+			kwargs["url"] = hub.MERGE_CONFIG.url(ctx.kit.name, kind="indy")
 		if not getattr(hub, "PROD", False):
 			# If generating indy kits locally, the indy kit was sourced from the Internet, so it's not an
 			# AutoCreatedGitTree (we had to pull it.) But it will diverge from upstream. So we can't really
@@ -218,7 +224,8 @@ async def generate_kit(hub, ctx):
 	await out_tree.run(steps)
 
 	# Now, if we are core-kit, get hashes of all the eclasses so that we can generate metadata cache and use
-	# it as needed:
+	# it as needed. core-kit gets processed by itself as the first item in the pipeline. So these vars will
+	# be available for all successive metadata gen runs:
 
 	if ctx.kit.name == "core-kit":
 		hub.ECLASS_ROOT = out_tree.root

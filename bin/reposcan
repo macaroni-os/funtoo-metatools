@@ -1,0 +1,43 @@
+#!/usr/bin/env python3
+
+import asyncio
+import logging
+
+import pop.hub
+from dict_tools.data import NamespaceDict
+from merge_utils.config import Configuration
+
+hub_logger = logging.getLogger("pop.hub")
+hub_logger.setLevel(logging.DEBUG)
+hub = pop.hub.Hub()
+
+
+async def main_thread():
+	ctx = NamespaceDict()
+	ctx["kit"] = NamespaceDict(kit_dict)
+	out_tree = await hub.merge.kit.checkout_kit(ctx)
+
+	if ctx.kit.get("master_repo", False):
+		hub.ECLASS_ROOT = out_tree.root
+		hub.ECLASS_HASHES = hub.merge.metadata.get_eclass_hashes(hub.ECLASS_ROOT)
+
+	hub.cache.metadata.fetch_kit(out_tree)
+	hub.merge.metadata.gen_cache(out_tree)
+	hub.cache.metadata.flush_kit(out_tree)
+
+
+if __name__ == "__main__":
+	hub.MERGE_CONFIG = config = Configuration()
+	hub.pop.sub.add("funtoo.merge")
+	hub.pop.sub.add("funtoo.cache")
+
+	kit_dict = {
+		"name": "gentoo",
+		"url": "https://github.com/gentoo/gentoo.git",
+		"branch": "master",
+		"kind": "independent",
+		"master_repo": True,
+	}
+
+	loop = asyncio.get_event_loop()
+	loop.run_until_complete(main_thread())

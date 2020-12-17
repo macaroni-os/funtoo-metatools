@@ -659,6 +659,7 @@ def gen_cache(hub, repo):
 		futures = []
 		fut_map = {}
 
+		# core-kit's eclass hashes are cached here:
 		eclass_hashes = hub.ECLASS_HASHES.hashes.copy()
 		eclass_paths = [hub.ECLASS_HASHES.path]
 
