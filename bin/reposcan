@@ -42,8 +42,14 @@ if __name__ == "__main__":
 			"kind": "independent",
 			"commit_sha1": None,  # You should be able to set commit SHA1 here.
 			"master_repo": True,
+		},
+		{
+			"name": "stefantalpalaru",
+			"url": "https://github.com/stefantalpalaru/gentoo-overlay.git",
+			"branch": "master",
+			"kind": "independent",
+			"commit_sha1": "072e7163a41bac59451059556fd0075c0c91e133",
 		}
-		# Add other overlay definitions here, but with master_repo not set:
 	]
 
 	loop = asyncio.get_event_loop()

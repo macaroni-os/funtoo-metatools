@@ -8,7 +8,7 @@ import sys
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
 # version, we'll consider the kit cache stale and regenerate it.
 
-CACHE_DATA_VERSION = "1.0.2"
+CACHE_DATA_VERSION = "1.0.3"
 
 
 def get_outpath(hub, repo_obj):

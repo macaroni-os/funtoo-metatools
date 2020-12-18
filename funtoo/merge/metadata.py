@@ -532,14 +532,21 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 		# Extended metadata calculation:
 
 		td_out = {}
-		relations = set()
+		relations = defaultdict(set)
 		if infos:
 			# if metadata extraction successful...
 			for key in ["DEPEND", "RDEPEND", "PDEPEND", "BDEPEND", "HDEPEND"]:
 				if infos[key]:
-					relations = relations | hub._.get_catpkg_relations_from_depstring(infos[key])
+					relations[key] = hub._.get_catpkg_relations_from_depstring(infos[key])
+		all_relations = set()
+		relations_by_kind = dict()
+
+		for key, relset in relations.items():
+			all_relations = all_relations | relset
+			relations_by_kind[key] = sorted(list(relset))
 
 		td_out["relations"] = sorted(list(relations))
+		td_out["relations_by_kind"] = relations_by_kind
 		td_out["category"] = env["CATEGORY"]
 		td_out["revision"] = env["PR"].lstrip("r")
 		td_out["package"] = env["PN"]
