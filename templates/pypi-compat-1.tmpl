@@ -69,11 +69,7 @@ SLOT="{{slot|default('0')}}"
 LICENSE="{{license|default('')}}"
 KEYWORDS="{{keywords|default('*')}}"
 
-{%- if version == normalized_version %}
 S="${WORKDIR}/{{pypi_name}}-${PV}"
-{%- else %}
-S="${WORKDIR}/{{pypi_name}}-{{normalized_version}}"
-{%- endif %}
 
 {%- if body is defined %}
 {{indented(body,allow_empty=True)}}

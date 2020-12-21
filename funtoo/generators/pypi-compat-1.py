@@ -32,7 +32,6 @@ def add_ebuild(hub, json_dict=None, compat_ebuild=False, **pkginfo):
 	if compat_ebuild:
 		local_pkginfo["python_compat"] = "python2_7"
 		local_pkginfo["version"] = local_pkginfo["compat"]
-		local_pkginfo["normalized_version"] = hub.pkgtools.pyhelper.normalize_version(local_pkginfo["version"])
 		local_pkginfo["name"] = local_pkginfo["name"] + "-compat"
 		artifact_url = hub.pkgtools.pyhelper.sdist_artifact_url(json_dict["releases"], local_pkginfo["version"])
 	else:
