@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 
 
+def normalize_version(hub, version):
+    vsplit = version.split('.')
+    if not len(vsplit):
+        return version
+    if vsplit[-1].startswith("post"):
+        version = ".".join(vsplit[:-1]) + "_p" + vsplit[-1][4:]
+    return version
+
+
 def sdist_artifact_url(hub, releases, version):
 	# Sometimes a version does not have a source tarball. This function lets us know if our version is legit.
 	# Returns artifact_url for version, or None if no sdist release was available.
@@ -124,3 +133,5 @@ def expand_pydeps(hub, pkginfo):
 	else:
 		pkginfo["rdepend"] += "\n" + "\n".join(expanded_pydeps)
 	return None
+
+# vim: ts=4 sw=4 noet
