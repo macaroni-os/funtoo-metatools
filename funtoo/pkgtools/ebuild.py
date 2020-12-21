@@ -230,14 +230,10 @@ class BreezyBuild:
 
 	@property
 	def ebuild_name(self):
-		if "normalized_version" in self.template_args:
-			version = self.template_args["normalized_version"]
-		else:
-			version = self.version
 		if self.revision == 0:
-			return "%s-%s.ebuild" % (self.name, version)
+			return "%s-%s.ebuild" % (self.name, self.version)
 		else:
-			return "%s-%s-r%s.ebuild" % (self.name, version, self.revision)
+			return "%s-%s-r%s.ebuild" % (self.name, self.version, self.revision)
 
 	@property
 	def ebuild_path(self):
