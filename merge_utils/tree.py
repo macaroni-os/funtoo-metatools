@@ -28,12 +28,15 @@ def runShell(cmd_list, abort_on_failure=True, env=None):
 		cmd_str = cmd_list
 	result: subprocess.CompletedProcess = run(cmd_str, env=env)
 	if result.returncode != 0:
-		print("Error executing %r" % cmd_str)
-		print()
-		print("output:")
-		print(result.stdout)
+		err_string = f"""Error executing: "{cmd_str}"
+		
+		output:
+		{result.stdout}
+		<end>
+		"""
+		print(err_string)
 		if abort_on_failure:
-			raise ShellError("Aborted due to failed command.")
+			raise ShellError("Aborted due to failed command." + "\n" + err_sring)
 		else:
 			return False
 	return True
