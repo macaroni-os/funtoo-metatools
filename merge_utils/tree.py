@@ -36,7 +36,7 @@ def runShell(cmd_list, abort_on_failure=True, env=None):
 		"""
 		print(err_string)
 		if abort_on_failure:
-			raise ShellError("Aborted due to failed command." + "\n" + err_sring)
+			raise ShellError("Aborted due to failed command." + "\n" + err_string)
 		else:
 			return False
 	return True
