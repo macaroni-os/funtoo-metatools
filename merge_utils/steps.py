@@ -385,26 +385,26 @@ class InsertEbuilds(MergeStep):
 	Insert ebuilds in source tre into destination tree.
 
 	select: Ebuilds to copy over.
-		By default, all ebuilds will be selected. This can be modified by setting select to a
-		list of ebuilds to merge (specify by catpkg, as in "x11-apps/foo"). It is also possible
-		to specify "x11-apps/*" to refer to all source ebuilds in a particular category.
+	        By default, all ebuilds will be selected. This can be modified by setting select to a
+	        list of ebuilds to merge (specify by catpkg, as in "x11-apps/foo"). It is also possible
+	        to specify "x11-apps/*" to refer to all source ebuilds in a particular category.
 
 	skip: Ebuilds to skip.
-		By default, no ebuilds will be skipped. If you want to skip copying certain ebuilds,
-		you can specify a list of ebuilds to skip. Skipping will remove additional ebuilds from
-		the set of selected ebuilds. Specify ebuilds to skip using catpkg syntax, ie.
-		"x11-apps/foo". It is also possible to specify "x11-apps/*" to skip all ebuilds in
-		a particular category.
+	        By default, no ebuilds will be skipped. If you want to skip copying certain ebuilds,
+	        you can specify a list of ebuilds to skip. Skipping will remove additional ebuilds from
+	        the set of selected ebuilds. Specify ebuilds to skip using catpkg syntax, ie.
+	        "x11-apps/foo". It is also possible to specify "x11-apps/*" to skip all ebuilds in
+	        a particular category.
 
 	replace: Ebuilds to replace.
-		By default, if an catpkg dir already exists in the destination tree, it will not be overwritten.
-		However, it is possible to change this behavior by setting replace to True, which means that
-		all catpkgs should be overwritten. It is also possible to set replace to a list containing
-		catpkgs that should be overwritten. Wildcards such as "x11-libs/*" will be respected as well.
+	        By default, if an catpkg dir already exists in the destination tree, it will not be overwritten.
+	        However, it is possible to change this behavior by setting replace to True, which means that
+	        all catpkgs should be overwritten. It is also possible to set replace to a list containing
+	        catpkgs that should be overwritten. Wildcards such as "x11-libs/*" will be respected as well.
 
 	categories: Categories to process.
-		categories to process for inserting ebuilds. Defaults to all categories in tree, using
-		profiles/categories and all dirs with "-" in them and "virtuals" as sources.
+	        categories to process for inserting ebuilds. Defaults to all categories in tree, using
+	        profiles/categories and all dirs with "-" in them and "virtuals" as sources.
 
 
 	"""

@@ -104,7 +104,8 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 	except CacheMiss:
 		await hub.cache.fetch.record_fetch_failure(fetch_method.__name__, fetchable, fail_reason=fail_reason)
 		raise FetchError(
-			fetchable, f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.",
+			fetchable,
+			f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.",
 		)
 
 
@@ -129,7 +130,8 @@ async def get_page(hub, fetchable, max_age=None, refresh_interval=None, is_json=
 			raise FetchError(fetchable, "Couldn't find cached version of resource (live version was corrupt JSON.)")
 		except json.JSONDecodeError as e:
 			raise FetchError(
-				fetchable, f"Tried using cached version of resource but it doesn't appear to be in JSON format: {repr(e)}",
+				fetchable,
+				f"Tried using cached version of resource but it doesn't appear to be in JSON format: {repr(e)}",
 			)
 
 

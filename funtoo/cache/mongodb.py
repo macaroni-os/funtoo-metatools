@@ -36,14 +36,14 @@ def __init__(hub):
 
 async def fetch_cache_write(hub, method_name, fetchable, body=None, metadata_only=False):
 	"""
-    This method is called when we have successfully fetched something. In the case of a network resource such as
-    a Web page, we will record the result of our fetching in the 'result' field so it is cached for later. In the
-    case that we're recording that we successfully downloaded an Artifact (tarball), we don't store the tarball
-    in MongoDB but we do store its metadata (hashes and filesize.)
+	This method is called when we have successfully fetched something. In the case of a network resource such as
+	a Web page, we will record the result of our fetching in the 'result' field so it is cached for later. In the
+	case that we're recording that we successfully downloaded an Artifact (tarball), we don't store the tarball
+	in MongoDB but we do store its metadata (hashes and filesize.)
 
-    If metadata_only is True, we are simply updating metadata rather than the content in the fetch cache.
+	If metadata_only is True, we are simply updating metadata rather than the content in the fetch cache.
 
-    """
+	"""
 	# Fetchable can be a simple string (URL) or an Artifact. They are a bit different:
 	if type(fetchable) == str:
 		url = fetchable
@@ -62,22 +62,28 @@ async def fetch_cache_write(hub, method_name, fetchable, body=None, metadata_onl
 	else:
 		hub.MONGO_FC.update_one(
 			{"method_name": method_name, "url": url},
-			{"$set": {"last_attempt": now, "fetched_on": now, "metadata": metadata,}},
+			{
+				"$set": {
+					"last_attempt": now,
+					"fetched_on": now,
+					"metadata": metadata,
+				}
+			},
 			upsert=True,
 		)
 
 
 async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_interval=None):
 	"""
-    Attempt to see if the network resource or Artifact is in our fetch cache. We will return the entire MongoDB
-    document. In the case of a network resource, this includes the cached value in the 'result' field. In the
-    case of an Artifact, the 'metadata' field will include its hashes and filesize.
+	Attempt to see if the network resource or Artifact is in our fetch cache. We will return the entire MongoDB
+	document. In the case of a network resource, this includes the cached value in the 'result' field. In the
+	case of an Artifact, the 'metadata' field will include its hashes and filesize.
 
-    ``max_age`` and ``refresh_interval`` parameters are used to set criteria for what is acceptable for the
-    caller. If criteria don't match, None is returned instead of the MongoDB document.
+	``max_age`` and ``refresh_interval`` parameters are used to set criteria for what is acceptable for the
+	caller. If criteria don't match, None is returned instead of the MongoDB document.
 
-    In the case the document is not found or does not meet criteria, we will raise a CacheMiss exception.
-    """
+	In the case the document is not found or does not meet criteria, we will raise a CacheMiss exception.
+	"""
 	# Fetchable can be a simple string (URL) or an Artifact. They are a bit different:
 	if type(fetchable) == str:
 		url = fetchable
@@ -99,8 +105,8 @@ async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_in
 
 async def record_fetch_failure(hub, method_name, fetchable, failure_reason):
 	"""
-    It is important to document when fetches fail, and that is what this method is for.
-    """
+	It is important to document when fetches fail, and that is what this method is for.
+	"""
 	# Fetchable can be a simple string (URL) or an Artifact. They are a bit different:
 	if type(fetchable) == str:
 		url = fetchable

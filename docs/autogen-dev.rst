@@ -109,6 +109,14 @@ still something useful when doing stand-alone auto-generation. The ``doit`` comm
 ``template_path``
   The path to where the templates are located for this autogen, i.e. the ``templates`` directory next to
   the ``autogen.py``
+``gen_path``
+  This is a special variable that will allow you to reference the path where the ``autogen.yaml`` or
+  ``autogen.py`` lives, from the perspective of the ebuild. This is useful if you are generating a
+  bunch of ebuilds in different categories, but you want to have all files in ``files/${PN}/<filename>``
+  relative to the actual autogen instead of in ``${FILESDIR}``. In this scenario, in the ebuild, you can
+  reference patches by using the reference ``{{gen_path}}/${PN}/my-pkg.patch`` instead of
+  ``${FILESDIR}/my-pkg.path``. Behind the scenes, ``gen_path`` uses ``${FILESDIR}`` and some path
+  magic to reference the correct path to find the files you want in the ``kit-fixups`` repo.
 
 While this "pkginfo" construct doesn't seem to be the most useful thing right now, it will soon once you start to take
 advantage of advanced autogen features. For now, it at least helps

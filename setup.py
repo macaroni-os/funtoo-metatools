@@ -19,7 +19,17 @@ setuptools.setup(
 		"Operating System :: POSIX :: Linux",
 	],
 	python_requires=">=3.7",
-	install_requires=["sphinx_funtoo_theme", "pop>=16", "Jinja2", "xmltodict", "aiodns", "aiohttp", "toml", "beautifulsoup4", "dict_toolbox"],
+	install_requires=[
+		"sphinx_funtoo_theme",
+		"pop>=16",
+		"Jinja2",
+		"xmltodict",
+		"aiodns",
+		"aiohttp",
+		"toml",
+		"beautifulsoup4",
+		"dict_toolbox",
+	],
 	packages=setuptools.find_packages(),
 	package_data={"": ["*.tmpl"]},
 )

@@ -100,6 +100,7 @@ def queue_all_indy_autogens(hub):
 
 		PENDING_QUE.append(
 			{
+				"gen_path": subpath,
 				"generator_sub_path": subpath,
 				"template_path": os.path.join(subpath, "templates"),
 				"pkginfo_list": [{"name": pkg_name, "cat": pkg_cat}],
@@ -136,7 +137,13 @@ async def gather_pending_tasks(hub, task_list):
 
 
 async def execute_generator(
-	hub, generator_sub_path=None, generator_sub_name="autogen", template_path=None, defaults=None, pkginfo_list=None
+	hub,
+	generator_sub_path=None,
+	generator_sub_name="autogen",
+	template_path=None,
+	defaults=None,
+	pkginfo_list=None,
+	gen_path=None,
 ):
 	if generator_sub_path:
 		# This is an individual autogen.py. First grab the "base sub" (map the path), and then grab the actual sub-
@@ -195,6 +202,10 @@ async def execute_generator(
 		# Now that we have wrapped the generate method, we need to start it as an asyncio task and then we will wait
 		# for all our generate() calls to complete, outside this for loop.
 
+		# This is the path where the autogen lives. Either the autogen.py or the autogen.yaml:
+		common_prefix = os.path.commonprefix([hub.CONTEXT.root, gen_path])
+		path_from_root = gen_path[len(common_prefix) :].lstrip("/")
+		pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
 		task = asyncio.Task(generate_wrapper(sub_index, pkginfo))
 		running_generate_wrappers.append(task)
 
@@ -303,6 +314,7 @@ def queue_all_yaml_autogens(hub):
 					pkginfo_list += hub._.parse_yaml_rule(package_section=package)
 				PENDING_QUE.append(
 					{
+						"gen_path": yaml_base_path,
 						"generator_sub_name": sub_name,
 						"generator_sub_path": sub_path,
 						"template_path": os.path.join(yaml_base_path, "templates"),

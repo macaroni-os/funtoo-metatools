@@ -678,7 +678,12 @@ def gen_cache(hub, repo):
 
 		for ebpath in ebuild_generator(ebuild_src=repo.root):
 			future = executor.submit(
-				hub._.get_ebuild_metadata, repo, ebpath, eclass_hashes=eclass_hashes, eclass_paths=eclass_paths, write_cache=True,
+				hub._.get_ebuild_metadata,
+				repo,
+				ebpath,
+				eclass_hashes=eclass_hashes,
+				eclass_paths=eclass_paths,
+				write_cache=True,
 			)
 			fut_map[future] = ebpath
 			futures.append(future)

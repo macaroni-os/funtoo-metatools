@@ -145,7 +145,11 @@ if __name__ == "__main__":
 
 	hub.START_TIME = datetime.utcnow()
 	hub.FIXUP_REPO = GitTree(
-		hub, "kit-fixups", config.branch("kit-fixups"), url=config.kit_fixups, root=config.source_trees + "/kit-fixups",
+		hub,
+		"kit-fixups",
+		config.branch("kit-fixups"),
+		url=config.kit_fixups,
+		root=config.source_trees + "/kit-fixups",
 	)
 
 	hub.pop.sub.add("funtoo.merge")

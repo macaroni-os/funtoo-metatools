@@ -35,7 +35,11 @@ if __name__ == "__main__":
 	hub.RELEASE = "1.4-release"
 	hub.GIT_CLASS = GitTree
 	hub.FIXUP_REPO = GitTree(
-		hub, "kit-fixups", config.branch("kit-fixups"), url=config.kit_fixups, root=config.source_trees + "/kit-fixups",
+		hub,
+		"kit-fixups",
+		config.branch("kit-fixups"),
+		url=config.kit_fixups,
+		root=config.source_trees + "/kit-fixups",
 	)
 	hub.META_REPO = meta_repo = GitTree(
 		hub, "meta-repo", branch=hub.RELEASE, url=config.meta_repo, root=config.dest_trees + "/meta-repo", origin_check=False

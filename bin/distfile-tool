@@ -177,7 +177,11 @@ if __name__ == "__main__":
 	hub.MERGE_CONFIG = config = Configuration()
 	hub.RELEASE = hub.OPT["distfile-tool"]["release"]
 	hub.FIXUP_REPO = GitTree(
-		hub, "kit-fixups", config.branch("kit-fixups"), url=config.kit_fixups, root=config.source_trees + "/kit-fixups",
+		hub,
+		"kit-fixups",
+		config.branch("kit-fixups"),
+		url=config.kit_fixups,
+		root=config.source_trees + "/kit-fixups",
 	)
 
 	hub.pop.sub.add("funtoo.cache")

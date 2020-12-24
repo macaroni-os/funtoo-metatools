@@ -28,6 +28,7 @@ async def main_thread(repo_plus_overlays):
 		hub.cache.metadata.flush_kit(out_tree)
 		pos += 1
 
+
 if __name__ == "__main__":
 	hub.ENABLE_MONGO = False
 	hub.MERGE_CONFIG = config = Configuration()
@@ -49,7 +50,7 @@ if __name__ == "__main__":
 			"branch": "master",
 			"kind": "independent",
 			"commit_sha1": "072e7163a41bac59451059556fd0075c0c91e133",
-		}
+		},
 	]
 
 	loop = asyncio.get_event_loop()

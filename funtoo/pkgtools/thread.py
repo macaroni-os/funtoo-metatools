@@ -23,12 +23,12 @@ def run_async_adapter(corofn, *args):
 
 	Use as follows::
 
-		futures =[
-			hub.LOOP.run_in_executor(hub.CPU_BOUND_EXECUTOR, run_async_adapter, self.worker_async, worker_async_arg1, ...)
-			for meta_pkg_ebuild_path in all_meta_pkg_ebuilds
-		]
-		for future in asyncio.as_completed(futures):
-			...
+	        futures =[
+	                hub.LOOP.run_in_executor(hub.CPU_BOUND_EXECUTOR, run_async_adapter, self.worker_async, worker_async_arg1, ...)
+	                for meta_pkg_ebuild_path in all_meta_pkg_ebuilds
+	        ]
+	        for future in asyncio.as_completed(futures):
+	                ...
 
 	"""
 	loop = asyncio.new_event_loop()

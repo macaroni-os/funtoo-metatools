@@ -29,7 +29,7 @@ def runShell(cmd_list, abort_on_failure=True, env=None):
 	result: subprocess.CompletedProcess = run(cmd_str, env=env)
 	if result.returncode != 0:
 		err_string = f"""Error executing: "{cmd_str}"
-		
+
 		output:
 		{result.stdout}
 		<end>
@@ -87,7 +87,10 @@ class Tree:
 			return
 		print(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
 		# use subprocess.call so we can see the output of autogen:
-		retcode = subprocess.call(f"cd {autogen_path} && doit --release {self.hub.RELEASE} --fastpull", shell=True,)
+		retcode = subprocess.call(
+			f"cd {autogen_path} && doit --release {self.hub.RELEASE} --fastpull",
+			shell=True,
+		)
 		if retcode != 0:
 			raise GitTreeError(f"Autogen failed in {self.root} -- offset {src_offset}.")
 		self.autogenned = src_offset

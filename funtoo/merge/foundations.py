@@ -27,11 +27,27 @@ def get_kit_pre_post_steps(hub, ctx):
 		},
 		# masters of core-kit for regular kits and nokit ensure that masking settings set in core-kit for catpkgs in other kits are applied
 		# to the other kits. Without this, mask settings in core-kit apply to core-kit only.
-		"regular-kits": {"pre": [GenerateRepoMetadata(ctx.kit.name, masters=["core-kit"], priority=500),]},
-		"all-kits": {
-			"pre": [SyncFiles(hub.FIXUP_REPO.root, {"COPYRIGHT.txt": "COPYRIGHT.txt", "LICENSE.txt": "LICENSE.txt",}),]
+		"regular-kits": {
+			"pre": [
+				GenerateRepoMetadata(ctx.kit.name, masters=["core-kit"], priority=500),
+			]
 		},
-		"nokit": {"pre": [GenerateRepoMetadata("nokit", masters=["core-kit"], priority=-2000),]},
+		"all-kits": {
+			"pre": [
+				SyncFiles(
+					hub.FIXUP_REPO.root,
+					{
+						"COPYRIGHT.txt": "COPYRIGHT.txt",
+						"LICENSE.txt": "LICENSE.txt",
+					},
+				),
+			]
+		},
+		"nokit": {
+			"pre": [
+				GenerateRepoMetadata("nokit", masters=["core-kit"], priority=-2000),
+			]
+		},
 	}
 
 	out_pre_steps = []
