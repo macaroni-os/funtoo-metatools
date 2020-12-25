@@ -14,12 +14,12 @@ config = Configuration()
 
 async def gentoo_staging_update():
 	gentoo_staging_w = GitTree(
-		"gentoo-staging", "master", url=config.gentoo_staging, root=config.dest_trees + "/gentoo-staging"
+		hub, "gentoo-staging", "master", url=config.gentoo_staging, root=config.dest_trees + "/gentoo-staging"
 	)
-	await gentoo_staging_w.initialize()
+	gentoo_staging_w.initialize()
 
-	gentoo_src = GitTree("gentoo-x86", "master", "https://github.com/gentoo/gentoo.git", pull=True)
-	await gentoo_src.initialize()
+	gentoo_src = GitTree(hub, "gentoo-x86", "master", "https://github.com/gentoo/gentoo.git", pull=True)
+	gentoo_src.initialize()
 
 	all_steps = [
 		SyncFromTree(
@@ -29,7 +29,7 @@ async def gentoo_staging_update():
 	]
 
 	await gentoo_staging_w.run(all_steps)
-	await gentoo_staging_w.gitCommit(message="gentoo updates")
+	gentoo_staging_w.gitCommit(message="gentoo updates")
 
 
 if __name__ == "__main__":
