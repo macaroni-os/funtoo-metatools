@@ -1,17 +1,12 @@
 #!/usr/bin/python3
 import asyncio
-import concurrent
 import logging
-from concurrent.futures import as_completed
-from concurrent.futures._base import ALL_COMPLETED
-from concurrent.futures.thread import ThreadPoolExecutor
 
 import pop.hub
 from dict_tools.data import NamespaceDict
 
-from funtoo.pkgtools.thread import run_async_adapter
 from merge_utils.config import Configuration
-from merge_utils.tree import GitTree, AutoCreatedGitTree
+from merge_utils.tree import GitTree
 
 hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)

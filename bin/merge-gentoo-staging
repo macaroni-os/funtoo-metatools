@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+
+import sys
+import pop.hub
+from merge_utils.config import Configuration
+from merge_utils.tree import GitTree
+from merge_utils.steps import SyncFromTree
+import asyncio
+
+config = Configuration()
+
+# This function updates the gentoo-staging tree with all the latest gentoo updates:
+
+
+async def gentoo_staging_update():
+	gentoo_staging_w = GitTree(
+		"gentoo-staging", "master", url=config.gentoo_staging, root=config.dest_trees + "/gentoo-staging"
+	)
+	await gentoo_staging_w.initialize()
+
+	gentoo_src = GitTree("gentoo-x86", "master", "https://github.com/gentoo/gentoo.git", pull=True)
+	await gentoo_src.initialize()
+
+	all_steps = [
+		SyncFromTree(
+			gentoo_src,
+			exclude=[".gitignore", "eclass/.gitignore", "metadata/.gitignore", "/metadata/cache/**", "dev-util/metro"],
+		),
+	]
+
+	await gentoo_staging_w.run(all_steps)
+	await gentoo_staging_w.gitCommit(message="gentoo updates")
+
+
+if __name__ == "__main__":
+	hub = pop.hub.Hub()
+	hub.MERGE_CONFIG = config = Configuration()
+	loop = asyncio.get_event_loop()
+	loop.run_until_complete(gentoo_staging_update())
+	sys.exit(0)
+
+# vim: ts=4 sw=4 noet

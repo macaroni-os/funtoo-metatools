@@ -74,6 +74,19 @@ class SyncDir(MergeStep):
 		runShell(cmd)
 
 
+class SyncFromTree(SyncDir):
+	# sync a full portage tree, deleting any excess files in the target dir:
+	def __init__(self, srctree, exclude=None):
+		if exclude is None:
+			exclude = []
+		self.srctree = srctree
+		SyncDir.__init__(self, srctree.root, srcdir=None, destdir=None, exclude=exclude, delete=True)
+
+	async def run(self, desttree):
+		await SyncDir.run(self, desttree)
+		desttree.logTree(self.srctree)
+
+
 class GenerateRepoMetadata(MergeStep):
 	def __init__(self, name, masters=None, aliases=None, priority=None):
 		self.name = name
