@@ -125,8 +125,13 @@ async def checkout_kit(hub, ctx, pull=None):
 	branch = ctx.kit.branch
 	kwargs = {}
 
+	# TODO: in the scenario where you might want to generate a 'dev' version of Funtoo, you will want
+	#       to auto-create all auto-generated kits, but push them to a remote location. Likewise, you will
+	#       want to auto-clone the 'Official' independent kits, but then rewrite their origin and push them
+	#       to the same remote location. We should support this workflow and currently don't.
+
 	if kind == "independent":
-		# For independent kits, we must clone the source tree
+		# For independent kits, we must clone the source tree and can't simply auto-create a tree from scratch:
 		git_class = GitTree
 		if ctx.kit.get("url", None):
 			kwargs["url"] = ctx.kit.url
@@ -163,6 +168,12 @@ async def checkout_kit(hub, ctx, pull=None):
 
 	out_tree = git_class(hub, ctx.kit.name, branch=branch, root=root, **kwargs)
 	out_tree.initialize()
+
+	# TODO: If an independent kit, and we are setting up a 'dev' branch, rewrite origin so we
+	#       will push up to the 'dev' location.
+
+	# TODO: If an auto-generated kit, we will want to still be able to push up to a remote location
+
 	return out_tree
 
 

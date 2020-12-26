@@ -53,12 +53,14 @@ async def main_thread():
 			kit_dict = kit_dict_list[0]
 
 			if kit_dict["kind"] != "independent":
+				# This initializes the "source repos" that are used to grab catpkgs from to generate this kit:
 				await hub.merge.sources.initialize_sources(kit_dict["source"])
 
 			for kit_dict in kit_dict_list:
 				# For simplicity, set up a context variable to pass around, where ctx.kit contains the kit information:
 				ctx = NamespaceDict()
 				ctx["kit"] = NamespaceDict(kit_dict)
+				# hub.merge.kit.generate_kit does the real work:
 				future = executor.submit(run_async_adapter, hub.merge.kit.generate_kit, ctx)
 				regen_futures.append(future)
 			for future in as_completed(regen_futures):
