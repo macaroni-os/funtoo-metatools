@@ -10,16 +10,20 @@ from collections import defaultdict
 from concurrent.futures.thread import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from concurrent.futures import as_completed
-
+import glob
 from merge_utils.tree import run
 
+
+def cleanup_logs(hub):
+	for file in glob.glob(os.path.join(hub.MERGE_CONFIG.temp_path, "metadata-errors*.log")):
+		os.unlink(file)
 
 def __init__(hub):
 	hub.METADATA_GEN_ERRORS = defaultdict(list)
 	hub.METADATA_MISC_ERRORS = defaultdict(list)
 
-
 def display_error_summary(hub):
+	cleanup_logs(hub)
 	repo_objs_sorted = sorted(list(hub.METADATA_GEN_ERRORS.keys()), key=lambda x: len(hub.METADATA_GEN_ERRORS[x]))
 	if len(repo_objs_sorted):
 		logging.warning("The following kits had errors during metadata extraction:")
