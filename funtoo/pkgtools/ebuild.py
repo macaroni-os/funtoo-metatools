@@ -212,6 +212,13 @@ class BreezyBuild:
 		if self.sub_index is None:
 			# Use filename of caller as sub_index. Our pending BreezyBuilds are all organized by sub.
 			self.sub_index = inspect.getmodule(inspect.stack()[1][0]).__file__
+		# This is a hack to add this BreezyBuild to a list of pending BreezyBuilds. We will pop things
+		# from this list, and call their generate() method, and await the completion of this method.
+		# Basically, our generator generates BreezyBuilds. Then the BreezyBuilds need to run via their
+		# generate() method. This is how we handle the generate() part and ensure everything is awaited.
+		# This trick is used because we don't pass a reference to the current plugin/generator to each
+		# BreezyBuild. So the BreezyBuild adds itself to this queue and when we process the generator,
+		# we grab from here.
 		self.hub.pkgtools.autogen.BREEZYBUILDS_PENDING[self.sub_index].append(self)
 
 	@property
