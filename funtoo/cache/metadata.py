@@ -8,7 +8,7 @@ import sys
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
 # version, we'll consider the kit cache stale and regenerate it.
 
-CACHE_DATA_VERSION = "1.0.3"
+CACHE_DATA_VERSION = "1.0.4"
 
 
 def get_outpath(hub, repo_obj):
@@ -67,10 +67,11 @@ def flush_kit(hub, repo_obj, save=True, prune=True):
 		if len(extra_atoms):
 			logging.error("THERE ARE EXTRA ATOMS THAT WERE RETRIEVED BUT NOT IN CACHE!")
 			logging.error(f"{extra_atoms}")
-	outpath = hub._.get_outpath(repo_obj)
-	outdata = {"cache_data_version": CACHE_DATA_VERSION, "atoms": repo_obj.KIT_CACHE}
-	with open(outpath, "w") as f:
-		f.write(json.dumps(outdata))
+	if save:
+		outpath = hub._.get_outpath(repo_obj)
+		outdata = {"cache_data_version": CACHE_DATA_VERSION, "atoms": repo_obj.KIT_CACHE}
+		with open(outpath, "w") as f:
+			f.write(json.dumps(outdata))
 
 
 def get_atom(hub, repo_obj, atom, md5, manifest_md5, eclass_hashes):

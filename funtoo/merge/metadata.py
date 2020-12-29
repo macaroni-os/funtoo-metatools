@@ -549,7 +549,7 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 			all_relations = all_relations | relset
 			relations_by_kind[key] = sorted(list(relset))
 
-		td_out["relations"] = sorted(list(relations))
+		td_out["relations"] = sorted(list(all_relations))
 		td_out["relations_by_kind"] = relations_by_kind
 		td_out["category"] = env["CATEGORY"]
 		td_out["revision"] = env["PR"].lstrip("r")

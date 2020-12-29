@@ -358,13 +358,11 @@ class GitTree(Tree):
 			runShell("(cd %s && git checkout %s )" % (self.root, self.commit_sha1))
 			if self.head() != self.commit_sha1:
 				raise GitTreeError("%s: Was not able to check out specified SHA1: %s." % (self.root, self.commit_sha1))
-		elif self.pull:
-			self.do_pull()
-
+		self.do_pull()
 		self.initialized = True
 
 	def do_pull(self):
-		if not self.pulled:
+		if self.pull and not self.pulled:
 			# we are on the right branch, but we want to make sure we have the latest updates
 			runShell("(cd %s && git pull --ff-only)" % self.root)
 			self.pulled = True

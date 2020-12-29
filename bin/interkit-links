@@ -1,0 +1,27 @@
+#!/usr/bin/env python3
+
+import logging
+import sys
+
+import pop.hub
+
+hub_logger = logging.getLogger("pop.hub")
+hub_logger.setLevel(logging.DEBUG)
+hub = pop.hub.Hub()
+
+
+if __name__ == "__main__":
+	hub.pop.sub.add("funtoo.merge")
+
+	nodep_catpkgs = dict()
+	all_relations = set()
+	all_catpkgs = set()
+	for pypak in hub.DEEPDIVE.find({"kit": sys.argv[1]}):
+		print('catpkg', pypak['catpkg'])
+		all_catpkgs.add(pypak['catpkg'])
+		print('relations', pypak['relations'])
+		all_relations = all_relations | set(pypak['relations'])
+
+	inter_kitlink_catpkgs = all_relations - all_catpkgs
+	for catpkg in sorted(list(inter_kitlink_catpkgs)):
+		print(catpkg)
