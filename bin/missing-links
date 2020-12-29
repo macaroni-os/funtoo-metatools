@@ -2,10 +2,9 @@
 
 # This command takes two arguments, a kit and a branch.
 #
-# It will query the deepdive database, and identify all catpkgs referenced by the specified
-# kit/branch that do not exist within the kit -- in other words, the outbound 'inter-kit
-# links.' These catpkgs exist in other kits -- or may not exist at all. Anything printed
-# simply refers to things referenced in the kit that can't be found within the kit.
+# This command goes a step further than interkit-links -- it will find all catpkgs
+# referenced by the specified kit/branch that cannot be found in this kit, OR any
+# other kit -- in other words, packages that are simply missing from the tree!
 
 import logging
 import sys
@@ -27,5 +26,10 @@ if __name__ == "__main__":
 		all_relations = all_relations | set(pypak["relations"])
 
 	inter_kitlink_catpkgs = all_relations - all_catpkgs
-	for catpkg in sorted(list(inter_kitlink_catpkgs)):
+	missing_catpkgs = set()
+	for catpkg in inter_kitlink_catpkgs:
+		pak = hub.DEEPDIVE.find({"catpkg" : catpkg})
+		if pak is None:
+			missing_catpkgs.add(catpkg)
+	for catpkg in sorted(list(missing_catpkgs)):
 		print(catpkg)
