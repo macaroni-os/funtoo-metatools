@@ -212,6 +212,8 @@ class BreezyBuild:
 		if self.sub_index is None:
 			# Use filename of caller as sub_index. Our pending BreezyBuilds are all organized by sub.
 			self.sub_index = inspect.getmodule(inspect.stack()[1][0]).__file__
+		#   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+		#
 		# This is a hack to add this BreezyBuild to a list of pending BreezyBuilds. We will pop things
 		# from this list, and call their generate() method, and await the completion of this method.
 		# Basically, our generator generates BreezyBuilds. Then the BreezyBuilds need to run via their
@@ -219,6 +221,21 @@ class BreezyBuild:
 		# This trick is used because we don't pass a reference to the current plugin/generator to each
 		# BreezyBuild. So the BreezyBuild adds itself to this queue and when we process the generator,
 		# we grab from here.
+		#
+		# This fanciness is needed because even if I pass the sub to the sub's generate() function,
+		# we do not currently have the generate() function pass this sub to each BreezyBuild. So the
+		# BreezyBuild doesn't have a direct reference to the sub. If the BreezyBuild had a direct
+		# reference to the sub, it could simply add to sub.BZ_PENDING which would be a lot cleaner.
+		# This model would also be a lot friendlier for multi-threading. I could fire off a thread
+		# for each sub, and all data would be self-contained in the sub and this would be a better
+		# model than what we are doing here. Right now this is not easy to multi-thread because
+		# hub.pkgtools.autogen.BREEZYBUILDS_PENDING[self.sub_index] is a global variable and not
+		# easily made thread-local.
+		#
+		# Maybe this could be explored as a solution:
+		#
+		# https://stackoverflow.com/questions/1408171/thread-local-storage-in-python
+
 		self.hub.pkgtools.autogen.BREEZYBUILDS_PENDING[self.sub_index].append(self)
 
 	@property
