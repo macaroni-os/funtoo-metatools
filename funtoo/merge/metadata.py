@@ -11,34 +11,31 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from concurrent.futures import as_completed
 import glob
+
+from dict_tools.data import NamespaceDict
+
 from merge_utils.tree import run
 
 
-def cleanup_logs(hub):
+def cleanup_error_logs(hub):
+	# This should be explicitly called at the beginning of every command that generates metadata for kits:
+
 	for file in glob.glob(os.path.join(hub.MERGE_CONFIG.temp_path, "metadata-errors*.log")):
 		os.unlink(file)
 
 
-def __init__(hub):
-	hub.METADATA_GEN_ERRORS = defaultdict(list)
-	hub.METADATA_MISC_ERRORS = defaultdict(list)
-
-
 def display_error_summary(hub):
-	cleanup_logs(hub)
-	repo_objs_sorted = sorted(list(hub.METADATA_GEN_ERRORS.keys()), key=lambda x: len(hub.METADATA_GEN_ERRORS[x]))
-	if len(repo_objs_sorted):
-		logging.warning("The following kits had errors during metadata extraction:")
-		for repo_obj in repo_objs_sorted:
-			branch_info = f"{repo_obj.name} branch {repo_obj.branch}".ljust(30)
-			logging.warning(f"* {branch_info} -- {len(hub.METADATA_GEN_ERRORS[repo_obj])} errors.")
-			outpath = os.path.join(hub.MERGE_CONFIG.temp_path, f"metadata-errors-{repo_obj.name}-{repo_obj.branch}.log")
-			out = []
-			for item in hub.METADATA_GEN_ERRORS[repo_obj]:
-				out.append({"ebuild_path": item.ebuild_path, "msg": item.msg, "output": item.output})
-			with open(outpath, "w") as f:
-				f.write(json.dumps(out, indent=4))
-		logging.warning(f"Metadata errors logged to {hub.MERGE_CONFIG.temp_path}.")
+	for stat_list, name, shortname in [
+		(hub.METADATA_ERROR_STATS, "metadata extraction errors", "errors"),
+		(hub.PROCESSING_WARNING_STATS, "warnings", "warnings"),
+	]:
+		if len(stat_list):
+			for stat_info in stat_list:
+				stat_info = NamespaceDict(stat_info)
+				logging.warning(f"The following kits had {name}:")
+				branch_info = f"{stat_info.name} branch {stat_info.branch}".ljust(30)
+				logging.warning(f"* {branch_info} -- {stat_info.count} {shortname}.")
+			logging.warning(f"{name} errors logged to {hub.MERGE_CONFIG.temp_path}.")
 
 
 def get_thirdpartymirrors(hub, repo_path):
@@ -72,14 +69,6 @@ def expand_thirdpartymirror(hub, mirr_dict, url):
 			continue
 		final_url = mirr_url.rstrip("/") + "/" + rest_of_url
 		return final_url
-
-
-class MetadataError:
-	def __init__(self, repo=None, ebuild_path=None, output=None, msg=None):
-		self.repo = repo
-		self.ebuild_path = ebuild_path
-		self.output = output
-		self.msg = msg
 
 
 METADATA_LINES = [
@@ -353,14 +342,6 @@ class EclassHashCollection:
 		return new_obj
 
 
-def record_gen_error(hub, repo=None, ebuild_path=None, output=None, msg=None):
-	hub.METADATA_GEN_ERRORS[repo].append(MetadataError(repo=repo, ebuild_path=ebuild_path, output=output, msg=msg))
-
-
-def record_misc_error(hub, repo=None, ebuild_path=None, output=None, msg=None):
-	hub.METADATA_MISC_ERRORS[repo].append(MetadataError(repo=repo, ebuild_path=ebuild_path, output=output, msg=msg))
-
-
 def extract_ebuild_metadata(hub, repo_obj, atom, ebuild_path=None, env=None, eclass_paths=None):
 	infos = {"HASH_KEY": atom}
 	env["PATH"] = "/bin:/usr/bin"
@@ -382,9 +363,8 @@ def extract_ebuild_metadata(hub, repo_obj, atom, ebuild_path=None, env=None, ecl
 	env["PORTAGE_PIPE_FD"] = "1"
 	result = run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
 	if result.returncode != 0:
-		hub._.record_gen_error(
-			repo=repo_obj, msg=f"non-zero returncode {result.returncode}", ebuild_path=ebuild_path, output=result.stderr
-		)
+		repo_obj.METADATA_ERRORS[atom] = {"status": "ebuild.sh failure", "output": result.stderr}
+		return None
 	try:
 		# Extract results:
 		lines = result.stdout.split("\n")
@@ -396,13 +376,14 @@ def extract_ebuild_metadata(hub, repo_obj, atom, ebuild_path=None, env=None, ecl
 			line += 1
 		if line != len(METADATA_LINES):
 			missing = set(METADATA_LINES) - found
-			hub._.record_gen_error(
-				msg=f"Missing metadata: {' '.join(missing)}", repo=repo_obj, ebuild_path=ebuild_path, output=result.stderr
-			)
+			repo_obj.METADATA_ERRORS[atom] = {"status": "missing " + " ".join(missing), "output": result.stderr}
 			return None
+		# Success! Clear previous error, if any:
+		if atom in repo_obj.METADATA_ERRORS:
+			del repo_obj.METADATA_ERRORS[atom]
 		return infos
 	except (FileNotFoundError, IndexError) as e:
-		hub._.record_gen_error(repo=repo_obj, msg=f"Exception: {str(e)}", ebuild_path=ebuild_path)
+		repo_obj.METADATA_ERRORS[atom] = {"status": "exception", "exception": str(e)}
 		return None
 
 
@@ -525,15 +506,13 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 
 			for eclass_name in sorted(infos["INHERITED"].split()):
 				if eclass_name not in eclass_hashes:
-					hub._.record_misc_error(repo=repo, msg=f"Can't find eclass hash for {eclass_name}", ebuild_path=ebuild_path)
+					repo.PROCESSING_WARNINGS.append({"msg": f"Can't find eclass hash for {eclass_name}", "atom": atom})
 					continue
 				try:
 					eclass_out += f"\t{eclass_name}\t{eclass_hashes[eclass_name]}"
 					eclass_tuples.append((eclass_name, eclass_hashes[eclass_name]))
 				except KeyError as ke:
-					hub._.record_misc_error(
-						repo=repo, msg=f"Can't find eclass {eclass_name} when processing {ebuild_path}", ebuild_path=ebuild_path
-					)
+					repo.PROCESSING_WARNINGS.append({"msg": f"Can't find eclass {eclass_name}", "atom": atom})
 
 		metadata_out = ""
 		if infos:
@@ -735,12 +714,6 @@ async def get_python_use_lines(hub, repo, catpkg, cpv_list, cur_tree, def_python
 		new_imps = set()
 		for imp in imps:
 			if imp in ["python3_5", "python3_6"]:
-				hub._.record_misc_error(
-					repo=repo,
-					ebuild_path=f"{cur_tree}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
-					msg=f"Old {imp} referenced in PYTHON_COMPAT",
-				)
-
 				# The eclass bumps these to python3_7. We do the same to get correct results:
 				new_imps.add(def_python)
 			elif imp in ["python3+", "python3_7+"]:
@@ -753,12 +726,6 @@ async def get_python_use_lines(hub, repo, catpkg, cpv_list, cur_tree, def_python
 				new_imps.update(["python2_7", "python3_7", "python3_8", "python3_9"])
 			else:
 				new_imps.add(imp)
-				if imp in ["python2_4", "python2_5", "python2_6"]:
-					hub._.record_misc_error(
-						repo=repo,
-						ebuild_path=f"{cur_tree}/{catpkg}/{cpv.split('/')[-1]}.ebuild",
-						msg=f"Old {imp} referenced in PYTHON_COMPAT",
-					)
 		imps = list(new_imps)
 		if len(imps):
 			ebs[cpv] = imps

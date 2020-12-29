@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.cache")
-
+	hub.merge.metadata.cleanup_error_logs()
 	repo_plus_overlays = [
 		{
 			"name": "gentoo",

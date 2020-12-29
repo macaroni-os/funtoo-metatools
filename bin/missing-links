@@ -28,7 +28,7 @@ if __name__ == "__main__":
 	inter_kitlink_catpkgs = all_relations - all_catpkgs
 	missing_catpkgs = set()
 	for catpkg in inter_kitlink_catpkgs:
-		pak = hub.DEEPDIVE.find({"catpkg" : catpkg})
+		pak = hub.DEEPDIVE.find({"catpkg": catpkg})
 		if pak is None:
 			missing_catpkgs.add(catpkg)
 	for catpkg in sorted(list(missing_catpkgs)):

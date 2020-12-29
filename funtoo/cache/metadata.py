@@ -7,8 +7,17 @@ import sys
 
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
 # version, we'll consider the kit cache stale and regenerate it.
+from collections import defaultdict
 
-CACHE_DATA_VERSION = "1.0.4"
+CACHE_DATA_VERSION = "1.0.5"
+
+
+def __init__(hub):
+	# When kits are being regenerated, we will update these variables to contain counts of various kinds of
+	# errors, so we can display a summary at the end of processing all kits. Users can consult the correct
+	# logs in ~/repo_tmp/tmp/ for details.
+	hub.METADATA_ERROR_STATS = []
+	hub.PROCESSING_WARNING_STATS = []
 
 
 def get_outpath(hub, repo_obj):
@@ -21,20 +30,21 @@ def fetch_kit(hub, repo_obj):
 	Grab cached metadata for an entire kit from serialized JSON, with a single query.
 	"""
 	outpath = hub._.get_outpath(repo_obj)
+	valid_cache = False
 	if os.path.exists(outpath):
 		with open(outpath, "r") as f:
 			kit_cache_data = json.loads(f.read())
 			if "cache_data_version" not in kit_cache_data or kit_cache_data["cache_data_version"] != CACHE_DATA_VERSION:
-				atoms = {}
+				pass
 			else:
-				atoms = kit_cache_data["atoms"]
+				valid_cache = True
+	if valid_cache:
+		repo_obj.KIT_CACHE = kit_cache_data["atoms"]
+		repo_obj.METADATA_ERRORS = kit_cache_data["metadata_errors"]
 	else:
-		atoms = {}
-	repo_obj.KIT_CACHE = atoms
-
-	# Because these variables are written to by multiple threads, we can't really have threads adding stuff
-	# without locking I don't think....
-
+		repo_obj.KIT_CACHE = {}
+		repo_obj.METADATA_ERRORS = {}
+	repo_obj.PROCESSING_WARNINGS = []
 	repo_obj.KIT_CACHE_RETRIEVED_ATOMS = set()
 	repo_obj.KIT_CACHE_MISSES = set()
 	repo_obj.KIT_CACHE_WRITES = set()
@@ -69,9 +79,37 @@ def flush_kit(hub, repo_obj, save=True, prune=True):
 			logging.error(f"{extra_atoms}")
 	if save:
 		outpath = hub._.get_outpath(repo_obj)
-		outdata = {"cache_data_version": CACHE_DATA_VERSION, "atoms": repo_obj.KIT_CACHE}
+		outdata = {
+			"cache_data_version": CACHE_DATA_VERSION,
+			"atoms": repo_obj.KIT_CACHE,
+			"metadata_errors": repo_obj.METADATA_ERRORS,
+		}
 		with open(outpath, "w") as f:
 			f.write(json.dumps(outdata))
+
+		# Add summary to hub of error count for this kit, and also write out the error logs:
+
+		error_outpath = os.path.join(hub.MERGE_CONFIG.temp_path, f"metadata-errors-{repo_obj.name}-{repo_obj.branch}.log")
+		if len(repo_obj.METADATA_ERRORS):
+			hub.METADATA_ERROR_STATS.append(
+				{"name": repo_obj.name, "branch": repo_obj.branch, "count": len(repo_obj.METADATA_ERRORS)}
+			)
+			with open(error_outpath, "w") as f:
+				f.write(json.dumps(repo_obj.METADATA_ERRORS))
+		else:
+			if os.path.exists(error_outpath):
+				os.unlink(error_outpath)
+
+		error_outpath = os.path.join(hub.MERGE_CONFIG.temp_path, f"warnings-{repo_obj.name}-{repo_obj.branch}.log")
+		if len(repo_obj.PROCESSING_WARNINGS):
+			hub.PROCESSING_WARNING_STATS.append(
+				{"name": repo_obj.name, "branch": repo_obj.branch, "count": len(repo_obj.PROCESSING_WARNINGS)}
+			)
+			with open(error_outpath, "w") as f:
+				f.write(json.dumps(repo_obj.PROCESSING_WARNINGS))
+		else:
+			if os.path.exists(error_outpath):
+				os.unlink(error_outpath)
 
 
 def get_atom(hub, repo_obj, atom, md5, manifest_md5, eclass_hashes):

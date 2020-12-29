@@ -31,6 +31,7 @@ async def main_thread():
 
 	hub.META_REPO.initialize()
 	hub.FIXUP_REPO.initialize()
+	hub.merge.metadata.cleanup_error_logs()
 
 	hub.KIT_GROUPS = list(hub.merge.foundations.kit_groups())
 
