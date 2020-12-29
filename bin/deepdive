@@ -37,7 +37,13 @@ if __name__ == "__main__":
 		root=config.source_trees + "/kit-fixups",
 	)
 	hub.META_REPO = meta_repo = GitTree(
-		hub, "meta-repo", branch=hub.RELEASE, url=config.meta_repo, root=config.dest_trees + "/meta-repo", origin_check=False, pull=False
+		hub,
+		"meta-repo",
+		branch=hub.RELEASE,
+		url=config.meta_repo,
+		root=config.dest_trees + "/meta-repo",
+		origin_check=False,
+		pull=False,
 	)
 	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools")

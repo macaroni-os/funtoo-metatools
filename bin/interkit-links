@@ -16,11 +16,9 @@ if __name__ == "__main__":
 	nodep_catpkgs = dict()
 	all_relations = set()
 	all_catpkgs = set()
-	for pypak in hub.DEEPDIVE.find({"kit": sys.argv[1]}):
-		print('catpkg', pypak['catpkg'])
-		all_catpkgs.add(pypak['catpkg'])
-		print('relations', pypak['relations'])
-		all_relations = all_relations | set(pypak['relations'])
+	for pypak in hub.DEEPDIVE.find({"kit": sys.argv[1], "branch": sys.argv[2]}):
+		all_catpkgs.add(pypak["catpkg"])
+		all_relations = all_relations | set(pypak["relations"])
 
 	inter_kitlink_catpkgs = all_relations - all_catpkgs
 	for catpkg in sorted(list(inter_kitlink_catpkgs)):

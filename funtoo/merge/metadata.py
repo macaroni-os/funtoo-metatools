@@ -18,9 +18,11 @@ def cleanup_logs(hub):
 	for file in glob.glob(os.path.join(hub.MERGE_CONFIG.temp_path, "metadata-errors*.log")):
 		os.unlink(file)
 
+
 def __init__(hub):
 	hub.METADATA_GEN_ERRORS = defaultdict(list)
 	hub.METADATA_MISC_ERRORS = defaultdict(list)
+
 
 def display_error_summary(hub):
 	cleanup_logs(hub)
@@ -315,11 +317,21 @@ def get_catpkg_relations_from_depstring(hub, depstring):
 		# 4. Strip any trailing '*':
 		part = part.rstrip("*")
 
-		# 5. We should now have a catpkg or catpgkg-version(-rev). If we have a version, remove it.
-
+		# 5. We should now have a catpkg or catpgkg-version(-rev). If we have this, remove it.
 		if has_version:
 			ps = part.split("-")
-			part = "-".join(ps[:-1])
+			has_rev = False
+			if ps[-1].startswith("r"):
+				try:
+					int(ps[-1][1:])
+					has_rev = True
+				except ValueError:
+					pass
+			if has_rev:
+				strip = 2
+			else:
+				strip = 1
+			part = "-".join(ps[:-strip])
 
 		catpkgs.add(part)
 	return catpkgs
