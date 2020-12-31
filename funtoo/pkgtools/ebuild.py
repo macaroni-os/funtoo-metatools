@@ -233,8 +233,7 @@ class BreezyBuild:
 		# local context so we can grab the result later. The return value will be the BreezyBuild object itself,
 		# thanks to the wrapper.
 		bzb_task = Task(wrapper(self))
-		print("putting bzb on queue", id(self.hub.THREAD_CTX.running_breezybuilds))
-		self.hub.THREAD_CTX.running_breezybuilds.put(bzb_task)
+		self.hub.THREAD_CTX.running_breezybuilds.append(bzb_task)
 
 	@property
 	def pkgdir(self):

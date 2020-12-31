@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import asyncio
+from asyncio import Semaphore
+from collections import defaultdict
 from urllib.parse import urlparse
 import aiohttp
 from tornado import httpclient
@@ -14,6 +16,8 @@ proper headers and authentication, etc.
 """
 
 RESOLVERS = {}
+# This is used to limit simultaneous connections to a particular hostname to a reasonable value.
+SEMAPHORES = {}
 
 
 def get_resolver(hub):
@@ -27,6 +31,14 @@ def get_resolver(hub):
 	return RESOLVERS[id(loop)]
 
 
+def acquire_host_semaphore(hub, hostname):
+	global SEMAPHORES
+	loop = asyncio.get_event_loop()
+	if id(loop) not in SEMAPHORES:
+		SEMAPHORES[id(loop)] = defaultdict(lambda: Semaphore(value=8, loop=loop))
+	return SEMAPHORES[id(loop)][hostname]
+
+
 http_data_timeout = 60
 chunk_size = 262144
 
@@ -38,16 +50,20 @@ def get_fetch_headers(hub):
 	return {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
 
 
-def get_auth_kwargs(hub, url):
+def get_hostname(hub, url):
+	parsed_url = urlparse(url)
+	return parsed_url.hostname
+
+
+def get_auth_kwargs(hub, hostname, url):
 	"""
 	Keyword arguments to aiohttp ClientSession.get() for authentication to certain URLs based on configuration
 	in ~/.autogen (YAML format.)
 	"""
 	kwargs = {}
 	if "authentication" in hub.AUTOGEN_CONFIG:
-		parsed_url = urlparse(url)
-		if parsed_url.hostname in hub.AUTOGEN_CONFIG["authentication"]:
-			auth_info = hub.AUTOGEN_CONFIG["authentication"][parsed_url.hostname]
+		if hostname in hub.AUTOGEN_CONFIG["authentication"]:
+			auth_info = hub.AUTOGEN_CONFIG["authentication"][hostname]
 			logging.warning(f"Using authentication (username {auth_info['username']}) for {url}")
 			kwargs = {"auth": aiohttp.BasicAuth(auth_info["username"], auth_info["password"])}
 	return kwargs
@@ -60,29 +76,33 @@ async def http_fetch_stream(hub, url, on_chunk):
 	performed. A FetchError will be raised if any error occurs. If this function
 	returns successfully then the download completed successfully.
 	"""
-	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub._.get_resolver(), ssl=False)
-	try:
-		async with aiohttp.ClientSession(connector=connector) as http_session:
-			async with http_session.get(
-				url, headers=hub._.get_fetch_headers(), timeout=None, **hub._.get_auth_kwargs(url)
-			) as response:
-				if response.status != 200:
-					reason = (await response.text()).strip()
-					raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}")
-				while True:
-					try:
-						chunk = await response.content.read(chunk_size)
-						if not chunk:
-							break
-						else:
-							sys.stdout.write(".")
-							sys.stdout.flush()
-							on_chunk(chunk)
-					except aiohttp.EofStream:
-						pass
-	except Exception as e:
-		raise hub.pkgtools.fetch.FetchError(url, f"{e.__class__.__name__}: {str(e)}")
-	return None
+	hostname = get_hostname(hub, url)
+	semi = acquire_host_semaphore(hub, hostname)
+	async with semi:
+		print("starting fetch")
+		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub._.get_resolver(), ssl=False)
+		try:
+			async with aiohttp.ClientSession(connector=connector) as http_session:
+				async with http_session.get(
+					url, headers=get_fetch_headers(hub), timeout=None, **get_auth_kwargs(hub, hostname, url)
+				) as response:
+					if response.status != 200:
+						reason = (await response.text()).strip()
+						raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}")
+					while True:
+						try:
+							chunk = await response.content.read(chunk_size)
+							if not chunk:
+								break
+							else:
+								sys.stdout.write(".")
+								sys.stdout.flush()
+								on_chunk(chunk)
+						except aiohttp.EofStream:
+							pass
+		except Exception as e:
+			raise hub.pkgtools.fetch.FetchError(url, f"{e.__class__.__name__}: {str(e)}")
+		return None
 
 
 async def http_fetch(hub, url):
@@ -90,16 +110,20 @@ async def http_fetch(hub, url):
 	This is a non-streaming HTTP fetcher that will properly convert the request to a Python
 	string and return the entire content as a string.
 	"""
-	connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub._.get_resolver(), ssl=False)
-	async with aiohttp.ClientSession(connector=connector) as http_session:
-		async with http_session.get(
-			url, headers=hub._.get_fetch_headers(), timeout=None, **hub._.get_auth_kwargs(url)
-		) as response:
-			if response.status != 200:
-				reason = (await response.text()).strip()
-				raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason}")
-			return await response.text()
-	return None
+	hostname = get_hostname(hub, url)
+	semi = acquire_host_semaphore(hub, hostname)
+	async with semi:
+		print("starting fetch")
+		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub._.get_resolver(), ssl=False)
+		async with aiohttp.ClientSession(connector=connector) as http_session:
+			async with http_session.get(
+				url, headers=get_fetch_headers(hub), timeout=None, **get_auth_kwargs(hub, hostname, url)
+			) as response:
+				if response.status != 200:
+					reason = (await response.text()).strip()
+					raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason}")
+				return await response.text()
+		return None
 
 
 async def get_page(hub, url):
@@ -115,8 +139,9 @@ async def get_page(hub, url):
 		if isinstance(e, hub.pkgtools.fetch.FetchError):
 			raise e
 		else:
-			raise e
-			raise hub.pkgtools.fetch.FetchError(url, f"Couldn't get_page due to exception {repr(e)}")
+			msg = f"Couldn't get_page due to exception {repr(e)}"
+			logging.error(url + ": " + msg)
+			raise hub.pkgtools.fetch.FetchError(url, msg)
 
 
 async def get_url_from_redirect(hub, url):

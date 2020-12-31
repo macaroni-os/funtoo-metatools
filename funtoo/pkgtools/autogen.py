@@ -207,8 +207,8 @@ async def execute_generator(
 		print(f"********************** Executing generator {generator_sub_name}")
 
 		hub.THREAD_CTX.sub = generator_sub
-		hub.THREAD_CTX.running_autogens = Queue()
-		hub.THREAD_CTX.running_breezybuilds = Queue()
+		hub.THREAD_CTX.running_autogens = []
+		hub.THREAD_CTX.running_breezybuilds = []
 
 		# Generate some output to let the user know what we're doing:
 
@@ -229,22 +229,15 @@ async def execute_generator(
 				await hub.THREAD_CTX.sub.generate(**pkginfo)
 				return pkginfo
 
-			hub.THREAD_CTX.running_autogens.put(Task(gen_wrapper(pkginfo)))
+			hub.THREAD_CTX.running_autogens.append(Task(gen_wrapper(pkginfo)))
 
-		gen_list = []
-		while not hub.THREAD_CTX.running_autogens.empty():
-			gen_list.append(hub.THREAD_CTX.running_autogens.get())
-		async for result in gather_pending_tasks(hub, gen_list):
-			print("Autogen completed", result)
+		async for result in gather_pending_tasks(hub, hub.THREAD_CTX.running_autogens):
+			# This will return the pkginfo dict used for the autogen, if you want to inspect it:
+			pass
 
-		bzb_list = []
-		print("Waiting for pending breezybuilds on", id(hub.THREAD_CTX.running_breezybuilds))
-		while not hub.THREAD_CTX.running_breezybuilds.empty():
-			bzb_list.append(hub.THREAD_CTX.running_breezybuilds.get())
-		async for result in gather_pending_tasks(hub, bzb_list):
-			print("BZB completed", result)
-
-		print(f"########################## COMPLETED {generator_sub_name}")
+		async for result in gather_pending_tasks(hub, hub.THREAD_CTX.running_breezybuilds):
+			# This will return the BreezyBuild object if you want to inspect it for debugging:
+			pass
 
 	return generator_thread_task
 
