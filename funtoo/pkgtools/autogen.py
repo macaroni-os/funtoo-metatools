@@ -3,14 +3,20 @@ import asyncio
 import inspect
 import subprocess
 import os
+import threading
 import traceback
 import sys
-from asyncio import FIRST_COMPLETED, ALL_COMPLETED, FIRST_EXCEPTION
+from asyncio import FIRST_COMPLETED, ALL_COMPLETED, FIRST_EXCEPTION, Task
 from collections import defaultdict
+from concurrent.futures._base import as_completed
+from concurrent.futures.thread import ThreadPoolExecutor
+from queue import Queue
 
 import yaml
 from yaml import safe_load
 import logging
+
+from funtoo.pkgtools.thread import run_async_adapter
 
 """
 The `PENDING_QUE` will be built up to contain a full list of all the catpkgs we want to autogen in the full run
@@ -50,6 +56,10 @@ important so each generator can wait for only its own tasks to complete.
 BREEZYBUILDS_PENDING = defaultdict(list)
 BREEZYBUILD_TASKS_ACTIVE = defaultdict(list)
 BREEZYBUILD_SUB_INDEX_HANDOFF = {}
+
+
+def __init__(hub):
+	hub.THREAD_CTX = threading.local()
 
 
 def generate_manifests(hub):
@@ -115,25 +125,51 @@ async def gather_pending_tasks(hub, task_list):
 	and logs them properly.
 	"""
 	cur_tasks = task_list
-	results = []
-	count = 0
 	if not len(cur_tasks):
-		return []
+		return
 	while True:
-		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_COMPLETED)
+		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
 		for done_item in done_list:
 			try:
-				result = done_item.result()
-				if isinstance(result, list):
-					results += result
-				else:
-					results.append(result)
-				count += 1
+				yield done_item.result()
 			except Exception as e:
 				ERRORS.append((e, sys.exc_info()))
 		if not len(cur_tasks):
 			break
-	return results
+
+
+def init_pkginfo_for_package(hub, defaults=None, base_pkginfo=None, template_path=None, gen_path=None):
+	"""
+	This function generates the final pkginfo that is passed to the generate() function in the generator sub
+	for each catpkg being generated.
+
+	we create the pkginfo data that gets passed to generate. You can see that it can come from multiple places:
+
+	1. A generator sub can define a `GLOBAL_DEFAULTS` dictionary that contains global settings. These are
+	   set first.
+
+	2. Then, any defaults that are provided to us, which have come from the `defaults:` section of the
+	   autogen.yaml are supplied. (`defaults`, below.)
+
+	3. Next, `cat` and `name` settings calculated based on the path of the `autogen.py`, or the settings that
+	   come from the package-specific part of the `autogen.yaml` are added on top. (`base_pkginfo`, below.)
+	"""
+	glob_defs = getattr(hub.THREAD_CTX.sub, "GLOBAL_DEFAULTS", {})
+	pkginfo = glob_defs.copy()
+	if defaults is not None:
+		pkginfo.update(defaults)
+	pkginfo.update(base_pkginfo)
+	if template_path:
+		pkginfo["template_path"] = template_path
+
+	# Now that we have wrapped the generate method, we need to start it as an asyncio task and then we will wait
+	# for all our generate() calls to complete, outside this for loop.
+
+	# This is the path where the autogen lives. Either the autogen.py or the autogen.yaml:
+	common_prefix = os.path.commonprefix([hub.CONTEXT.root, gen_path])
+	path_from_root = gen_path[len(common_prefix) :].lstrip("/")
+	pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
+	return pkginfo
 
 
 async def execute_generator(
@@ -145,78 +181,72 @@ async def execute_generator(
 	pkginfo_list=None,
 	gen_path=None,
 ):
+	"""
+	This function will return an async function that requires no arguments, that is ready to run in its own
+	thread using run_async_adapter. This function will execute the full auto-generation for a particular
+	generator/autogen.py and will wait until all of its asyncio tasks have completed before returning. This
+	neatly allows an autogeneration for a sub/generator/autogen.py to be contained in its own thread, improving
+	performance and allowing the use of thread-local storage to keep track of things specific to this autogen
+	run.
+	"""
+
 	if generator_sub_path:
 		# This is an individual autogen.py. First grab the "base sub" (map the path), and then grab the actual sub-
 		# module we want by name.
-		generator_sub_base, sub_name = await hub._.acquire_sub(generator_sub_path)
+		generator_sub_base, sub_name = await acquire_sub(hub, generator_sub_path)
 		generator_sub = getattr(generator_sub_base, generator_sub_name)
-		sub_index = generator_sub_path + "/" + generator_sub_name + ".py"
 	else:
 		# This is an official generator that is built-in to pkgtools:
 		generator_sub = getattr(hub.generators, generator_sub_name)
-		sub_index = inspect.getsourcefile(generator_sub)
 
 	# The generate_wrapper wraps the call to `generate()` (in autogen.py or the generator) and performs setup
 	# and post-tasks:
 
-	async def generate_wrapper(sub_index, pkginfo):
+	async def generator_thread_task():
+
+		print(f"********************** Executing generator {generator_sub_name}")
+
+		hub.THREAD_CTX.sub = generator_sub
+		hub.THREAD_CTX.running_autogens = Queue()
+		hub.THREAD_CTX.running_breezybuilds = Queue()
+
 		# Generate some output to let the user know what we're doing:
-		if "version" in pkginfo and pkginfo["version"] != "latest":
-			print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
-		else:
-			print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
-		logging.debug(f"Using the following pkginfo for auto-generation: {pkginfo}")
-		logging.debug(f"Using sub-index: {sub_index}")
-		await generator_sub.generate(**pkginfo)
-		global BREEZYBUILDS_PENDING
-		while len(BREEZYBUILDS_PENDING[sub_index]):
-			# popping a pushed BreezyBuild -- we'll start it but not wait for it to complete so we can start more...
-			bzb = BREEZYBUILDS_PENDING[sub_index].pop(0)
-			BREEZYBUILD_TASKS_ACTIVE[sub_index].append(asyncio.Task(bzb.generate()))
 
-	running_generate_wrappers = []
+		for base_pkginfo in pkginfo_list:
+			pkginfo = init_pkginfo_for_package(
+				hub, defaults=defaults, base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
+			)
+			if "version" in pkginfo and pkginfo["version"] != "latest":
+				print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
+			else:
+				print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+			logging.debug(f"Using the following pkginfo for auto-generation: {pkginfo}")
 
-	logging.debug(f"Executing generator {generator_sub_name}")
+			# Any .push() calls on BreezyBuilds will cause new tasks for those to be appended to
+			# hub.THREAD_CTX.running_breezybuilds. This will happen during this task execution:
 
-	for base_pkginfo in pkginfo_list:
-		# Generate each specified package. First we create the pkginfo data that gets passed to generate. You can see
-		# that it can come from multiple places:
-		#
-		# 1. A generator sub can define a `GLOBAL_DEFAULTS` dictionary that contains global settings. These are
-		#    set first.
-		#
-		# 2. Then, any defaults that are provided to us, which have come from the `defaults:` section of the
-		#    autogen.yaml are supplied. (`defaults`, below.)
-		#
-		# 3. Next, `cat` and `name` settings calculated based on the path of the `autogen.py`, or the settings that
-		#    come from the package-specific part of the `autogen.yaml` are added on top. (`base_pkginfo`, below.)
+			async def gen_wrapper(pkginfo):
+				await hub.THREAD_CTX.sub.generate(**pkginfo)
+				return pkginfo
 
-		glob_defs = getattr(generator_sub, "GLOBAL_DEFAULTS", {})
-		pkginfo = glob_defs.copy()
-		if defaults is not None:
-			pkginfo.update(defaults)
-		pkginfo.update(base_pkginfo)
-		if template_path:
-			pkginfo["template_path"] = template_path
+			hub.THREAD_CTX.running_autogens.put(Task(gen_wrapper(pkginfo)))
 
-		# Now that we have wrapped the generate method, we need to start it as an asyncio task and then we will wait
-		# for all our generate() calls to complete, outside this for loop.
+		gen_list = []
+		while not hub.THREAD_CTX.running_autogens.empty():
+			gen_list.append(hub.THREAD_CTX.running_autogens.get())
+		async for result in gather_pending_tasks(hub, gen_list):
+			print("Autogen completed", result)
 
-		# This is the path where the autogen lives. Either the autogen.py or the autogen.yaml:
-		common_prefix = os.path.commonprefix([hub.CONTEXT.root, gen_path])
-		path_from_root = gen_path[len(common_prefix) :].lstrip("/")
-		pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
-		task = asyncio.Task(generate_wrapper(sub_index, pkginfo))
-		running_generate_wrappers.append(task)
+		bzb_list = []
+		print("Waiting for pending breezybuilds on", id(hub.THREAD_CTX.running_breezybuilds))
+		while not hub.THREAD_CTX.running_breezybuilds.empty():
+			bzb_list.append(hub.THREAD_CTX.running_breezybuilds.get())
+		async for result in gather_pending_tasks(hub, bzb_list):
+			print("BZB completed", result)
 
-	# Wait for all of our generate_wrappers to complete. When the generate_wrapper is complete, we can be sure that
-	# all BreezyBuilds have been instantiated, and all JSON or other Web data has been grabbed to figure out versions,
-	# etc.
+		print(f"########################## COMPLETED {generator_sub_name}")
 
-	await hub._.gather_pending_tasks(running_generate_wrappers)
-
-	global BREEZYBUILD_TASKS_ACTIVE
-	await hub._.gather_pending_tasks(BREEZYBUILD_TASKS_ACTIVE[sub_index])
+	return generator_thread_task
 
 
 def parse_yaml_rule(hub, package_section=None):
@@ -311,7 +341,7 @@ def queue_all_yaml_autogens(hub):
 
 				pkginfo_list = []
 				for package in rule["packages"]:
-					pkginfo_list += hub._.parse_yaml_rule(package_section=package)
+					pkginfo_list += parse_yaml_rule(hub, package_section=package)
 				PENDING_QUE.append(
 					{
 						"gen_path": yaml_base_path,
@@ -335,10 +365,17 @@ def load_autogen_config(hub):
 
 
 async def execute_all_queued_generators(hub):
+	futures = []
+	loop = asyncio.get_event_loop()
+	with ThreadPoolExecutor() as executor:
+		while len(PENDING_QUE):
+			task_args = PENDING_QUE.pop(0)
+			async_func = await execute_generator(hub, **task_args)
+			future = loop.run_in_executor(executor, run_async_adapter, async_func)
+			futures.append(future)
 
-	while len(PENDING_QUE):
-		task_args = PENDING_QUE.pop(0)
-		await hub._.execute_generator(**task_args)
+	async for result in gather_pending_tasks(hub, futures):
+		pass
 
 
 async def start(hub, start_path=None, out_path=None, fetcher=None, release=None, kit=None, branch=None):
@@ -346,15 +383,15 @@ async def start(hub, start_path=None, out_path=None, fetcher=None, release=None,
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
-	hub._.load_autogen_config()
+	load_autogen_config(hub)
 	hub.FETCHER = fetcher
 	hub.pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
 	hub.pop.sub.add("funtoo.cache")
 	hub.pop.sub.add("funtoo.generators")
-	hub._.queue_all_indy_autogens()
-	hub._.queue_all_yaml_autogens()
-	await hub._.execute_all_queued_generators()
-	hub._.generate_manifests()
+	queue_all_indy_autogens(hub)
+	queue_all_yaml_autogens(hub)
+	await execute_all_queued_generators(hub)
+	generate_manifests(hub)
 	return ERRORS
 
 

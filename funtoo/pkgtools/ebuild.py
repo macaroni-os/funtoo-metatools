@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-import inspect
+
 import os
 import asyncio
 import sys
+from asyncio import Task
+
 import jinja2
 import logging
 from collections import defaultdict
@@ -106,6 +108,16 @@ class Artifact(Fetchable):
 		return self.is_fetched()
 
 
+def aggregate(meta_list):
+	out_list = []
+	for item in meta_list:
+		if isinstance(item, list):
+			out_list += item
+		else:
+			out_list.append(item)
+	return out_list
+
+
 class BreezyBuild:
 
 	cat = None
@@ -124,7 +136,6 @@ class BreezyBuild:
 		template: str = None,
 		template_text: str = None,
 		template_path: str = None,
-		sub_index=None,
 		**kwargs,
 	):
 		global HUB
@@ -132,7 +143,6 @@ class BreezyBuild:
 		self.source_tree = self.hub.CONTEXT
 		self.output_tree = self.hub.OUTPUT_CONTEXT
 		self._pkgdir = None
-		self.sub_index = None
 		self.template_args = kwargs
 		for kwarg in ["cat", "name", "version", "revision", "path"]:
 			if kwarg in kwargs:
@@ -202,41 +212,29 @@ class BreezyBuild:
 				fetch_tasks_dict[artifact] = asyncio.Task(lil_coroutine(artifact, self.catpkg))
 
 		# Wait for any artifacts that are still fetching:
-		completion_list = await self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values())
+		results = []
+		async for result in self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values()):
+			results.append(result)
+		completion_list = aggregate(results)
 		for artifact, status in completion_list:
 			if status is False:
 				logging.error(f"Artifact for url {artifact.url} referenced in {artifact.catpkgs} could not be fetched.")
 				sys.exit(1)
 
 	def push(self):
-		if self.sub_index is None:
-			# Use filename of caller as sub_index. Our pending BreezyBuilds are all organized by sub.
-			self.sub_index = inspect.getmodule(inspect.stack()[1][0]).__file__
-		#   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-		#
-		# This is a hack to add this BreezyBuild to a list of pending BreezyBuilds. We will pop things
-		# from this list, and call their generate() method, and await the completion of this method.
-		# Basically, our generator generates BreezyBuilds. Then the BreezyBuilds need to run via their
-		# generate() method. This is how we handle the generate() part and ensure everything is awaited.
-		# This trick is used because we don't pass a reference to the current plugin/generator to each
-		# BreezyBuild. So the BreezyBuild adds itself to this queue and when we process the generator,
-		# we grab from here.
-		#
-		# This fanciness is needed because even if I pass the sub to the sub's generate() function,
-		# we do not currently have the generate() function pass this sub to each BreezyBuild. So the
-		# BreezyBuild doesn't have a direct reference to the sub. If the BreezyBuild had a direct
-		# reference to the sub, it could simply add to sub.BZ_PENDING which would be a lot cleaner.
-		# This model would also be a lot friendlier for multi-threading. I could fire off a thread
-		# for each sub, and all data would be self-contained in the sub and this would be a better
-		# model than what we are doing here. Right now this is not easy to multi-thread because
-		# hub.pkgtools.autogen.BREEZYBUILDS_PENDING[self.sub_index] is a global variable and not
-		# easily made thread-local.
-		#
-		# Maybe this could be explored as a solution:
 		#
 		# https://stackoverflow.com/questions/1408171/thread-local-storage-in-python
 
-		self.hub.pkgtools.autogen.BREEZYBUILDS_PENDING[self.sub_index].append(self)
+		async def wrapper(self):
+			await self.generate()
+			return self
+
+		# This will cause the BreezyBuild to start autogeneration immediately, appending the task to the thread-
+		# local context so we can grab the result later. The return value will be the BreezyBuild object itself,
+		# thanks to the wrapper.
+		bzb_task = Task(wrapper(self))
+		print("putting bzb on queue", id(self.hub.THREAD_CTX.running_breezybuilds))
+		self.hub.THREAD_CTX.running_breezybuilds.put(bzb_task)
 
 	@property
 	def pkgdir(self):
