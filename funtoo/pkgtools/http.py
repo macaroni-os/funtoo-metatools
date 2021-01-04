@@ -20,22 +20,22 @@ RESOLVERS = {}
 SEMAPHORES = {}
 
 
-def get_resolver(hub):
+async def get_resolver(hub):
 	"""
 	This returns a DNS resolver local to the ioloop of the caller.
 	"""
 	global RESOLVERS
-	loop = asyncio.get_event_loop()
+	loop = asyncio.get_running_loop()
 	if id(loop) not in RESOLVERS:
 		RESOLVERS[id(loop)] = aiohttp.AsyncResolver(nameservers=["1.1.1.1", "1.0.0.1"], timeout=5, tries=3)
 	return RESOLVERS[id(loop)]
 
 
-def acquire_host_semaphore(hub, hostname):
+async def acquire_host_semaphore(hub, hostname):
 	global SEMAPHORES
-	loop = asyncio.get_event_loop()
+	loop = asyncio.get_running_loop()
 	if id(loop) not in SEMAPHORES:
-		SEMAPHORES[id(loop)] = defaultdict(lambda: Semaphore(value=8, loop=loop))
+		SEMAPHORES[id(loop)] = defaultdict(lambda: Semaphore(value=8))
 	return SEMAPHORES[id(loop)][hostname]
 
 
@@ -77,10 +77,9 @@ async def http_fetch_stream(hub, url, on_chunk):
 	returns successfully then the download completed successfully.
 	"""
 	hostname = get_hostname(hub, url)
-	semi = acquire_host_semaphore(hub, hostname)
+	semi = await acquire_host_semaphore(hub, hostname)
 	async with semi:
-		print("starting fetch")
-		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub._.get_resolver(), ssl=False)
+		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await hub._.get_resolver(), ssl=False)
 		try:
 			async with aiohttp.ClientSession(connector=connector) as http_session:
 				async with http_session.get(
@@ -111,10 +110,9 @@ async def http_fetch(hub, url):
 	string and return the entire content as a string.
 	"""
 	hostname = get_hostname(hub, url)
-	semi = acquire_host_semaphore(hub, hostname)
+	semi = await acquire_host_semaphore(hub, hostname)
 	async with semi:
-		print("starting fetch")
-		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=hub._.get_resolver(), ssl=False)
+		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await hub._.get_resolver(), ssl=False)
 		async with aiohttp.ClientSession(connector=connector) as http_session:
 			async with http_session.get(
 				url, headers=get_fetch_headers(hub), timeout=None, **get_auth_kwargs(hub, hostname, url)

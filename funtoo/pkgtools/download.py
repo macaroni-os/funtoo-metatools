@@ -5,7 +5,9 @@ import hashlib
 import logging
 import os
 import sys
+from asyncio import Semaphore, Lock
 from subprocess import getstatusoutput
+from contextlib import contextmanager
 
 """
 This sub deals with the higher-level logic related to downloading of distfiles. Where the 'fetch.py'
@@ -15,25 +17,47 @@ hashes on the resultant downloads and ensuring they match what we expect.
 
 The implementation is based around a class called `Download`.
 
-Because autogen is multi-threaded, it's possible for two autogens to try downloading the same file
+Because autogen uses asyncio, it's possible for two autogens to try downloading the same file
 at the same time. If they create a `Download` object, this special class will do the magic of looking
-at `hub.DL_ACTIVE` for any active downloads of the same file, and if one exists, it will not fire
+for any active downloads of the same file, and if one exists, it will not fire
 off a new download but instead wait for the existing download to complete. So the 'downloader'
 (code trying to download the file) can remain ignorant of the fact that the download was already
 started previously.
 
-This allows multi-threaded downloads of potentially identical files to work without complication in
+This allows asyncio downloads of potentially identical files to work without complication in
 the autogen.py files or generators so that this complexity does not have to be dealt with by those
 who are simply writing autogens.
 """
 
+DL_ACTIVE_LOCK = Lock()
+DL_ACTIVE = dict()
+
+download_slot = Semaphore(value=24)
+
 
 def __init__(hub):
-
 	hub.CHECK_DISK_HASHES = False
-	hub.DL_ACTIVE = {}
-	# This DL_ACTIVE_COUNT is used to limit the number of simultaneous downloads (to 24):
-	hub.DL_ACTIVE_COUNT = asyncio.Semaphore(value=24, loop=asyncio.get_event_loop())
+
+
+@contextmanager
+async def start_download(hub, download):
+	"""
+	Automatically record the download as being active, and remove from our list when complete.
+	"""
+	async with DL_ACTIVE_LOCK:
+		DL_ACTIVE[download.final_name] = download
+	yield
+	async with DL_ACTIVE_LOCK:
+		del DL_ACTIVE[download.final_name]
+
+
+def get_download(hub, final_name):
+	"""
+	Get a download object for the file we're interested in if one is already being downloaded.
+	"""
+	if final_name in DL_ACTIVE:
+		return DL_ACTIVE[final_name]
+	return None
 
 
 HASHES = ["sha256", "sha512", "blake2b"]
@@ -55,7 +79,7 @@ async def ensure_completed(hub, catpkg, artifact) -> bool:
 		artifact.final_data = integrity_item["final_data"]
 		return True
 	else:
-		return await hub._.ensure_fetched(artifact, catpkg=catpkg)
+		return await ensure_fetched(hub, artifact, catpkg=catpkg)
 
 
 async def ensure_fetched(hub, artifact, catpkg=None) -> bool:
@@ -80,18 +104,19 @@ async def ensure_fetched(hub, artifact, catpkg=None) -> bool:
 				if integrity_item is not None:
 					artifact.final_data = integrity_item["final_data"]
 				else:
-					final_data = hub._.calc_hashes(artifact.final_path)
+					final_data = calc_hashes(hub, artifact.final_path)
 					hub.merge.deepdive.store_distfile_integrity(catpkg, artifact.final_name, final_data)
 					artifact.record_final_data(final_data)
 			else:
-				final_data = hub._.calc_hashes(artifact.final_path)
+				final_data = calc_hashes(hub, artifact.final_path)
 				artifact.record_final_data(final_data)
 			return True
 	else:
-		if artifact.final_name in hub.DL_ACTIVE:
+		active_dl = get_download(hub, artifact.final_name)
+		if active_dl is not None:
 			# Active download -- wait for it to finish:
 			logging.info(f"Waiting for {artifact.final_name} to finish")
-			return await hub.DL_ACTIVE[artifact.final_name].wait_for_completion(artifact)
+			return await active_dl.wait_for_completion(artifact)
 		else:
 			# No active download for this file -- start one:
 			dl_file = Download(hub, artifact)
@@ -129,13 +154,13 @@ class Download:
 
 	def wait_for_completion(self, artifact):
 		self.artifacts.append(artifact)
-		fut = asyncio.get_event_loop().create_future()
+		fut = asyncio.get_running_loop().create_future()
 		self.futures.append(fut)
 		return fut
 
 	async def download(self) -> bool:
 		"""
-		This method attempts to start a download. It hooks into DL_ACTIVE_COUNT which is used to limit the number
+		This method attempts to start a download. It hooks into ``download_slot`` which is used to limit the number
 		of simultaneous downloads.
 
 		Upon success, it will also record 'distfile integrity' entries into MongoDB on completion, and call any
@@ -145,36 +170,34 @@ class Download:
 		file, they will get True on success and False on failure (self.futures holds futures for others waiting
 		on this file, and we will future.set_result() with the boolean return code as well.)
 		"""
-		await self.hub.DL_ACTIVE_COUNT.acquire()
-		self.hub.DL_ACTIVE[self.final_name] = self
 
-		success = True
+		async with download_slot:
+			async with start_download(self.hub, self):
 
-		try:
-			final_data = await _download(self.hub, self.artifacts[0])
-		except self.hub.pkgtools.fetch.FetchError as fe:
-			success = False
+				success = True
 
-		if success:
-			integrity_keys = {}
-			for artifact in self.artifacts:
-				artifact.record_final_data(final_data)
-				for catpkg in artifact.catpkgs:
-					integrity_keys[(catpkg, artifact.final_name)] = True
+				try:
+					final_data = await _download(self.hub, self.artifacts[0])
+				except self.hub.pkgtools.fetch.FetchError as fe:
+					success = False
 
-			# For every final_name referenced by a catpkg, create a distfile integrity entry. We use integrity_keys to
-			# avoid duplicate records.
+				if success:
+					integrity_keys = {}
+					for artifact in self.artifacts:
+						artifact.record_final_data(final_data)
+						for catpkg in artifact.catpkgs:
+							integrity_keys[(catpkg, artifact.final_name)] = True
 
-			for catpkg, final_name in integrity_keys.keys():
-				self.hub.merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
+					# For every final_name referenced by a catpkg, create a distfile integrity entry. We use integrity_keys to
+					# avoid duplicate records.
 
-			# We only need to insert once into fastpull since it is the same underlying file.
+					for catpkg, final_name in integrity_keys.keys():
+						self.hub.merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
 
-			if self.hub.MERGE_CONFIG.fastpull_enabled:
-				self.hub.pkgtools.fastpull.inject_into_fastpull(self.artifacts[0].final_path, final_data=final_data)
+					# We only need to insert once into fastpull since it is the same underlying file.
 
-		del self.hub.DL_ACTIVE[self.final_name]
-		self.hub.DL_ACTIVE_COUNT.release()
+					if self.hub.MERGE_CONFIG.fastpull_enabled:
+						self.hub.pkgtools.fastpull.inject_into_fastpull(self.artifacts[0].final_path, final_data=final_data)
 
 		for future in self.futures:
 			future.set_result(success)

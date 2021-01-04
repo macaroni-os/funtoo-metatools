@@ -1,16 +1,12 @@
 #!/usr/bin/env python3
 import asyncio
-import inspect
 import subprocess
 import os
 import threading
-import traceback
 import sys
-from asyncio import FIRST_COMPLETED, ALL_COMPLETED, FIRST_EXCEPTION, Task
+from asyncio import FIRST_EXCEPTION, Task
 from collections import defaultdict
-from concurrent.futures._base import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
-from queue import Queue
 
 import yaml
 from yaml import safe_load
@@ -359,7 +355,7 @@ def load_autogen_config(hub):
 
 async def execute_all_queued_generators(hub):
 	futures = []
-	loop = asyncio.get_event_loop()
+	loop = asyncio.get_running_loop()
 	with ThreadPoolExecutor() as executor:
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
