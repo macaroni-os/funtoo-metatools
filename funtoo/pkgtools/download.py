@@ -7,7 +7,7 @@ import os
 import sys
 from asyncio import Semaphore, Lock
 from subprocess import getstatusoutput
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 
 """
 This sub deals with the higher-level logic related to downloading of distfiles. Where the 'fetch.py'
@@ -39,16 +39,18 @@ def __init__(hub):
 	hub.CHECK_DISK_HASHES = False
 
 
-@contextmanager
+@asynccontextmanager
 async def start_download(hub, download):
 	"""
 	Automatically record the download as being active, and remove from our list when complete.
 	"""
-	async with DL_ACTIVE_LOCK:
-		DL_ACTIVE[download.final_name] = download
-	yield
-	async with DL_ACTIVE_LOCK:
-		del DL_ACTIVE[download.final_name]
+	try:
+		async with DL_ACTIVE_LOCK:
+			DL_ACTIVE[download.final_name] = download
+		yield
+	finally:
+		async with DL_ACTIVE_LOCK:
+			del DL_ACTIVE[download.final_name]
 
 
 def get_download(hub, final_name):
