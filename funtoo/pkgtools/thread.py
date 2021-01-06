@@ -21,7 +21,7 @@ def run_async_adapter(corofn, *args, **kwargs):
 	ThreadPoolExecutor will not allow async calls.  But with this wrapper, our
 	worker and its subsequent calls can be async.
 	"""
-	asyncio.run(corofn(*args, **kwargs))
+	return asyncio.run(corofn(*args, **kwargs))
 
 
 # vim: ts=4 sw=4 noet

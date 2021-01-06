@@ -97,7 +97,7 @@ async def main_thread():
 
 if __name__ == "__main__":
 	sub_name = os.path.basename(sys.argv[0])
-	int_g = [sub_name, "pkgtools"]
+	int_g = [sub_name]
 
 	hub.pop.conf.integrate(int_g, cli=sub_name, roots=True, loader="yaml", logs=False)
 
