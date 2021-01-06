@@ -1,6 +1,4 @@
 #!/usr/bin/python3
-import pymongo
-from pymongo import MongoClient
 
 """
 The DeepDive database is designed to get wiped and re-loaded to contain only the metadata for all ebuilds processed
@@ -28,10 +26,16 @@ we don't need to arbitrate/lock access to the Distfile Integrity DB. The Archite
 
 
 def __virtual__(hub):
-	return hub.merge.HAS_MONGO
+	has_mongo = getattr(hub, "HAS_MONGO", False)
+	if not has_mongo:
+		print("MongoDB functionality disabled. Import funtoo.pkgtools sub if this is needed.")
+	return has_mongo
 
 
 def __init__(hub):
+	import pymongo
+	from pymongo import MongoClient
+
 	mc = MongoClient()
 
 	dd = hub.DEEPDIVE = mc.metatools.deepdive

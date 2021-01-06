@@ -18,11 +18,11 @@ of the downloaded artifact -- its message digests and size at the time the downl
 
 """
 
-__virtualname__ = "fetch"
+__virtualname__ = "fetch_cache"
 
 
 def __virtual__(hub):
-	return hub.cache.HAS_MONGO
+	return hub.HAS_MONGO
 
 
 def __init__(hub):

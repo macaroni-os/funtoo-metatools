@@ -155,9 +155,8 @@ if __name__ == "__main__":
 		root=config.source_trees + "/kit-fixups",
 	)
 
-	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools")
-	hub.pop.sub.add("funtoo.cache")
+	hub.pop.sub.add("funtoo.merge")
 
 	hub.CPM_LOGGER = None
 

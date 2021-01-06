@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import asyncio
 import subprocess
 import os
@@ -375,7 +376,6 @@ async def start(hub, start_path=None, out_path=None, fetcher=None, release=None,
 	load_autogen_config(hub)
 	hub.FETCHER = fetcher
 	hub.pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
-	hub.pop.sub.add("funtoo.cache")
 	hub.pop.sub.add("funtoo.generators")
 	queue_all_indy_autogens(hub)
 	queue_all_yaml_autogens(hub)

@@ -24,8 +24,8 @@ if __name__ == "__main__":
 		kwargs[arg] = hub.OPT["doit"][arg]
 	hub.MERGE_CONFIG = config = Configuration(fastpull=hub.OPT["doit"]["fastpull"])
 
-	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools", omit_class=False)
+	hub.pop.sub.add("funtoo.merge")
 
 	errors = asyncio.get_event_loop().run_until_complete(hub.pkgtools.autogen.start(**kwargs))
 

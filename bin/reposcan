@@ -23,18 +23,16 @@ async def main_thread(repo_plus_overlays):
 			hub.ECLASS_ROOT = out_tree.root
 			hub.ECLASS_HASHES = hub.merge.metadata.get_eclass_hashes(hub.ECLASS_ROOT)
 
-		hub.cache.metadata.fetch_kit(out_tree)
+		hub.merge.metadata.fetch_kit(out_tree)
 		hub.merge.metadata.gen_cache(out_tree)
-		hub.cache.metadata.flush_kit(out_tree)
+		hub.merge.metadata.flush_kit(out_tree)
 		pos += 1
 
 
 if __name__ == "__main__":
-	hub.ENABLE_MONGO = False
 	hub.MERGE_CONFIG = config = Configuration()
-
 	hub.pop.sub.add("funtoo.merge")
-	hub.pop.sub.add("funtoo.cache")
+
 	hub.merge.metadata.cleanup_error_logs()
 	repo_plus_overlays = [
 		{

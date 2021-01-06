@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-__virtualname__ = "fetch"
+__virtualname__ = "fetch_cache"
 
 
 def __virtual__(hub):
-	return not hub.cache.HAS_MONGO
+	return not hub.HAS_MONGO
 
 
 def __init__(hub):

@@ -70,7 +70,7 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 				# This call will return our cached resource if it's available and refresh_interval hasn't yet expired, i.e.
 				# it is not yet 'stale'.
 				try:
-					result = await hub.cache.fetch.fetch_cache_read(
+					result = await hub.pkgtools.fetch_cache.fetch_cache_read(
 						fetch_method.__name__, fetchable, refresh_interval=refresh_interval
 					)
 					logging.info(f"Retrieved cached result for {url}")
@@ -79,7 +79,7 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 					# We'll continue and attempt a live fetch of the resource...
 					pass
 			result = await fetch_method(fetchable)
-			await hub.cache.fetch.fetch_cache_write(fetch_method.__name__, fetchable, body=result)
+			await hub.pkgtools.fetch_cache.fetch_cache_write(fetch_method.__name__, fetchable, body=result)
 			return result
 		except FetchError as e:
 			if e.retry and attempts + 1 < hub.FETCH_ATTEMPTS:
@@ -99,10 +99,10 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 
 	# If we've gotten here, we've performed all of our attempts to do live fetching.
 	try:
-		result = await hub.cache.fetch.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
+		result = await hub.pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
 		return result["body"]
 	except CacheMiss:
-		await hub.cache.fetch.record_fetch_failure(fetch_method.__name__, fetchable, fail_reason=fail_reason)
+		await hub.pkgtools.fetch_cache.record_fetch_failure(fetch_method.__name__, fetchable, fail_reason=fail_reason)
 		raise FetchError(
 			fetchable,
 			f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.",

@@ -45,9 +45,8 @@ if __name__ == "__main__":
 		origin_check=False,
 		pull=False,
 	)
-	hub.pop.sub.add("funtoo.merge")
 	hub.pop.sub.add("funtoo.pkgtools")
-	hub.pop.sub.add("funtoo.cache")
+	hub.pop.sub.add("funtoo.merge")
 
 	hub.META_REPO.initialize()
 	hub.FIXUP_REPO.initialize()

@@ -97,7 +97,7 @@ async def get_deepdive_kit_items(hub, ctx):
 	repo_obj = await checkout_kit(hub, ctx, pull=False)
 
 	# load on-disk JSON metadata cache into memory:
-	hub.cache.metadata.fetch_kit(repo_obj)
+	hub.merge.metadata.fetch_kit(repo_obj)
 
 	bulk_insert = []
 	head_sha1 = headSHA1(repo_obj.root)
@@ -111,7 +111,7 @@ async def get_deepdive_kit_items(hub, ctx):
 	except KeyError as ke:
 		print(f"Encountered error when processing {ctx.kit.name} {ctx.kit.branch}")
 		raise ke
-	hub.cache.metadata.flush_kit(repo_obj, save=False)
+	hub.merge.metadata.flush_kit(repo_obj, save=False)
 	print(f"Got {len(bulk_insert)} items to bulk insert for {ctx.kit.name} branch {ctx.kit.branch}.")
 	return ctx, bulk_insert
 
@@ -195,7 +195,7 @@ async def generate_kit(hub, ctx):
 	out_tree = await checkout_kit(hub, ctx)
 
 	# load on-disk JSON metadata cache into memory:
-	hub.cache.metadata.fetch_kit(out_tree)
+	hub.merge.metadata.fetch_kit(out_tree)
 
 	steps = []
 
@@ -268,7 +268,7 @@ async def generate_kit(hub, ctx):
 	out_tree.gitCommit(message=update_msg, push=hub.PUSH)
 
 	# save in-memory metadata cache to JSON:
-	hub.cache.metadata.flush_kit(out_tree)
+	hub.merge.metadata.flush_kit(out_tree)
 
 	return ctx, out_tree, out_tree.head()
 
