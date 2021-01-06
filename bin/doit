@@ -13,7 +13,7 @@ hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)
 hub = pop.hub.Hub()
 
-int_g = ["doit", "pkgtools"]
+int_g = ["doit"]
 
 hub.pop.conf.integrate(int_g, cli="doit", roots=True, loader="yaml", logs=True)
 
