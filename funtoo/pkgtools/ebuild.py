@@ -191,7 +191,7 @@ class BreezyBuild:
 		      are not just calculated -- the distfile integrity entry should be created as well.
 
 		"""
-
+		assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
 		fetch_tasks_dict = {}
 
 		for artifact in self.artifacts:
@@ -207,8 +207,10 @@ class BreezyBuild:
 			if not artifact.final_data:
 
 				async def lil_coroutine(a, catpkg):
+					assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
 					return a, await self.hub.pkgtools.download.ensure_completed(catpkg, a)
 
+				assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
 				fetch_tasks_dict[artifact] = asyncio.Task(lil_coroutine(artifact, self.catpkg))
 
 		# Wait for any artifacts that are still fetching:
