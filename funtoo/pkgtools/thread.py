@@ -14,14 +14,15 @@ def get_threadpool(hub):
 	return ThreadPoolExecutor(max_workers=cpu_count())
 
 
-def run_async_adapter(corofn, *args, **kwargs):
+def run_async_adapter(hub, corofn, *args, **kwargs):
 	"""
 	Use this method to run an asynchronous worker within a ThreadPoolExecutor.
 	Without this special wrapper, this normally doesn't work, and the
 	ThreadPoolExecutor will not allow async calls.  But with this wrapper, our
 	worker and its subsequent calls can be async.
 	"""
-	return asyncio.run(corofn(*args, **kwargs))
+	hub.THREAD_CTX.loop = asyncio.new_event_loop()
+	return hub.THREAD_CTX.loop.run_until_complete(corofn(*args, **kwargs))
 
 
 # vim: ts=4 sw=4 noet

@@ -41,6 +41,7 @@ def __init__(hub):
 
 @asynccontextmanager
 async def start_download(hub, download):
+	assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 	"""
 	Automatically record the download as being active, and remove from our list when complete.
 	"""
@@ -76,6 +77,7 @@ async def ensure_completed(hub, catpkg, artifact) -> bool:
 	This function returns True if we do indeed have the artifact available to us, and False if there was some error
 	which prevents this.
 	"""
+	assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 	integrity_item = hub.merge.deepdive.get_distfile_integrity(catpkg, distfile=artifact.final_name)
 	if integrity_item is not None:
 		artifact.final_data = integrity_item["final_data"]
@@ -91,6 +93,7 @@ async def ensure_fetched(hub, artifact, catpkg=None) -> bool:
 
 	Returns a boolean with True indicating success and False failure.
 	"""
+	assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 	if artifact.is_fetched():
 		if artifact.final_data is not None:
 			return True
@@ -156,6 +159,7 @@ class Download:
 
 	def wait_for_completion(self, artifact):
 		self.artifacts.append(artifact)
+		assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
 		fut = asyncio.get_running_loop().create_future()
 		self.futures.append(fut)
 		return fut
@@ -172,10 +176,10 @@ class Download:
 		file, they will get True on success and False on failure (self.futures holds futures for others waiting
 		on this file, and we will future.set_result() with the boolean return code as well.)
 		"""
-
+		assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
 		async with download_slot:
 			async with start_download(self.hub, self):
-
+				assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
 				success = True
 
 				try:
@@ -225,6 +229,7 @@ async def _download(hub, artifact):
 	needs to catch and handle this.
 
 	"""
+	assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 	logging.info(f"Fetching {artifact.url}...")
 
 	temp_path = artifact.temp_path

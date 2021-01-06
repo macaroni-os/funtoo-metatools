@@ -198,8 +198,8 @@ async def execute_generator(
 	# The generate_wrapper wraps the call to `generate()` (in autogen.py or the generator) and performs setup
 	# and post-tasks:
 
-	async def generator_thread_task():
-
+	async def generator_thread_task(hub):
+		assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 		print(f"********************** Executing generator {generator_sub_name}")
 
 		hub.THREAD_CTX.sub = generator_sub
@@ -360,7 +360,7 @@ async def execute_all_queued_generators(hub):
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
 			async_func = await execute_generator(hub, **task_args)
-			future = loop.run_in_executor(executor, run_async_adapter, async_func)
+			future = loop.run_in_executor(executor, run_async_adapter, hub, async_func, hub)
 			futures.append(future)
 
 	async for result in gather_pending_tasks(hub, futures):
