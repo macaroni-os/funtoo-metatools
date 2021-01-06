@@ -31,8 +31,21 @@ who are simply writing autogens.
 
 DL_ACTIVE_LOCK = Lock()
 DL_ACTIVE = dict()
+DOWNLOAD_SLOT = {}
 
-download_slot = Semaphore(value=24)
+async def acquire_download_slot(hub):
+	"""
+	This should ensure that the Semaphore is created INSIDE the ioloop, which appears to be necessary:
+
+	https://stackoverflow.com/a/53724990
+
+	Did all this shit get inherited from Java?
+	"""
+	global DOWNLOAD_SLOT
+	loop = asyncio.get_running_loop()
+	if id(loop) not in DOWNLOAD_SLOT:
+		DOWNLOAD_SLOT[id(loop)] = Semaphore(value=24)
+	return DOWNLOAD_SLOT[id(loop)]
 
 
 def __init__(hub):
@@ -177,7 +190,7 @@ class Download:
 		on this file, and we will future.set_result() with the boolean return code as well.)
 		"""
 		assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
-		async with download_slot:
+		async with acquire_download_slot(self.hub):
 			async with start_download(self.hub, self):
 				assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
 				success = True
