@@ -190,7 +190,8 @@ class Download:
 		on this file, and we will future.set_result() with the boolean return code as well.)
 		"""
 		assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
-		async with acquire_download_slot(self.hub):
+		slot = await acquire_download_slot(self.hub)
+		async with slot:
 			async with start_download(self.hub, self):
 				assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
 				success = True
