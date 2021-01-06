@@ -33,6 +33,7 @@ DL_ACTIVE_LOCK = Lock()
 DL_ACTIVE = dict()
 DOWNLOAD_SLOT = {}
 
+
 async def acquire_download_slot(hub):
 	"""
 	This should ensure that the Semaphore is created INSIDE the ioloop, which appears to be necessary:
