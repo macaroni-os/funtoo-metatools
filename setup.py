@@ -21,7 +21,6 @@ setuptools.setup(
 	python_requires=">=3.7",
 	install_requires=[
 		"sphinx_funtoo_theme",
-		"pop>=16",
 		"Jinja2",
 		"xmltodict",
 		"aiodns",
