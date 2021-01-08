@@ -345,7 +345,7 @@ async def execute_all_queued_generators():
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
 			async_func = await execute_generator(**task_args)
-			future = loop.run_in_executor(executor, hub.pkgtools.thread.run_async_adapter, hub, async_func)
+			future = loop.run_in_executor(executor, hub.pkgtools.thread.run_async_adapter, async_func)
 			futures.append(future)
 
 	async for result in gather_pending_tasks(futures):

@@ -16,7 +16,7 @@ def get_threadpool():
 	return ThreadPoolExecutor(max_workers=cpu_count())
 
 
-def run_async_adapter(hub, corofn, *args, **kwargs):
+def run_async_adapter(corofn, *args, **kwargs):
 	"""
 	Use this method to run an asynchronous worker within a ThreadPoolExecutor.
 	Without this special wrapper, this normally doesn't work, and the
