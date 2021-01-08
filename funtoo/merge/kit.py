@@ -1,29 +1,14 @@
 #!/usr/bin/env python3
+
 import json
 import os
 import sys
 from collections import defaultdict
 
-from merge_utils.steps import (
-	InsertFilesFromSubdir,
-	SyncDir,
-	SyncFiles,
-	InsertEbuilds,
-	CleanTree,
-	CopyFiles,
-	PruneLicenses,
-	ELTSymlinkWorkaround,
-	CreateCategories,
-	GenPythonUse,
-	Minify,
-	GenCache,
-	RemoveFiles,
-	FindAndRemove,
-)
-from merge_utils.tree import GitTree, runShell, headSHA1
+hub = None
 
 
-def copy_from_fixups_steps(hub, ctx):
+def copy_from_fixups_steps(ctx):
 
 	# Phase 3: copy eclasses, licenses, profile info, and ebuild/eclass fixups from the kit-fixups repository.
 
@@ -52,37 +37,45 @@ def copy_from_fixups_steps(hub, ctx):
 	# Here is the core logic that copies all the fix-ups from kit-fixups (eclasses and ebuilds) into place:
 	eclass_release_path = "eclass/%s" % hub.RELEASE
 	if os.path.exists(os.path.join(hub.FIXUP_REPO.root, eclass_release_path)):
-		steps += [SyncDir(hub.FIXUP_REPO.root, eclass_release_path, "eclass")]
+		steps += [hub.merge.steps.SyncDir(hub.FIXUP_REPO.root, eclass_release_path, "eclass")]
 	fixup_dirs = ["global", "curated", ctx.kit.branch]
 	for fixup_dir in fixup_dirs:
 		fixup_path = ctx.kit.name + "/" + fixup_dir
 		if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path):
 			if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path + "/eclass"):
 				steps += [
-					InsertFilesFromSubdir(hub.FIXUP_REPO, "eclass", ".eclass", select="all", skip=None, src_offset=fixup_path)
+					hub.merge.steps.InsertFilesFromSubdir(
+						hub.FIXUP_REPO, "eclass", ".eclass", select="all", skip=None, src_offset=fixup_path
+					)
 				]
 			if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path + "/licenses"):
-				steps += [InsertFilesFromSubdir(hub.FIXUP_REPO, "licenses", None, select="all", skip=None, src_offset=fixup_path)]
+				steps += [
+					hub.merge.steps.InsertFilesFromSubdir(
+						hub.FIXUP_REPO, "licenses", None, select="all", skip=None, src_offset=fixup_path
+					)
+				]
 			if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path + "/profiles"):
 				steps += [
-					InsertFilesFromSubdir(
+					hub.merge.steps.InsertFilesFromSubdir(
 						hub.FIXUP_REPO, "profiles", None, select="all", skip=["repo_name", "categories"], src_offset=fixup_path
 					)
 				]
 			# copy appropriate kit readme into place:
 			readme_path = fixup_path + "/README.rst"
 			if os.path.exists(hub.FIXUP_REPO.root + "/" + readme_path):
-				steps += [SyncFiles(hub.FIXUP_REPO.root, {readme_path: "README.rst"})]
+				steps += [hub.merge.steps.SyncFiles(hub.FIXUP_REPO.root, {readme_path: "README.rst"})]
 
 			# We now add a step to insert the fixups, and we want to record them as being copied so successive kits
 			# don't get this particular catpkg. Assume we may not have all these catpkgs listed in our package-set
 			# file...
 
-			steps += [InsertEbuilds(hub, hub.FIXUP_REPO, ebuildloc=fixup_path, select="all", skip=None, replace=True)]
+			steps += [
+				hub.merge.steps.InsertEbuilds(hub.FIXUP_REPO, ebuildloc=fixup_path, select="all", skip=None, replace=True)
+			]
 	return steps
 
 
-async def get_deepdive_kit_items(hub, ctx):
+async def get_deepdive_kit_items(ctx):
 
 	"""
 	This function will read on-disk metadata for a particular kit, and process it, splitting it into individual
@@ -94,13 +87,13 @@ async def get_deepdive_kit_items(hub, ctx):
 	writing into MongoDB.
 	"""
 
-	repo_obj = await checkout_kit(hub, ctx, pull=False)
+	repo_obj = await checkout_kit(ctx, pull=False)
 
 	# load on-disk JSON metadata cache into memory:
 	hub.merge.metadata.fetch_kit(repo_obj)
 
 	bulk_insert = []
-	head_sha1 = headSHA1(repo_obj.root)
+	head_sha1 = hub.merge.tree.headSHA1(repo_obj.root)
 	# Grab our fancy JSON record containing lots of kit information and prep it for insertion into MongoDB:
 	try:
 		for atom, json_data in repo_obj.KIT_CACHE.items():
@@ -116,7 +109,7 @@ async def get_deepdive_kit_items(hub, ctx):
 	return ctx, bulk_insert
 
 
-async def checkout_kit(hub, ctx, pull=None):
+async def checkout_kit(ctx, pull=None):
 
 	# For Sabayon, if ctx.kit has a URL, we use that. This allows us to checkout anything as a "kit"
 	# for leveraging our kit-cache pipeline.
@@ -132,7 +125,7 @@ async def checkout_kit(hub, ctx, pull=None):
 
 	if kind == "independent":
 		# For independent kits, we must clone the source tree and can't simply auto-create a tree from scratch:
-		git_class = GitTree
+		git_class = hub.merge.tree.GitTree
 		if ctx.kit.get("url", None):
 			kwargs["url"] = ctx.kit.url
 		else:
@@ -148,7 +141,7 @@ async def checkout_kit(hub, ctx, pull=None):
 			kwargs["pull"] = True
 	else:
 		# For auto-generated kits, if we are in 'dev mode' then simply create a Tree from scratch.
-		git_class = getattr(hub, "GIT_CLASS", GitTree)
+		git_class = getattr(hub, "GIT_CLASS", hub.merge.tree.GitTree)
 		kwargs["url"] = hub.MERGE_CONFIG.url(ctx.kit.name, kind="auto")
 
 	# Allow overriding of pull behavior.
@@ -166,7 +159,7 @@ async def checkout_kit(hub, ctx, pull=None):
 	else:
 		root = os.path.join(hub.MERGE_CONFIG.dest_trees, ctx.kit.name)
 
-	out_tree = git_class(hub, ctx.kit.name, branch=branch, root=root, **kwargs)
+	out_tree = git_class(ctx.kit.name, branch=branch, root=root, **kwargs)
 	out_tree.initialize()
 
 	# TODO: If an independent kit, and we are setting up a 'dev' branch, rewrite origin so we
@@ -177,7 +170,7 @@ async def checkout_kit(hub, ctx, pull=None):
 	return out_tree
 
 
-async def generate_kit(hub, ctx):
+async def generate_kit(ctx):
 
 	"""
 
@@ -192,7 +185,7 @@ async def generate_kit(hub, ctx):
 
 	"""
 
-	out_tree = await checkout_kit(hub, ctx)
+	out_tree = await checkout_kit(ctx)
 
 	# load on-disk JSON metadata cache into memory:
 	hub.merge.metadata.fetch_kit(out_tree)
@@ -200,9 +193,9 @@ async def generate_kit(hub, ctx):
 	steps = []
 
 	if ctx.kit.kind == "independent":
-		steps += [RemoveFiles(["metadata/md5-cache"])]
+		steps += [hub.merge.steps.RemoveFiles(["metadata/md5-cache"])]
 	elif ctx.kit.kind == "autogenerated":
-		steps += [CleanTree()]
+		steps += [hub.merge.steps.CleanTree()]
 
 		pre_steps, post_steps = hub.merge.foundations.get_kit_pre_post_steps(ctx)
 
@@ -211,27 +204,27 @@ async def generate_kit(hub, ctx):
 
 		# Copy files specified in 'eclasses' and 'copyfiles' sections in the kit's YAML:
 		for repo_name, copyfile_tuples in hub.merge.foundations.get_copyfiles_from_yaml(ctx).items():
-			steps += [CopyFiles(hub.SOURCE_REPOS[repo_name], copyfile_tuples)]
+			steps += [hub.merge.steps.CopyFiles(hub.SOURCE_REPOS[repo_name], copyfile_tuples)]
 
 		# Copy over catpkgs listed in 'packages' section:
 
 		for repo_name, packages in hub.merge.foundations.get_kit_packages(ctx):
 			from_tree = hub.SOURCE_REPOS[repo_name]
 			# TODO: add move maps below
-			steps += [InsertEbuilds(hub, from_tree, skip=None, replace=True, move_maps=None, select=packages)]
+			steps += [hub.merge.steps.InsertEbuilds(from_tree, skip=None, replace=True, move_maps=None, select=packages)]
 
 		# If an autogenerated kit, we also want to copy various things (catpkgs, eclasses, profiles) from kit-fixups:
-		steps += copy_from_fixups_steps(hub, ctx)
+		steps += copy_from_fixups_steps(ctx)
 		steps += [
-			RemoveFiles(hub.merge.foundations.get_excludes_from_yaml(ctx)),
-			FindAndRemove(["__pycache__"]),
+			hub.merge.steps.RemoveFiles(hub.merge.foundations.get_excludes_from_yaml(ctx)),
+			hub.merge.steps.FindAndRemove(["__pycache__"]),
 		] + post_steps
 
 	steps += [
-		Minify(),
-		ELTSymlinkWorkaround(),
-		CreateCategories(),
-		SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "licenses"),
+		hub.merge.steps.Minify(),
+		hub.merge.steps.ELTSymlinkWorkaround(),
+		hub.merge.steps.CreateCategories(),
+		hub.merge.steps.SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "licenses"),
 	]
 
 	await out_tree.run(steps)
@@ -247,14 +240,14 @@ async def generate_kit(hub, ctx):
 	# We will execute all the steps that we have queued up to this point, which will result in out_tree.KIT_CACHE
 	# being populated with all the metadata from the kit. Which will allow the next steps to run successfully.
 
-	await out_tree.run([GenCache()])
+	await out_tree.run([hub.merge.steps.GenCache()])
 
-	meta_steps = [PruneLicenses()]
+	meta_steps = [hub.merge.steps.PruneLicenses()]
 
 	python_settings = hub.merge.foundations.python_kit_settings()
 
 	for py_branch, py_settings in python_settings.items():
-		meta_steps += [GenPythonUse(hub, py_settings, "funtoo/kits/python-kit/%s" % py_branch)]
+		meta_steps += [hub.merge.steps.GenPythonUse(py_settings, "funtoo/kits/python-kit/%s" % py_branch)]
 
 	# We can now run all the steps that require access to metadata:
 
@@ -273,7 +266,7 @@ async def generate_kit(hub, ctx):
 	return ctx, out_tree, out_tree.head()
 
 
-def generate_metarepo_metadata(hub, output_sha1s):
+def generate_metarepo_metadata(output_sha1s):
 	"""
 	Generates the metadata in /var/git/meta-repo/metadata/...
 	:param release: the release string, like "1.3-release".
@@ -325,15 +318,15 @@ def generate_metarepo_metadata(hub, output_sha1s):
 		a.write(json.dumps(rel_info, sort_keys=True, indent=4, ensure_ascii=False))
 
 
-def mirror_repository(hub, repo_obj):
+def mirror_repository(repo_obj):
 	"""
 	Mirror a repository to its mirror location, ie. GitHub.
 	"""
 	base_path = os.path.join(hub.MERGE_CONFIG.temp_path, "mirror_repos")
 	os.makedirs(base_path, exist_ok=True)
-	runShell(f"git clone --bare {repo_obj.root} {base_path}/{repo_obj.name}.pushme")
-	runShell(
+	hub.merge.tree.runShell(f"git clone --bare {repo_obj.root} {base_path}/{repo_obj.name}.pushme")
+	hub.merge.tree.runShell(
 		f"cd {base_path}/{repo_obj.name}.pushme && git remote add upstream {repo_obj.mirror} && git push --mirror upstream"
 	)
-	runShell(f"rm -rf {base_path}/{repo_obj.name}.pushme")
+	hub.merge.tree.runShell(f"rm -rf {base_path}/{repo_obj.name}.pushme")
 	return repo_obj.name

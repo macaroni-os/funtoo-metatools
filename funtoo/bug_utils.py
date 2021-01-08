@@ -23,7 +23,9 @@ class JIRA(object):
 		base64string = gen_base64(self.user, self.password)
 		return "Basic %s" % base64string
 
-	def getAllIssues(self, params={}):
+	def getAllIssues(self, params=None):
+		if params is None:
+			params = {}
 		# use this to search with params={"jql" : "blah" }
 		url = self.url + "/search"
 		r = requests.get(url, params=params)

@@ -4,13 +4,15 @@ import asyncio
 from concurrent.futures.thread import ThreadPoolExecutor
 from multiprocessing import cpu_count
 
+hub = None
 
-def __init__(hub):
+
+def __init__():
 	hub.LOOP = asyncio.get_event_loop()
 	hub.CPU_BOUND_EXECUTOR = ThreadPoolExecutor(max_workers=cpu_count())
 
 
-def get_threadpool(hub):
+def get_threadpool():
 	return ThreadPoolExecutor(max_workers=cpu_count())
 
 

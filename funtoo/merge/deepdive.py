@@ -32,7 +32,7 @@ def __virtual__(hub):
 	return has_mongo
 
 
-def __init__(hub):
+def __init__():
 	import pymongo
 	from pymongo import MongoClient
 
@@ -50,11 +50,11 @@ def __init__(hub):
 	di.create_index([("category", pymongo.ASCENDING), ("package", pymongo.ASCENDING), ("distfile", pymongo.ASCENDING)])
 
 
-def get_distfile_integrity(hub, catpkg=None, distfile=None):
+def get_distfile_integrity(catpkg=None, distfile=None):
 	return hub.DISTFILE_INTEGRITY.find_one({"catpkg": catpkg, "distfile": distfile})
 
 
-def store_distfile_integrity(hub, catpkg, final_name, final_data, **kwargs):
+def store_distfile_integrity(catpkg, final_name, final_data, **kwargs):
 	"""
 	Store something in the distfile integrity database. This method is not thread-safe so you should call it from the
 	main thread of 'doit' and not a sub-thread.

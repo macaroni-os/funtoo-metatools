@@ -4,7 +4,7 @@ import logging
 import pop.hub
 
 from merge_utils.config import Configuration
-from merge_utils.tree import GitTree, AutoCreatedGitTree
+from funtoo.merge.tree import GitTree
 
 hub_logger = logging.getLogger("pop.hub")
 hub_logger.setLevel(logging.DEBUG)

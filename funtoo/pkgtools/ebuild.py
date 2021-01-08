@@ -11,12 +11,10 @@ from collections import defaultdict
 
 logging.basicConfig(level=logging.DEBUG)
 
-HUB = None
+hub = None
 
 
-def __init__(hub):
-	global HUB
-	HUB = hub
+def __init__():
 	hub.MANIFEST_LINES = defaultdict(set)
 	hub.FETCH_SUBSYSTEM = "fastpull"
 
@@ -33,8 +31,6 @@ class DigestError(Exception):
 
 class Fetchable:
 	def __init__(self, url=None, **kwargs):
-		global HUB
-		self.hub = HUB
 		self.url = url
 
 
@@ -48,18 +44,18 @@ class Artifact(Fetchable):
 
 	@property
 	def temp_path(self):
-		return os.path.join(self.hub.MERGE_CONFIG.fetch_download_path, f"{self.final_name}.__download__")
+		return os.path.join(hub.MERGE_CONFIG.fetch_download_path, f"{self.final_name}.__download__")
 
 	@property
 	def extract_path(self):
-		return self.hub.pkgtools.download.extract_path(self)
+		return hub.pkgtools.download.extract_path(self)
 
 	@property
 	def final_path(self):
 		if self._final_path:
 			return self._final_path
 		else:
-			return os.path.join(self.hub.MERGE_CONFIG.fetch_download_path, self.final_name)
+			return os.path.join(hub.MERGE_CONFIG.fetch_download_path, self.final_name)
 
 	@property
 	def final_name(self):
@@ -69,7 +65,7 @@ class Artifact(Fetchable):
 			return self._final_name
 
 	async def fetch(self):
-		await self.hub.pkgtools.download.ensure_fetched(self)
+		await hub.pkgtools.download.ensure_fetched(self)
 
 	def is_fetched(self):
 		return os.path.exists(self.final_path)
@@ -99,10 +95,10 @@ class Artifact(Fetchable):
 			return self.url + " -> " + self._final_name
 
 	def extract(self):
-		return self.hub.pkgtools.download.extract(self)
+		return hub.pkgtools.download.extract(self)
 
 	def cleanup(self):
-		return self.hub.pkgtools.download.cleanup(self)
+		return hub.pkgtools.download.cleanup(self)
 
 	def exists(self):
 		return self.is_fetched()
@@ -138,10 +134,8 @@ class BreezyBuild:
 		template_path: str = None,
 		**kwargs,
 	):
-		global HUB
-		self.hub = HUB
-		self.source_tree = self.hub.CONTEXT
-		self.output_tree = self.hub.OUTPUT_CONTEXT
+		self.source_tree = hub.CONTEXT
+		self.output_tree = hub.OUTPUT_CONTEXT
 		self._pkgdir = None
 		self.template_args = kwargs
 		for kwarg in ["cat", "name", "version", "revision", "path"]:
@@ -191,7 +185,7 @@ class BreezyBuild:
 		      are not just calculated -- the distfile integrity entry should be created as well.
 
 		"""
-		assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
+		assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 		fetch_tasks_dict = {}
 
 		for artifact in self.artifacts:
@@ -207,15 +201,15 @@ class BreezyBuild:
 			if not artifact.final_data:
 
 				async def lil_coroutine(a, catpkg):
-					assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
-					return a, await self.hub.pkgtools.download.ensure_completed(catpkg, a)
+					assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
+					return a, await hub.pkgtools.download.ensure_completed(catpkg, a)
 
-				assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
+				assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 				fetch_tasks_dict[artifact] = asyncio.Task(lil_coroutine(artifact, self.catpkg))
 
 		# Wait for any artifacts that are still fetching:
 		results = []
-		async for result in self.hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values()):
+		async for result in hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values()):
 			results.append(result)
 		completion_list = aggregate(results)
 		for artifact, status in completion_list:
@@ -235,7 +229,7 @@ class BreezyBuild:
 		# local context so we can grab the result later. The return value will be the BreezyBuild object itself,
 		# thanks to the wrapper.
 		bzb_task = Task(wrapper(self))
-		self.hub.THREAD_CTX.running_breezybuilds.append(bzb_task)
+		hub.THREAD_CTX.running_breezybuilds.append(bzb_task)
 
 	@property
 	def pkgdir(self):
@@ -296,7 +290,7 @@ class BreezyBuild:
 			return
 		key = self.output_pkgdir + "/Manifest"
 		for artifact in self.artifacts:
-			self.hub.MANIFEST_LINES[key].add(
+			hub.MANIFEST_LINES[key].add(
 				"DIST %s %s BLAKE2B %s SHA512 %s\n"
 				% (artifact.final_name, artifact.size, artifact.hash("blake2b"), artifact.hash("sha512"))
 			)

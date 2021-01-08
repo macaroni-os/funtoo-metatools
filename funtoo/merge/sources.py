@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
+
 import logging
 from collections import defaultdict
 from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 
-from merge_utils.tree import GitTree
+hub = None
 
 
-def __init__(hub):
+def __init__():
 	hub.CURRENT_SOURCE_DEF = None
 	hub.SOURCE_REPOS = {}
 
 
-def initialize_repo(hub, repo_dict):
+def initialize_repo(repo_dict):
 	print("Going to initialize", repo_dict)
 	repo_name = repo_dict["name"]
 	repo_url = repo_dict["url"]
@@ -27,8 +28,7 @@ def initialize_repo(hub, repo_dict):
 			repo_obj.gitCheckout(branch=repo_branch)
 	else:
 		path = repo_name
-		repo_obj = GitTree(
-			hub,
+		repo_obj = hub.merge.tree.GitTree(
 			repo_name,
 			url=repo_url,
 			root="%s/%s" % (hub.MERGE_CONFIG.source_trees, path),
@@ -41,21 +41,21 @@ def initialize_repo(hub, repo_dict):
 		hub.SOURCE_REPOS[repo_key] = repo_obj
 
 
-async def initialize_sources(hub, source):
+async def initialize_sources(source):
 	if hub.CURRENT_SOURCE_DEF == source:
 		return
 	repos = list(hub.merge.foundations.get_repos(source))
 	repo_futures = []
 	with ThreadPoolExecutor(max_workers=8) as executor:
 		for repo_dict in repos:
-			fut = executor.submit(initialize_repo, hub, repo_dict)
+			fut = executor.submit(initialize_repo, repo_dict)
 			repo_futures.append(fut)
 	for repo_fut in as_completed(repo_futures):
 		continue
 	hub.CURRENT_SOURCE_DEF = source
 
 
-def get_kits_in_correct_processing_order(hub):
+def get_kits_in_correct_processing_order():
 
 	"""
 	Kits should be processed in a certain order. In the old days, this was done linearly, one at a time.

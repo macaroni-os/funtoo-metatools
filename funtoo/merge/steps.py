@@ -4,8 +4,7 @@ import os
 import re
 import shutil
 
-from merge_utils.tree import GitTree
-from merge_utils.tree import runShell
+hub = None
 
 # TODO: add checks for duplicate catpkgs
 # TODO: add checks for missing catpkgs
@@ -71,7 +70,7 @@ class SyncDir(MergeStep):
 		if self.delete:
 			cmd += "--delete --delete-excluded "
 		cmd += "%s %s" % (src, dest)
-		runShell(cmd)
+		hub.merge.tree.runShell(cmd)
 
 
 class SyncFromTree(SyncDir):
@@ -131,7 +130,7 @@ class FindAndRemove(MergeStep):
 	async def run(self, tree):
 		for glob in self.globs:
 			cmd = f"find {tree.root} -name {glob} -exec rm -rf {{}} +"
-			runShell(cmd, abort_on_failure=False)
+			hub.merge.tree.runShell(cmd, abort_on_failure=False)
 
 
 class RemoveFiles(MergeStep):
@@ -143,7 +142,7 @@ class RemoveFiles(MergeStep):
 	async def run(self, tree):
 		for glob in self.globs:
 			cmd = "rm -rf %s/%s" % (tree.root, glob)
-			runShell(cmd)
+			hub.merge.tree.runShell(cmd)
 
 
 class CopyFiles(MergeStep):
@@ -176,7 +175,7 @@ class CopyFiles(MergeStep):
 			parent = os.path.dirname(f_dst_path)
 			if not os.path.exists(parent):
 				os.makedirs(parent, exist_ok=True)
-			runShell(f"cp -a {f_src_path} {f_dst_path}")
+			hub.merge.tree.runShell(f"cp -a {f_src_path} {f_dst_path}")
 
 
 class CopyAndRename(MergeStep):
@@ -191,7 +190,7 @@ class CopyAndRename(MergeStep):
 		for f in os.listdir(srcpath):
 			destfile = os.path.join(tree.root, self.dest)
 			destfile = os.path.join(destfile, self.ren_fun(f))
-			runShell(f"cp -a {srcpath}/{f} {destfile}")
+			hub.merge.tree.runShell(f"cp -a {srcpath}/{f} {destfile}")
 
 
 class SyncFiles(MergeStep):
@@ -240,7 +239,7 @@ class CleanTree(MergeStep):
 			if fn in self.exclude:
 				continue
 			files += " '" + fn + "'"
-		runShell(f"cd {tree.root} && rm -rf {files[1:]}")
+		hub.merge.tree.runShell(f"cd {tree.root} && rm -rf {files[1:]}")
 
 
 class ELTSymlinkWorkaround(MergeStep):
@@ -292,7 +291,7 @@ class InsertFilesFromSubdir(MergeStep):
 				if self.skip.match(e):
 					continue
 			real_dst = os.path.basename(os.path.join(dst, e))
-			runShell("cp -a %s/%s %s" % (src, e, dst))
+			hub.merge.tree.runShell("cp -a %s/%s %s" % (src, e, dst))
 
 
 class InsertEclasses(InsertFilesFromSubdir):
@@ -375,7 +374,7 @@ class ZapMatchingEbuilds(MergeStep):
 				if not os.path.exists(dest_pkgdir):
 					# don't need to zap as it doesn't exist
 					continue
-				runShell("rm -rf %s" % dest_pkgdir)
+				hub.merge.tree.runShell("rm -rf %s" % dest_pkgdir)
 
 
 class RecordAllCatPkgs(MergeStep):
@@ -384,13 +383,12 @@ class RecordAllCatPkgs(MergeStep):
 	but perform no other action. A kit generation NO-OP, compared to InsertEbuilds
 	"""
 
-	def __init__(self, hub, srctree: GitTree):
+	def __init__(self, srctree):
 		self.srctree = srctree
-		self.hub = hub
 
 	async def run(self, desttree=None):
 		for catpkg in self.srctree.getAllCatPkgs():
-			self.hub.CPM_LOGGER.record(self.srctree.name, catpkg, is_fixup=False)
+			hub.CPM_LOGGER.record(self.srctree.name, catpkg, is_fixup=False)
 
 
 class InsertEbuilds(MergeStep):
@@ -424,8 +422,7 @@ class InsertEbuilds(MergeStep):
 
 	def __init__(
 		self,
-		hub,
-		srctree: GitTree,
+		srctree,
 		select="all",
 		select_only="all",
 		skip=None,
@@ -440,7 +437,6 @@ class InsertEbuilds(MergeStep):
 		self.srctree = srctree
 		self.replace = replace
 		self.categories = categories
-		self.hub = hub
 		self.skip_duplicates = skip_duplicates
 		if move_maps is None:
 			self.move_maps = {}
@@ -562,25 +558,25 @@ class InsertEbuilds(MergeStep):
 						checks.append(tpkgdir)
 				if copied:
 					# log XML here.
-					if self.hub.CPM_LOGGER:
-						self.hub.CPM_LOGGER.recordCopyToXML(self.srctree, desttree, catpkg)
+					if hub.CPM_LOGGER:
+						hub.CPM_LOGGER.recordCopyToXML(self.srctree, desttree, catpkg)
 						if isinstance(self.select, regextype):
 							# If a regex was used to match the copied catpkg, record the regex.
-							self.hub.CPM_LOGGER.record(desttree.name, catpkg, regex_matched=self.select)
+							hub.CPM_LOGGER.record(desttree.name, catpkg, regex_matched=self.select)
 						else:
 							# otherwise, record the literal catpkg matched.
-							self.hub.CPM_LOGGER.record(desttree.name, catpkg)
+							hub.CPM_LOGGER.record(desttree.name, catpkg)
 							if tcatpkg is not None:
 								# This means we did a package move. Record the "new name" of the package, too. So both
 								# old name and new name get marked as being part of this kit.
-								self.hub.CPM_LOGGER.record(desttree.name, tcatpkg)
+								hub.CPM_LOGGER.record(desttree.name, tcatpkg)
 		if script_out:
-			temp_out = os.path.join(self.hub.MERGE_CONFIG.temp_path, desttree.name + "_copyfiles.sh")
+			temp_out = os.path.join(hub.MERGE_CONFIG.temp_path, desttree.name + "_copyfiles.sh")
 			os.makedirs(os.path.dirname(temp_out), exist_ok=True)
 			with open(temp_out, "w") as f:
 				f.write("#!/bin/bash\n")
 				f.write(script_out)
-			runShell(f"/bin/bash {temp_out}")
+			hub.merge.tree.runShell(f"/bin/bash {temp_out}")
 			os.unlink(temp_out)
 		for check in checks:
 			if not os.path.exists(check):
@@ -602,7 +598,7 @@ class ProfileDepFix(MergeStep):
 				sp = line.split()
 				if len(sp) >= 2:
 					prof_path = sp[1]
-					runShell("rm -f %s/profiles/%s/deprecated" % (tree.root, prof_path))
+					hub.merge.tree.runShell("rm -f %s/profiles/%s/deprecated" % (tree.root, prof_path))
 
 
 class RunSed(MergeStep):
@@ -621,7 +617,7 @@ class RunSed(MergeStep):
 	async def run(self, tree):
 		commands = list(itertools.chain.from_iterable(("-e", command) for command in self.commands))
 		files = [os.path.join(tree.root, file) for file in self.files]
-		runShell(["sed"] + commands + ["-i"] + files)
+		hub.merge.tree.runShell(["sed"] + commands + ["-i"] + files)
 
 
 class GenCache(MergeStep):
@@ -632,20 +628,19 @@ class GenCache(MergeStep):
 		self.release = release
 
 	async def run(self, tree):
-		tree.hub.merge.metadata.gen_cache(tree)
+		hub.merge.metadata.gen_cache(tree)
 
 
 class Minify(MergeStep):
 	"""Minify removes ChangeLogs and shrinks Manifests."""
 
 	async def run(self, tree):
-		runShell("( cd %s && find -iname ChangeLog | xargs rm -f )" % tree.root, abort_on_failure=False)
-		runShell("( cd %s && find -iname Manifest | xargs -i@ sed -ni '/^DIST/p' @ )" % tree.root)
+		hub.merge.tree.runShell("( cd %s && find -iname ChangeLog | xargs rm -f )" % tree.root, abort_on_failure=False)
+		hub.merge.tree.runShell("( cd %s && find -iname Manifest | xargs -i@ sed -ni '/^DIST/p' @ )" % tree.root)
 
 
 class GenPythonUse(MergeStep):
-	def __init__(self, hub, py_settings, out_subpath):
-		self.hub = hub
+	def __init__(self, py_settings, out_subpath):
 		self.def_python = py_settings["primary"]
 		self.bk_python = py_settings["alternate"]
 		self.mask = py_settings["mask"]
@@ -653,8 +648,8 @@ class GenPythonUse(MergeStep):
 
 	async def run(self, cur_overlay):
 		all_lines = []
-		for catpkg, cpv_list in self.hub.merge.metadata.get_catpkg_from_cpvs(cur_overlay.KIT_CACHE.keys()).items():
-			result = await cur_overlay.hub.merge.metadata.get_python_use_lines(
+		for catpkg, cpv_list in hub.merge.metadata.get_catpkg_from_cpvs(cur_overlay.KIT_CACHE.keys()).items():
+			result = await hub.merge.metadata.get_python_use_lines(
 				cur_overlay, catpkg, cpv_list, cur_overlay.root, self.def_python, self.bk_python
 			)
 			if result is not None:

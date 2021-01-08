@@ -28,13 +28,13 @@ This allows asyncio downloads of potentially identical files to work without com
 the autogen.py files or generators so that this complexity does not have to be dealt with by those
 who are simply writing autogens.
 """
-
+hub = None
 DL_ACTIVE_LOCK = Lock()
 DL_ACTIVE = dict()
 DOWNLOAD_SLOT = {}
 
 
-async def acquire_download_slot(hub):
+async def acquire_download_slot():
 	"""
 	This should ensure that the Semaphore is created INSIDE the ioloop, which appears to be necessary:
 
@@ -49,12 +49,12 @@ async def acquire_download_slot(hub):
 	return DOWNLOAD_SLOT[id(loop)]
 
 
-def __init__(hub):
+def __init__():
 	hub.CHECK_DISK_HASHES = False
 
 
 @asynccontextmanager
-async def start_download(hub, download):
+async def start_download(download):
 	assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 	"""
 	Automatically record the download as being active, and remove from our list when complete.
@@ -68,7 +68,7 @@ async def start_download(hub, download):
 			del DL_ACTIVE[download.final_name]
 
 
-def get_download(hub, final_name):
+def get_download(final_name):
 	"""
 	Get a download object for the file we're interested in if one is already being downloaded.
 	"""
@@ -83,7 +83,7 @@ HASHES = ["sha256", "sha512", "blake2b"]
 #       declarative pipeline.
 
 
-async def ensure_completed(hub, catpkg, artifact) -> bool:
+async def ensure_completed(catpkg, artifact) -> bool:
 	"""
 	This function ensures that we can 'complete' the artifact -- meaning we have its hash data in the integrity database.
 	If this hash data is not found, then we need to fetch the artifact.
@@ -97,10 +97,10 @@ async def ensure_completed(hub, catpkg, artifact) -> bool:
 		artifact.final_data = integrity_item["final_data"]
 		return True
 	else:
-		return await ensure_fetched(hub, artifact, catpkg=catpkg)
+		return await ensure_fetched(artifact, catpkg=catpkg)
 
 
-async def ensure_fetched(hub, artifact, catpkg=None) -> bool:
+async def ensure_fetched(artifact, catpkg=None) -> bool:
 	"""
 	This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
 	calculate its hashes or extract it.
@@ -123,22 +123,22 @@ async def ensure_fetched(hub, artifact, catpkg=None) -> bool:
 				if integrity_item is not None:
 					artifact.final_data = integrity_item["final_data"]
 				else:
-					final_data = calc_hashes(hub, artifact.final_path)
+					final_data = calc_hashes(artifact.final_path)
 					hub.merge.deepdive.store_distfile_integrity(catpkg, artifact.final_name, final_data)
 					artifact.record_final_data(final_data)
 			else:
-				final_data = calc_hashes(hub, artifact.final_path)
+				final_data = calc_hashes(artifact.final_path)
 				artifact.record_final_data(final_data)
 			return True
 	else:
-		active_dl = get_download(hub, artifact.final_name)
+		active_dl = get_download(artifact.final_name)
 		if active_dl is not None:
 			# Active download -- wait for it to finish:
 			logging.info(f"Waiting for {artifact.final_name} to finish")
 			return await active_dl.wait_for_completion(artifact)
 		else:
 			# No active download for this file -- start one:
-			dl_file = Download(hub, artifact)
+			dl_file = Download(artifact)
 			return await dl_file.download()
 
 
@@ -161,8 +161,7 @@ class Download:
 	The
 	"""
 
-	def __init__(self, hub, artifact):
-		self.hub = hub
+	def __init__(self, artifact):
 		self.final_name = artifact.final_name
 		self.url = artifact.url
 		self.artifacts = [artifact]
@@ -173,7 +172,7 @@ class Download:
 
 	def wait_for_completion(self, artifact):
 		self.artifacts.append(artifact)
-		assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
+		assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 		fut = asyncio.get_running_loop().create_future()
 		self.futures.append(fut)
 		return fut
@@ -190,16 +189,16 @@ class Download:
 		file, they will get True on success and False on failure (self.futures holds futures for others waiting
 		on this file, and we will future.set_result() with the boolean return code as well.)
 		"""
-		assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
-		slot = await acquire_download_slot(self.hub)
+		assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
+		slot = await acquire_download_slot()
 		async with slot:
-			async with start_download(self.hub, self):
-				assert id(asyncio.get_running_loop()) == id(self.hub.THREAD_CTX.loop)
+			async with start_download(self):
+				assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 				success = True
 
 				try:
-					final_data = await _download(self.hub, self.artifacts[0])
-				except self.hub.pkgtools.fetch.FetchError as fe:
+					final_data = await _download(self.artifacts[0])
+				except hub.pkgtools.fetch.FetchError as fe:
 					success = False
 
 				if success:
@@ -213,12 +212,12 @@ class Download:
 					# avoid duplicate records.
 
 					for catpkg, final_name in integrity_keys.keys():
-						self.hub.merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
+						hub.merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
 
 					# We only need to insert once into fastpull since it is the same underlying file.
 
-					if self.hub.MERGE_CONFIG.fastpull_enabled:
-						self.hub.pkgtools.fastpull.inject_into_fastpull(self.artifacts[0].final_path, final_data=final_data)
+					if hub.MERGE_CONFIG.fastpull_enabled:
+						hub.pkgtools.fastpull.inject_into_fastpull(self.artifacts[0].final_path, final_data=final_data)
 
 		for future in self.futures:
 			future.set_result(success)
@@ -226,11 +225,11 @@ class Download:
 		return success
 
 
-def extract_path(hub, artifact):
+def extract_path(artifact):
 	return os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name)
 
 
-async def _download(hub, artifact):
+async def _download(artifact):
 	"""
 
 	This function is used to download tarballs and other artifacts. Because files can be large,
@@ -285,16 +284,16 @@ async def _download(hub, artifact):
 	return final_data
 
 
-def cleanup(hub, artifact):
+def cleanup(artifact):
 	# TODO: check for path stuff like ../.. in final_name to avoid security issues.
 	getstatusoutput("rm -rf " + os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name))
 
 
-def extract(hub, artifact):
+def extract(artifact):
 	# TODO: maybe refactor these next 2 lines
 	if not artifact.exists:
 		artifact.fetch()
-	ep = extract_path(hub, artifact)
+	ep = extract_path(artifact)
 	os.makedirs(ep, exist_ok=True)
 	cmd = "tar -C %s -xf %s" % (ep, artifact.final_path)
 	s, o = getstatusoutput(cmd)
@@ -302,7 +301,7 @@ def extract(hub, artifact):
 		raise hub.pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
 
 
-def calc_hashes(hub, fn):
+def calc_hashes(fn):
 	hashes = {}
 	for h in HASHES:
 		hashes[h] = getattr(hashlib, h)()
@@ -321,7 +320,7 @@ def calc_hashes(hub, fn):
 	return final_data
 
 
-async def check_hashes(hub, old_hashes, new_hashes):
+async def check_hashes(old_hashes, new_hashes):
 	"""
 	This method compares two sets of hashes passed to it and throws an exception if they don't match.
 	"""

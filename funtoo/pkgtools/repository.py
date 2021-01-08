@@ -11,7 +11,7 @@ class Tree:
 		self.start = start
 
 
-def repository_of(hub, start_path, name=None):
+def repository_of(start_path, name=None):
 	root_path = start_path
 	while (
 		root_path != "/"
@@ -34,8 +34,8 @@ def repository_of(hub, start_path, name=None):
 	return Tree(root=root_path, start=start_path, name=repo_name if name is None else name)
 
 
-def set_context(hub, start_path=None, out_path=None, name=None):
-	hub.CONTEXT = hub._.repository_of(start_path, name=name)
+def set_context(start_path=None, out_path=None, name=None):
+	hub.CONTEXT = repository_of(start_path, name=name)
 	if out_path is None or start_path == out_path:
 		hub.OUTPUT_CONTEXT = hub.CONTEXT
 	else:

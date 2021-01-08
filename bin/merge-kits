@@ -1,24 +1,16 @@
 #!/usr/bin/env python3
-
+import argparse
 import asyncio
-import logging
-import os
 import sys
 from collections import defaultdict, OrderedDict
 from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime
 
-import pop.hub
 from dict_tools.data import NamespaceDict
 
-from funtoo.pkgtools.thread import run_async_adapter
 from merge_utils.config import Configuration
-from merge_utils.tree import GitTree, AutoCreatedGitTree
-
-hub_logger = logging.getLogger("pop.hub")
-hub_logger.setLevel(logging.DEBUG)
-hub = pop.hub.Hub()
+from merge_utils.hub import Hub
 
 
 class MergeError(Exception):
@@ -62,7 +54,7 @@ async def main_thread():
 				ctx = NamespaceDict()
 				ctx["kit"] = NamespaceDict(kit_dict)
 				# hub.merge.kit.generate_kit does the real work:
-				future = executor.submit(run_async_adapter, hub, hub.merge.kit.generate_kit, ctx)
+				future = executor.submit(hub.pkgtools.thread.run_async_adapter, hub, hub.merge.kit.generate_kit, ctx)
 				regen_futures.append(future)
 			for future in as_completed(regen_futures):
 				ctx, tree_obj, tree_sha1 = future.result()
@@ -95,32 +87,56 @@ async def main_thread():
 	hub.merge.metadata.display_error_summary()
 
 
-if __name__ == "__main__":
-	sub_name = os.path.basename(sys.argv[0])
-	int_g = [sub_name]
+CLI_CONFIG = {
+	"force": {"action": "store_true", "default": False},
+	"nopush": {"action": "store_true", "default": False},
+	"prod": {"action": "store_true", "default": False},
+	"db": {"action": "store_true", "default": False},
+	"release": {"positional": True},
+}
 
-	hub.pop.conf.integrate(int_g, cli=sub_name, roots=True, loader="yaml", logs=False)
+
+def parse_args():
+	ap = argparse.ArgumentParser()
+	for arg, kwargs in CLI_CONFIG.items():
+		if "os" in kwargs:
+			del kwargs["os"]
+		if "positional" in kwargs and kwargs["positional"]:
+			new_kwargs = kwargs.copy()
+			del new_kwargs["positional"]
+			ap.add_argument(arg, **new_kwargs)
+		else:
+			ap.add_argument("--" + arg, **kwargs)
+	return ap.parse_args()
+
+
+if __name__ == "__main__":
+
+	hub = Hub()
+	hub.OPT = parse_args()
 
 	# Parse options:
 
-	push = not hub.OPT["merge-kits"]["nopush"]
-	hub.PROD = prod = hub.OPT["merge-kits"]["prod"]
-	forcepush = hub.OPT["merge-kits"]["force"]
+	push = not hub.OPT.nopush
+	hub.PROD = prod = hub.OPT.prod
+	forcepush = hub.OPT.force
 
 	# Initialize internal pop globals that are expected to be in place when the merge sub gets added:
 
 	hub.MERGE_CONFIG = config = Configuration(prod=prod)
-	hub.RELEASE = hub.OPT["merge-kits"]["release"]
+	hub.RELEASE = hub.OPT.release
+	hub.add("funtoo/merge")
+	hub.add("funtoo/pkgtools")
 
 	if not prod:
 		# This means we'll just generate our own local git trees for the purposes of generating kits. This is generally used by developers to see what
 		# would end up in kits, when you don't really need to create any kits that will be used anywhere else.
-		hub.GIT_CLASS = AutoCreatedGitTree
+		hub.GIT_CLASS = hub.merge.tree.AutoCreatedGitTree
 		hub.GIT_CLASS_KWARGS_FN = None
 		hub.PUSH = False
 		hub.MIRROR = False
 		hub.META_REPO = meta_repo = hub.GIT_CLASS(
-			hub, name="meta-repo", branch=hub.RELEASE, root=config.dest_trees + "/meta-repo"
+			name="meta-repo", branch=hub.RELEASE, root=config.dest_trees + "/meta-repo"
 		)
 		hub.NEST_KITS = True
 	else:
@@ -131,13 +147,12 @@ if __name__ == "__main__":
 		hub.NEST_KITS = False
 		hub.PUSH = push
 		hub.MIRROR = push
-		hub.GIT_CLASS = GitTree
+		hub.GIT_CLASS = hub.merge.tree.GitTree
 
 		kwargs = {}
 		if hub.MIRROR:
 			kwargs["mirror"] = hub.MERGE_CONFIG.mirror.rstrip("/") + "/meta-repo"
-		hub.META_REPO = meta_repo = GitTree(
-			hub,
+		hub.META_REPO = meta_repo = hub.merge.tree.GitTree(
 			"meta-repo",
 			branch=hub.RELEASE,
 			url=config.meta_repo,
@@ -147,16 +162,12 @@ if __name__ == "__main__":
 		)
 
 	hub.START_TIME = datetime.utcnow()
-	hub.FIXUP_REPO = GitTree(
-		hub,
+	hub.FIXUP_REPO = hub.merge.tree.GitTree(
 		"kit-fixups",
 		config.branch("kit-fixups"),
 		url=config.kit_fixups,
 		root=config.source_trees + "/kit-fixups",
 	)
-
-	hub.pop.sub.add("funtoo.pkgtools")
-	hub.pop.sub.add("funtoo.merge")
 
 	hub.CPM_LOGGER = None
 

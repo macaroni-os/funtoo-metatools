@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+hub = None
 
-def sdist_artifact_url(hub, releases, version):
+
+def sdist_artifact_url(releases, version):
 	# Sometimes a version does not have a source tarball. This function lets us know if our version is legit.
 	# Returns artifact_url for version, or None if no sdist release was available.
 	for artifact in releases[version]:
@@ -10,7 +12,7 @@ def sdist_artifact_url(hub, releases, version):
 	return None
 
 
-def pypi_get_artifact_url(hub, pkginfo, json_dict, strict=True):
+def pypi_get_artifact_url(pkginfo, json_dict, strict=True):
 	"""
 	A more robust version of ``sdist_artifact_url``.
 
@@ -18,19 +20,19 @@ def pypi_get_artifact_url(hub, pkginfo, json_dict, strict=True):
 	pkginfo. If ``strict`` is True, will insist on the ``version`` defined in ``pkginfo``, otherwise, will be flexible
 	and fall back to most recent sdist.
 	"""
-	artifact_url = sdist_artifact_url(hub, json_dict["releases"], pkginfo["version"])
+	artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo["version"])
 	if artifact_url is None:
 		if not strict:
 			# dang, the latest official release doesn't have a source tarball. Let's scan for the most recent release with a source tarball:
 			for version in reversed(json_dict["releases"].keys()):
-				artifact_url = sdist_artifact_url(hub, json_dict["releases"], version)
+				artifact_url = sdist_artifact_url(json_dict["releases"], version)
 				if artifact_url is not None:
 					pkginfo["version"] = version
 					break
 		else:
 			raise AssertionError(f"Could not find a source distribution for {pkginfo['name']} version {pkginfo['version']}")
 	else:
-		artifact_url = sdist_artifact_url(hub, json_dict["releases"], pkginfo["version"])
+		artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo["version"])
 	return artifact_url
 
 
@@ -63,7 +65,7 @@ def pyspec_to_cond_dep_args(pg):
 	return out
 
 
-def expand_pydep(hub, pyatom):
+def expand_pydep(pyatom):
 	"""
 	Takes something from our pydeps YAML that might be "foo", or "sys-apps/foo", or "foo >= 1.2" and convert to
 	the proper Gentoo atom format.
@@ -88,7 +90,7 @@ def expand_pydep(hub, pyatom):
 		raise ValueError(f"What the hell is this: {pyatom}")
 
 
-def create_ebuild_cond_dep(hub, pyspec_str, atoms):
+def create_ebuild_cond_dep(pyspec_str, atoms):
 	"""
 	This function takes a specifier like "py:all" and a list of simplified pythony package atoms and creates a
 	conditional dependency for inclusion in an ebuild. It returns a list of lines (without newline termination,
@@ -98,7 +100,7 @@ def create_ebuild_cond_dep(hub, pyspec_str, atoms):
 	pyspec = pyspec_to_cond_dep_args(pyspec_str)
 
 	for atom in atoms:
-		out_atoms.append(expand_pydep(hub, atom))
+		out_atoms.append(expand_pydep(atom))
 
 	if not len(pyspec):
 		# no condition -- these deps are for all python versions, so not a conditional dep:
@@ -109,16 +111,16 @@ def create_ebuild_cond_dep(hub, pyspec_str, atoms):
 	return out
 
 
-def expand_pydeps(hub, pkginfo):
+def expand_pydeps(pkginfo):
 	expanded_pydeps = []
 	if "pydeps" in pkginfo:
 		pytype = type(pkginfo["pydeps"])
 		if pytype == list:
 			for dep in pkginfo["pydeps"]:
-				expanded_pydeps.append(expand_pydep(hub, dep))
+				expanded_pydeps.append(expand_pydep(dep))
 		elif pytype == dict:
 			for label, deps in pkginfo["pydeps"].items():
-				expanded_pydeps += hub.pkgtools.pyhelper.create_ebuild_cond_dep(label, deps)
+				expanded_pydeps += create_ebuild_cond_dep(label, deps)
 	if "rdepend" not in pkginfo:
 		pkginfo["rdepend"] = "\n".join(expanded_pydeps)
 	else:

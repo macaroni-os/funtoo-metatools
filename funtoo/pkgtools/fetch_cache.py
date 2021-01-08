@@ -18,14 +18,10 @@ of the downloaded artifact -- its message digests and size at the time the downl
 
 """
 
-__virtualname__ = "fetch_cache"
+hub = None
 
 
-def __virtual__(hub):
-	return hub.HAS_MONGO
-
-
-def __init__(hub):
+def __init__():
 	mc = MongoClient()
 	db_name = "metatools"
 	hub.MONGO_DB = getattr(mc, db_name)
@@ -34,7 +30,7 @@ def __init__(hub):
 	hub.MONGO_FC.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {"$exists": True}})
 
 
-async def fetch_cache_write(hub, method_name, fetchable, body=None, metadata_only=False):
+async def fetch_cache_write(method_name, fetchable, body=None, metadata_only=False):
 	"""
 	This method is called when we have successfully fetched something. In the case of a network resource such as
 	a Web page, we will record the result of our fetching in the 'result' field so it is cached for later. In the
@@ -73,7 +69,7 @@ async def fetch_cache_write(hub, method_name, fetchable, body=None, metadata_onl
 		)
 
 
-async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_interval=None):
+async def fetch_cache_read(method_name, fetchable, max_age=None, refresh_interval=None):
 	"""
 	Attempt to see if the network resource or Artifact is in our fetch cache. We will return the entire MongoDB
 	document. In the case of a network resource, this includes the cached value in the 'result' field. In the
@@ -103,7 +99,7 @@ async def fetch_cache_read(hub, method_name, fetchable, max_age=None, refresh_in
 		return result
 
 
-async def record_fetch_failure(hub, method_name, fetchable, failure_reason):
+async def record_fetch_failure(method_name, fetchable, failure_reason):
 	"""
 	It is important to document when fetches fail, and that is what this method is for.
 	"""

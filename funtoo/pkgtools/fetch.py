@@ -2,8 +2,8 @@
 import asyncio
 import json
 import logging
-import sys
-from enum import Enum
+
+hub = None
 
 """
 This sub implements high-level fetching logic. Not the lower-level HTTP stuff. Things involving
@@ -11,7 +11,7 @@ retrying, using our fetch cache, etc.
 """
 
 
-def __init__(hub):
+def __init__():
 	hub.FETCH_ATTEMPTS = 3
 
 
@@ -36,7 +36,7 @@ class CacheMiss(Exception):
 	pass
 
 
-async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_interval=None):
+async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=None):
 
 	"""
 	This method is used to execute any fetch-related method, and will handle all the logic of reading from and
@@ -89,7 +89,7 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 			logging.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
 			# TODO: these should be logged persistently so they can be investigated.
 			try:
-				got = await hub.cache.fetch.fetch_cache_read(fetch_method.__name__, fetchable)
+				got = await hub.pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable)
 				return got["body"]
 			except CacheMiss as ce:
 				# raise original exception
@@ -109,11 +109,11 @@ async def fetch_harness(hub, fetch_method, fetchable, max_age=None, refresh_inte
 		)
 
 
-async def get_page(hub, fetchable, max_age=None, refresh_interval=None, is_json=False):
+async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False):
 	method = getattr(hub.pkgtools.http, "get_page", None)
 	if method is None:
 		raise FetchError(fetchable, "Method get_page not implemented for fetcher.")
-	result = await fetch_harness(hub, method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
+	result = await fetch_harness(method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
 	if not is_json:
 		return result
 	try:
@@ -123,7 +123,7 @@ async def get_page(hub, fetchable, max_age=None, refresh_interval=None, is_json=
 		logging.warning(repr(e))
 		logging.warning("JSON appears corrupt -- trying to get cached version of resource...")
 		try:
-			result = await hub.cache.fetch.fetch_cache_read("get_page", fetchable, max_age=max_age)
+			result = await hub.pkgtools.fetch_cache.fetch_cache_read("get_page", fetchable, max_age=max_age)
 			return json.loads(result)
 		except CacheMiss:
 			# bumm3r.
@@ -135,11 +135,11 @@ async def get_page(hub, fetchable, max_age=None, refresh_interval=None, is_json=
 			)
 
 
-async def get_url_from_redirect(hub, fetchable, max_age=None, refresh_interval=None):
+async def get_url_from_redirect(fetchable, max_age=None, refresh_interval=None):
 	method = getattr(hub.pkgtools.http, "get_url_from_redirect", None)
 	if method is None:
 		raise FetchError(fetchable, "Method get_url_from_redirect not implemented for fetcher.")
-	return await fetch_harness(hub, method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
+	return await fetch_harness(method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
 
 
 # vim: ts=4 sw=4 noet

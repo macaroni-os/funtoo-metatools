@@ -12,7 +12,8 @@ from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from dict_tools.data import NamespaceDict
-from merge_utils.tree import run
+
+hub = None
 
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
 # version, we'll consider the kit cache stale and regenerate it.
@@ -20,14 +21,22 @@ from merge_utils.tree import run
 CACHE_DATA_VERSION = "1.0.5"
 
 
-def cleanup_error_logs(hub):
+def __init__():
+	# When kits are being regenerated, we will update these variables to contain counts of various kinds of
+	# errors, so we can display a summary at the end of processing all kits. Users can consult the correct
+	# logs in ~/repo_tmp/tmp/ for details.
+	hub.METADATA_ERROR_STATS = []
+	hub.PROCESSING_WARNING_STATS = []
+
+
+def cleanup_error_logs():
 	# This should be explicitly called at the beginning of every command that generates metadata for kits:
 
 	for file in glob.glob(os.path.join(hub.MERGE_CONFIG.temp_path, "metadata-errors*.log")):
 		os.unlink(file)
 
 
-def display_error_summary(hub):
+def display_error_summary():
 	for stat_list, name, shortname in [
 		(hub.METADATA_ERROR_STATS, "metadata extraction errors", "errors"),
 		(hub.PROCESSING_WARNING_STATS, "warnings", "warnings"),
@@ -41,7 +50,7 @@ def display_error_summary(hub):
 			logging.warning(f"{name} errors logged to {hub.MERGE_CONFIG.temp_path}.")
 
 
-def get_thirdpartymirrors(hub, repo_path):
+def get_thirdpartymirrors(repo_path):
 	mirr_dict = {}
 	with open(os.path.join(repo_path, "profiles/thirdpartymirrors"), "r") as f:
 		lines = f.readlines()
@@ -51,14 +60,14 @@ def get_thirdpartymirrors(hub, repo_path):
 	return mirr_dict
 
 
-def iter_thirdpartymirror(hub, mirr_dict, mirror):
+def iter_thirdpartymirror(mirr_dict, mirror):
 	if mirror not in mirr_dict:
 		return None
 	for mirr_url in mirr_dict[mirror]:
 		yield mirr_url
 
 
-def expand_thirdpartymirror(hub, mirr_dict, url):
+def expand_thirdpartymirror(mirr_dict, url):
 
 	non_mirr_part = url[9:]
 	mirr_split = non_mirr_part.split("/")
@@ -129,7 +138,7 @@ def get_md5(filename):
 	return h.hexdigest()
 
 
-def strip_rev(hub, s):
+def strip_rev(s):
 	"""
 	A short function to strip the revision from the end of an ebuild, returning either
 	`( 'string_with_revision_missing', '<revision_num_as_string>' )` or
@@ -144,7 +153,7 @@ def strip_rev(hub, s):
 	return s, None
 
 
-def get_catpkg_from_cpvs(hub, cpv_list):
+def get_catpkg_from_cpvs(cpv_list):
 	"""
 	This function takes a list of things that look like 'sys-apps/foboar-1.2.0-r1' and returns a dict of
 	unique catpkgs found (as dict keys) and exact matches (in dict value, as a member of a set.)
@@ -154,14 +163,14 @@ def get_catpkg_from_cpvs(hub, cpv_list):
 	"""
 	catpkgs = defaultdict(set)
 	for cpv in cpv_list:
-		reduced, rev = hub._.strip_rev(cpv)
+		reduced, rev = strip_rev(cpv)
 		last_hyphen = reduced.rfind("-")
 		cp = cpv[:last_hyphen]
 		catpkgs[cp].add(cpv)
 	return catpkgs
 
 
-def get_eapi_of_ebuild(hub, ebuild_path):
+def get_eapi_of_ebuild(ebuild_path):
 	"""
 	This function is used to parse the first few lines of the ebuild looking for an EAPI=
 	line. This is annoying but necessary.
@@ -191,7 +200,7 @@ def get_eapi_of_ebuild(hub, ebuild_path):
 		return _parse_eapi_ebuild_head(fobj.readlines())
 
 
-def extract_manifest_hashes(hub, man_file):
+def extract_manifest_hashes(man_file):
 	"""
 	Given a manifest path as an argument, attempt to open `Manifest` and extract all digests for each
 	DIST entry, and return this info along with filesize in a dict.
@@ -214,7 +223,7 @@ def extract_manifest_hashes(hub, man_file):
 	return man_info
 
 
-def extract_uris(hub, src_uri):
+def extract_uris(src_uri):
 	"""
 	This function will take a SRC_URI value from an ebuild, and it will return a dictionary in the following format:
 
@@ -266,7 +275,7 @@ def extract_uris(hub, src_uri):
 	return fn_urls
 
 
-def get_catpkg_relations_from_depstring(hub, depstring):
+def get_catpkg_relations_from_depstring(depstring):
 	"""
 	This is a handy function that will take a dependency string, like something you would see in DEPEND, and it will
 	return a set of all catpkgs referenced in the dependency string. It does not evaluate USE conditionals, nor does
@@ -345,13 +354,13 @@ class EclassHashCollection:
 		return new_obj
 
 
-def extract_ebuild_metadata(hub, repo_obj, atom, ebuild_path=None, env=None, eclass_paths=None):
+def extract_ebuild_metadata(repo_obj, atom, ebuild_path=None, env=None, eclass_paths=None):
 	infos = {"HASH_KEY": atom}
 	env["PATH"] = "/bin:/usr/bin"
 	env["LC_COLLATE"] = "POSIX"
 	env["LANG"] = "en_US.UTF-8"
 	# For things to work correctly, the EAPI of the ebuild has to be manually extracted:
-	eapi, lineno = hub._.get_eapi_of_ebuild(ebuild_path)
+	eapi, lineno = get_eapi_of_ebuild(ebuild_path)
 	if eapi is not None and eapi in "01234567":
 		env["EAPI"] = eapi
 	else:
@@ -364,7 +373,7 @@ def extract_ebuild_metadata(hub, repo_obj, atom, ebuild_path=None, env=None, ecl
 	# This tells ebuild.sh to write out the metadata to stdout (fd 1) which is where we will grab
 	# it from:
 	env["PORTAGE_PIPE_FD"] = "1"
-	result = run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
+	result = hub.merge.tree.run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
 	if result.returncode != 0:
 		repo_obj.METADATA_ERRORS[atom] = {"status": "ebuild.sh failure", "output": result.stderr}
 		return None
@@ -390,7 +399,7 @@ def extract_ebuild_metadata(hub, repo_obj, atom, ebuild_path=None, env=None, ecl
 		return None
 
 
-def get_filedata(hub, src_uri, manifest_path):
+def get_filedata(src_uri, manifest_path):
 	"""
 	This function is given `src_uri` which is the literal `SRC_URI` data from an ebuild, and a path to a `Manifest`
 	for the catpkg.
@@ -417,8 +426,8 @@ def get_filedata(hub, src_uri, manifest_path):
 	{"file1.tar.gz" : { ... }} -> [ { "name" : "file1.tar.gz", ... }, ... ]
 	"""
 
-	filedata = extract_manifest_hashes(hub, manifest_path)
-	extracted_uris = extract_uris(hub, src_uri)
+	filedata = extract_manifest_hashes(manifest_path)
+	extracted_uris = extract_uris(src_uri)
 
 	for fn, sub_dict in extracted_uris.items():
 		# just augment SRC_URI data with Manifest data, if available.
@@ -433,7 +442,7 @@ def get_filedata(hub, src_uri, manifest_path):
 	return outdata
 
 
-def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths=None, write_cache=False):
+def get_ebuild_metadata(repo, ebuild_path, eclass_hashes=None, eclass_paths=None, write_cache=False):
 	"""
 	This function will grab metadata from a single ebuild pointed to by `ebuild_path` and
 	return it as a dictionary.
@@ -465,7 +474,7 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 		manifest_md5 = get_md5(manifest_path)
 
 	# Try to see if we already have this metadata in our kit metadata cache.
-	existing = get_atom(hub, repo, atom, ebuild_md5, manifest_md5, eclass_hashes)
+	existing = get_atom(repo, atom, ebuild_md5, manifest_md5, eclass_hashes)
 	repo.KIT_CACHE_RETRIEVED_ATOMS.add(atom)
 
 	if existing:
@@ -480,7 +489,7 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 		env["PF"] = os.path.basename(ebuild_path)[:-7]
 		env["CATEGORY"] = ebuild_path.split("/")[-3]
 		pkg_only = ebuild_path.split("/")[-2]  # JUST the pkg name "foobar"
-		reduced, rev = hub._.strip_rev(env["PF"])
+		reduced, rev = strip_rev(env["PF"])
 		if rev is None:
 			env["PR"] = "r0"
 			pkg_and_ver = env["PF"]
@@ -492,7 +501,7 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 		env["PN"] = pkg_only
 		env["PVR"] = env["PF"][len(env["PN"]) + 1 :]
 
-		infos = hub._.extract_ebuild_metadata(repo, atom, ebuild_path, env, eclass_paths)
+		infos = extract_ebuild_metadata(repo, atom, ebuild_path, env, eclass_paths)
 
 		eclass_out = ""
 		eclass_tuples = []
@@ -535,7 +544,7 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 			# if metadata extraction successful...
 			for key in ["DEPEND", "RDEPEND", "PDEPEND", "BDEPEND", "HDEPEND"]:
 				if infos[key]:
-					relations[key] = hub._.get_catpkg_relations_from_depstring(infos[key])
+					relations[key] = get_catpkg_relations_from_depstring(infos[key])
 		all_relations = set()
 		relations_by_kind = dict()
 
@@ -558,8 +567,8 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 		td_out["metadata_out"] = metadata_out
 		td_out["manifest_md5"] = manifest_md5
 		if infos and manifest_md5 is not None and "SRC_URI" in infos:
-			td_out["files"] = get_filedata(hub, infos["SRC_URI"], manifest_path)
-		update_atom(hub, repo, td_out)
+			td_out["files"] = get_filedata(infos["SRC_URI"], manifest_path)
+		update_atom(repo, td_out)
 
 	if infos and write_cache:
 		# if we successfully extracted metadata and we are told to write cache, write the cache entry:
@@ -572,7 +581,7 @@ def get_ebuild_metadata(hub, repo, ebuild_path, eclass_hashes=None, eclass_paths
 	return infos
 
 
-def catpkg_generator(hub, repo_path=None):
+def catpkg_generator(repo_path=None):
 	"""
 	This function is a generator that will scan a specified path for all valid category/
 	package directories (catpkgs). It will yield paths to these directories. It defines
@@ -617,7 +626,7 @@ def ebuild_generator(ebuild_src=None):
 					yield os.path.join(pkgpath, ebfile)
 
 
-def get_eclass_hashes(hub, eclass_sourcedir):
+def get_eclass_hashes(eclass_sourcedir):
 	"""
 
 	For generating metadata, we need md5 hashes of all eclasses for writing out into the metadata.
@@ -643,7 +652,7 @@ def get_eclass_hashes(hub, eclass_sourcedir):
 #       created before we had the kit-cache and deepdive.
 
 
-def gen_cache(hub, repo):
+def gen_cache(repo):
 	"""
 
 	Generate md5-cache metadata from a bunch of ebuilds.
@@ -670,13 +679,13 @@ def gen_cache(hub, repo):
 
 		if repo.name != "core-kit":
 			# Add in any eclasses that exist local to the kit.
-			local_eclass_hashes = hub._.get_eclass_hashes(repo.root)
+			local_eclass_hashes = get_eclass_hashes(repo.root)
 			eclass_hashes.update(local_eclass_hashes.hashes)
 			eclass_paths = [local_eclass_hashes.path] + eclass_paths  # give local eclasses priority
 
 		for ebpath in ebuild_generator(ebuild_src=repo.root):
 			future = executor.submit(
-				hub._.get_ebuild_metadata,
+				get_ebuild_metadata,
 				repo,
 				ebpath,
 				eclass_hashes=eclass_hashes,
@@ -700,7 +709,7 @@ def gen_cache(hub, repo):
 		print(f"{count} ebuilds processed.")
 
 
-async def get_python_use_lines(hub, repo, catpkg, cpv_list, cur_tree, def_python, bk_python):
+async def get_python_use_lines(repo, catpkg, cpv_list, cur_tree, def_python, bk_python):
 	ebs = {}
 	for cpv in cpv_list:
 		metadata = repo.KIT_CACHE[cpv]["metadata"]
@@ -749,18 +758,18 @@ async def get_python_use_lines(hub, repo, catpkg, cpv_list, cur_tree, def_python
 	lines = []
 	if len(ebs.keys()):
 		if not split:
-			line = hub._.do_package_use_line(catpkg, def_python, bk_python, oldval)
+			line = do_package_use_line(catpkg, def_python, bk_python, oldval)
 			if line is not None:
 				lines.append(line)
 		else:
 			for key, val in ebs.items():
-				line = hub._.do_package_use_line("=%s" % key, def_python, bk_python, val)
+				line = do_package_use_line("=%s" % key, def_python, bk_python, val)
 				if line is not None:
 					lines.append(line)
 	return lines
 
 
-def do_package_use_line(hub, pkg, def_python, bk_python, imps):
+def do_package_use_line(pkg, def_python, bk_python, imps):
 	out = None
 	if def_python not in imps:
 		if bk_python in imps:
@@ -770,24 +779,16 @@ def do_package_use_line(hub, pkg, def_python, bk_python, imps):
 	return out
 
 
-def __init__(hub):
-	# When kits are being regenerated, we will update these variables to contain counts of various kinds of
-	# errors, so we can display a summary at the end of processing all kits. Users can consult the correct
-	# logs in ~/repo_tmp/tmp/ for details.
-	hub.METADATA_ERROR_STATS = []
-	hub.PROCESSING_WARNING_STATS = []
-
-
-def get_outpath(hub, repo_obj):
+def get_outpath(repo_obj):
 	os.makedirs(os.path.join(hub.MERGE_CONFIG.temp_path, "kit_cache"), exist_ok=True)
 	return os.path.join(hub.MERGE_CONFIG.temp_path, "kit_cache", f"{repo_obj.name}-{repo_obj.branch}")
 
 
-def fetch_kit(hub, repo_obj):
+def fetch_kit(repo_obj):
 	"""
 	Grab cached metadata for an entire kit from serialized JSON, with a single query.
 	"""
-	outpath = hub._.get_outpath(repo_obj)
+	outpath = get_outpath(repo_obj)
 	valid_cache = False
 	if os.path.exists(outpath):
 		with open(outpath, "r") as f:
@@ -808,7 +809,7 @@ def fetch_kit(hub, repo_obj):
 	repo_obj.KIT_CACHE_WRITES = set()
 
 
-def flush_kit(hub, repo_obj, save=True, prune=True):
+def flush_kit(repo_obj, save=True, prune=True):
 	"""
 	Write out our in-memory copy of our entire kit metadata, which may contain updates.
 
@@ -836,7 +837,7 @@ def flush_kit(hub, repo_obj, save=True, prune=True):
 			logging.error("THERE ARE EXTRA ATOMS THAT WERE RETRIEVED BUT NOT IN CACHE!")
 			logging.error(f"{extra_atoms}")
 	if save:
-		outpath = hub._.get_outpath(repo_obj)
+		outpath = get_outpath(repo_obj)
 		outdata = {
 			"cache_data_version": CACHE_DATA_VERSION,
 			"atoms": repo_obj.KIT_CACHE,
@@ -870,7 +871,7 @@ def flush_kit(hub, repo_obj, save=True, prune=True):
 				os.unlink(error_outpath)
 
 
-def get_atom(hub, repo_obj, atom, md5, manifest_md5, eclass_hashes):
+def get_atom(repo_obj, atom, md5, manifest_md5, eclass_hashes):
 	"""
 	Read from our in-memory kit metadata cache. Return something if available, else None.
 
@@ -900,7 +901,7 @@ def get_atom(hub, repo_obj, atom, md5, manifest_md5, eclass_hashes):
 	return existing
 
 
-def update_atom(hub, repo_obj, td_out):
+def update_atom(repo_obj, td_out):
 	"""
 	Update our in-memory record for a specific ebuild atom on disk that has changed. This will
 	be written out by flush_kit(). Right now we just record it in memory.

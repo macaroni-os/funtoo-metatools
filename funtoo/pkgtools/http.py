@@ -10,6 +10,8 @@ import sys
 import logging
 import socket
 
+hub = None
+
 """
 This sub implements lower-level HTTP fetching logic, such as actually grabbing the data, sending the
 proper headers and authentication, etc.
@@ -20,7 +22,7 @@ RESOLVERS = {}
 SEMAPHORES = {}
 
 
-async def get_resolver(hub):
+async def get_resolver():
 	"""
 	This returns a DNS resolver local to the ioloop of the caller.
 	"""
@@ -31,7 +33,7 @@ async def get_resolver(hub):
 	return RESOLVERS[id(loop)]
 
 
-async def acquire_host_semaphore(hub, hostname):
+async def acquire_host_semaphore(hostname):
 	global SEMAPHORES
 	loop = asyncio.get_running_loop()
 	if id(loop) not in SEMAPHORES:
@@ -43,19 +45,19 @@ http_data_timeout = 60
 chunk_size = 262144
 
 
-def get_fetch_headers(hub):
+def get_fetch_headers():
 	"""
 	Headers to send for all HTTP requests.
 	"""
 	return {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
 
 
-def get_hostname(hub, url):
+def get_hostname(url):
 	parsed_url = urlparse(url)
 	return parsed_url.hostname
 
 
-def get_auth_kwargs(hub, hostname, url):
+def get_auth_kwargs(hostname, url):
 	"""
 	Keyword arguments to aiohttp ClientSession.get() for authentication to certain URLs based on configuration
 	in ~/.autogen (YAML format.)
@@ -69,21 +71,21 @@ def get_auth_kwargs(hub, hostname, url):
 	return kwargs
 
 
-async def http_fetch_stream(hub, url, on_chunk):
+async def http_fetch_stream(url, on_chunk):
 	"""
 	This is a streaming HTTP fetcher that will call on_chunk(bytes) for each chunk.
 	On_chunk is called with literal bytes from the response body so no decoding is
 	performed. A FetchError will be raised if any error occurs. If this function
 	returns successfully then the download completed successfully.
 	"""
-	hostname = get_hostname(hub, url)
-	semi = await acquire_host_semaphore(hub, hostname)
+	hostname = get_hostname(url)
+	semi = await acquire_host_semaphore(hostname)
 	async with semi:
-		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await hub._.get_resolver(), ssl=False)
+		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ssl=False)
 		try:
 			async with aiohttp.ClientSession(connector=connector) as http_session:
 				async with http_session.get(
-					url, headers=get_fetch_headers(hub), timeout=None, **get_auth_kwargs(hub, hostname, url)
+					url, headers=get_fetch_headers(), timeout=None, **get_auth_kwargs(hostname, url)
 				) as response:
 					if response.status != 200:
 						reason = (await response.text()).strip()
@@ -104,18 +106,18 @@ async def http_fetch_stream(hub, url, on_chunk):
 		return None
 
 
-async def http_fetch(hub, url):
+async def http_fetch(url):
 	"""
 	This is a non-streaming HTTP fetcher that will properly convert the request to a Python
 	string and return the entire content as a string.
 	"""
-	hostname = get_hostname(hub, url)
-	semi = await acquire_host_semaphore(hub, hostname)
+	hostname = get_hostname(url)
+	semi = await acquire_host_semaphore(hostname)
 	async with semi:
-		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await hub._.get_resolver(), ssl=False)
+		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ssl=False)
 		async with aiohttp.ClientSession(connector=connector) as http_session:
 			async with http_session.get(
-				url, headers=get_fetch_headers(hub), timeout=None, **get_auth_kwargs(hub, hostname, url)
+				url, headers=get_fetch_headers(), timeout=None, **get_auth_kwargs(hostname, url)
 			) as response:
 				if response.status != 200:
 					reason = (await response.text()).strip()
@@ -124,7 +126,7 @@ async def http_fetch(hub, url):
 		return None
 
 
-async def get_page(hub, url):
+async def get_page(url):
 	"""
 	This function performs a simple HTTP fetch of a resource. The response is cached in memory,
 	and a decoded Python string is returned with the result. FetchError is thrown for an error
@@ -132,7 +134,7 @@ async def get_page(hub, url):
 	"""
 	logging.info(f"Fetching page {url}...")
 	try:
-		return await hub._.http_fetch(url)
+		return await http_fetch(url)
 	except Exception as e:
 		if isinstance(e, hub.pkgtools.fetch.FetchError):
 			raise e
@@ -142,7 +144,7 @@ async def get_page(hub, url):
 			raise hub.pkgtools.fetch.FetchError(url, msg)
 
 
-async def get_url_from_redirect(hub, url):
+async def get_url_from_redirect(url):
 	"""
 	This function will take a URL that redirects and grab what it redirects to. This is useful
 	for /download URLs that redirect to a tarball 'foo-1.3.2.tar.xz' that you want to download,

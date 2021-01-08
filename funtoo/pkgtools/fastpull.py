@@ -44,13 +44,15 @@ requested_by (kit, branch, atom, date?) would be cool.
 
 """
 
+hub = None
 
-def get_disk_path(hub, final_data):
+
+def get_disk_path(final_data):
 	sh = final_data["hashes"]["sha512"]
 	return os.path.join(hub.MERGE_CONFIG.fastpull_path, sh[:2], sh[2:4], sh[4:6], sh)
 
 
-def complete_artifact(hub, artifact):
+def complete_artifact(artifact):
 	"""
 	Provided with an artifact and expected final data (hashes and size), we will attempt to locate the artifact
 	binary data in the fastpull database. If we find it, we 'complete' the artifact so it is usable for extraction
@@ -66,7 +68,7 @@ def complete_artifact(hub, artifact):
 	Manifest/hash validation on the client side, this is because we want to ensure that what was downloaded by the
 	client matches what was set by the server. But we don't have such checks on just the server side.
 	"""
-	fp = hub._.get_disk_path(artifact.final_data)
+	fp = get_disk_path(artifact.final_data)
 	if not fp:
 		return None
 	hashes = hub.pkgtools.download.calc_hashes(fp)
@@ -79,7 +81,7 @@ def complete_artifact(hub, artifact):
 	return artifact
 
 
-def inject_into_fastpull(hub, final_path, final_data=None, symlink=False):
+def inject_into_fastpull(final_path, final_data=None, symlink=False):
 	"""
 	Given a file pointed to by final_path, insert this file into the fastpull database. We will take care of generating
 	hashes (final_data) if none are passed to us. We use this to determine the name of the file in fastpull (based on
@@ -88,7 +90,7 @@ def inject_into_fastpull(hub, final_path, final_data=None, symlink=False):
 	if final_data is None:
 		final_data = hub.pkgtools.download.calc_hashes(final_path)
 
-	fastpull_path = get_disk_path(hub, final_data)
+	fastpull_path = get_disk_path(final_data)
 	if not os.path.exists(fastpull_path):
 		try:
 			os.makedirs(os.path.dirname(fastpull_path), exist_ok=True)
@@ -101,15 +103,15 @@ def inject_into_fastpull(hub, final_path, final_data=None, symlink=False):
 			logging.error(f"Exception encountered when trying to link into fastpull (may be harmless) -- {repr(e)}")
 
 
-def add_artifact(hub, artifact):
+def add_artifact(artifact):
 	"""Add an artifact to the persistent download queue."""
 	pass
 
 
-async def distfile_service(hub):
+async def distfile_service():
 	pass
 
 
-async def fastpull_spider(hub):
+async def fastpull_spider():
 	"""Start the fastpull spider, which will attempt to download queued artifacts and add them to fastpull db."""
 	pass

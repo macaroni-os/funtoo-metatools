@@ -1,9 +1,8 @@
-import asyncio
 import glob
 import os
 import subprocess
-import sys
 
+hub = None
 debug = True
 
 
@@ -50,8 +49,7 @@ def headSHA1(tree):
 
 
 class Tree:
-	def __init__(self, hub, root=None):
-		self.hub = hub
+	def __init__(self, root=None):
 		self.root = root
 		self.autogenned = False
 		self.name = None
@@ -88,7 +86,7 @@ class Tree:
 		print(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
 		# use subprocess.call so we can see the output of autogen:
 		retcode = subprocess.call(
-			f"cd {autogen_path} && doit --release {self.hub.RELEASE} --fastpull",
+			f"cd {autogen_path} && doit --release {hub.RELEASE} --fastpull",
 			shell=True,
 		)
 		if retcode != 0:
@@ -210,8 +208,8 @@ class AutoCreatedGitTree(Tree):
 	stuff"-type tree.
 	"""
 
-	def __init__(self, hub, name: str, branch: str = "master", root: str = None, commit_sha1: str = None, **kwargs):
-		super().__init__(hub, root=root)
+	def __init__(self, name: str, branch: str = "master", root: str = None, commit_sha1: str = None, **kwargs):
+		super().__init__(root=root)
 		self.branch = branch
 		self.name = self.reponame = name
 		self.has_cleaned = False
@@ -250,7 +248,6 @@ class GitTree(Tree):
 
 	def __init__(
 		self,
-		hub,
 		name: str,
 		branch: str = "master",
 		url: str = None,
@@ -267,7 +264,7 @@ class GitTree(Tree):
 
 		# note that if create=True, we are in a special 'local create' mode which is good for testing. We create the repo locally from
 		# scratch if it doesn't exist, as well as any branches. And we don't push.
-		super().__init__(hub, root=root)
+		super().__init__(root=root)
 
 		self.name = name
 		self.url = url
@@ -290,7 +287,7 @@ class GitTree(Tree):
 
 	def _initialize_tree(self):
 		if self.root is None:
-			base = self.hub.MERGE_CONFIG.source_trees
+			base = hub.MERGE_CONFIG.source_trees
 			self.root = "%s/%s" % (base, self.name)
 
 		if os.path.isdir("%s/.git" % self.root) and self.reclone:
@@ -461,11 +458,11 @@ class GitTree(Tree):
 
 
 class RsyncTree(Tree):
-	def __init__(self, hub, name, url="rsync://rsync.us.gentoo.org/gentoo-portage/"):
-		super().__init__(hub)
+	def __init__(self, name, url="rsync://rsync.us.gentoo.org/gentoo-portage/"):
+		super().__init__()
 		self.name = name
 		self.url = url
-		base = self.hub.MERGE_CONFIG.source_trees
+		base = hub.MERGE_CONFIG.source_trees
 		self.root = "%s/%s" % (base, self.name)
 		if not os.path.exists(base):
 			os.makedirs(base)

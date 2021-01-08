@@ -4,37 +4,37 @@ from collections import defaultdict
 import yaml
 import os
 
-from merge_utils.steps import GenerateRepoMetadata, SyncDir, ThirdPartyMirrors, RunSed, SyncFiles
+hub = None
 
 
-def __init__(hub):
+def __init__():
 	hub.FDATA = None
 
 
-def get_kit_pre_post_steps(hub, ctx):
+def get_kit_pre_post_steps(ctx):
 	kit_steps = {
 		"core-kit": {
 			"pre": [
-				GenerateRepoMetadata("core-kit", aliases=["gentoo"], priority=1000),
+				hub.merge.steps.GenerateRepoMetadata("core-kit", aliases=["gentoo"], priority=1000),
 				# core-kit has special logic for eclasses -- we want all of them, so that third-party overlays can reference the full set.
 				# All other kits use alternate logic (not in kit_steps) to only grab the eclasses they actually use.
-				SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "eclass"),
+				hub.merge.steps.SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "eclass"),
 			],
 			"post": [
-				ThirdPartyMirrors(),
-				RunSed(["profiles/base/make.defaults"], ["/^PYTHON_TARGETS=/d", "/^PYTHON_SINGLE_TARGET=/d"]),
+				hub.merge.steps.ThirdPartyMirrors(),
+				hub.merge.steps.RunSed(["profiles/base/make.defaults"], ["/^PYTHON_TARGETS=/d", "/^PYTHON_SINGLE_TARGET=/d"]),
 			],
 		},
 		# masters of core-kit for regular kits and nokit ensure that masking settings set in core-kit for catpkgs in other kits are applied
 		# to the other kits. Without this, mask settings in core-kit apply to core-kit only.
 		"regular-kits": {
 			"pre": [
-				GenerateRepoMetadata(ctx.kit.name, masters=["core-kit"], priority=500),
+				hub.merge.steps.GenerateRepoMetadata(ctx.kit.name, masters=["core-kit"], priority=500),
 			]
 		},
 		"all-kits": {
 			"pre": [
-				SyncFiles(
+				hub.merge.steps.SyncFiles(
 					hub.FIXUP_REPO.root,
 					{
 						"COPYRIGHT.txt": "COPYRIGHT.txt",
@@ -45,7 +45,7 @@ def get_kit_pre_post_steps(hub, ctx):
 		},
 		"nokit": {
 			"pre": [
-				GenerateRepoMetadata("nokit", masters=["core-kit"], priority=-2000),
+				hub.merge.steps.GenerateRepoMetadata("nokit", masters=["core-kit"], priority=-2000),
 			]
 		},
 	}
@@ -76,13 +76,13 @@ def get_kit_pre_post_steps(hub, ctx):
 	return out_pre_steps, out_post_steps
 
 
-def grab_fdata(hub):
+def grab_fdata():
 	if hub.FDATA is None:
 		with open(os.path.join(hub.FIXUP_REPO.root, "foundations.yaml"), "r") as f:
 			hub.FDATA = yaml.safe_load(f)
 
 
-def grab_pdata(hub, ctx):
+def grab_pdata(ctx):
 	pdata = ctx.get("PDATA", None)
 	if pdata is not None:
 		# already loaded
@@ -95,8 +95,8 @@ def grab_pdata(hub, ctx):
 		ctx["PDATA"] = yaml.safe_load(f)
 
 
-def get_kit_items(hub, ctx, section="packages"):
-	hub.merge.foundations.grab_pdata(ctx)
+def get_kit_items(ctx, section="packages"):
+	grab_pdata(ctx)
 	if section in ctx.PDATA:
 		for package_set in ctx.PDATA[section]:
 			repo_name = list(package_set.keys())[0]
@@ -104,26 +104,26 @@ def get_kit_items(hub, ctx, section="packages"):
 			yield repo_name, packages
 
 
-def get_excludes_from_yaml(hub, ctx):
+def get_excludes_from_yaml(ctx):
 	"""
 	Grabs the excludes: section from packages.yaml, which is used to remove stuff from the resultant
 	kit that accidentally got copied by merge scripts (due to a directory looking like an ebuild
 	directory, for example.)
 	"""
-	hub.merge.foundations.grab_pdata(ctx)
+	grab_pdata(ctx)
 	if "exclude" in ctx.PDATA:
 		return ctx.PDATA["exclude"]
 	else:
 		return []
 
 
-def get_copyfiles_from_yaml(hub, ctx):
+def get_copyfiles_from_yaml(ctx):
 	"""
 	Parses the 'eclasses' and 'copyfiles' sections in a kit's YAML and returns a list of files to
 	copy from each source repository in a tuple format.
 	"""
-	eclass_items = list(hub._.get_kit_items(ctx, section="eclasses"))
-	copyfile_items = list(hub._.get_kit_items(ctx, section="copyfiles"))
+	eclass_items = list(get_kit_items(ctx, section="eclasses"))
+	copyfile_items = list(get_kit_items(ctx, section="copyfiles"))
 	copy_tuple_dict = defaultdict(list)
 
 	for src_repo, eclasses in eclass_items:
@@ -136,12 +136,12 @@ def get_copyfiles_from_yaml(hub, ctx):
 	return copy_tuple_dict
 
 
-def get_kit_packages(hub, ctx):
-	return hub._.get_kit_items(ctx)
+def get_kit_packages(ctx):
+	return get_kit_items(ctx)
 
 
-def python_kit_settings(hub):
-	hub.merge.foundations.grab_fdata()
+def python_kit_settings():
+	grab_fdata()
 	for section in hub.FDATA["python-settings"]:
 		release = list(section.keys())[0]
 		if release != hub.RELEASE:
@@ -150,8 +150,8 @@ def python_kit_settings(hub):
 	return None
 
 
-def release_exists(hub, release):
-	hub.merge.foundations.grab_fdata()
+def release_exists(release):
+	grab_fdata()
 	for release_dict in hub.FDATA["kit-groups"]["releases"]:
 		cur_release = list(release_dict.keys())[0]
 		if cur_release == release:
@@ -159,8 +159,8 @@ def release_exists(hub, release):
 	return False
 
 
-def kit_groups(hub):
-	hub.merge.foundations.grab_fdata()
+def kit_groups():
+	grab_fdata()
 	defaults = hub.FDATA["kit-groups"]["defaults"] if "defaults" in hub.FDATA["kit-groups"] else {}
 	for release_dict in hub.FDATA["kit-groups"]["releases"]:
 
@@ -182,8 +182,8 @@ def kit_groups(hub):
 		break
 
 
-def source_defs(hub, name):
-	hub.merge.foundations.grab_fdata()
+def source_defs(name):
+	grab_fdata()
 	for sdef in hub.FDATA["source-defs"]:
 		sdef_name = list(sdef.keys())[0]
 		if sdef_name != name:
@@ -193,11 +193,11 @@ def source_defs(hub, name):
 			yield sdef_entry
 
 
-def get_overlay(hub, name):
+def get_overlay(name):
 	"""
 	Gets data on a specific overlay
 	"""
-	hub.merge.foundations.grab_fdata()
+	grab_fdata()
 	for ov_dict in hub.FDATA["overlays"]:
 
 		if isinstance(ov_dict, str):
@@ -224,19 +224,19 @@ def get_overlay(hub, name):
 	raise IndexError(f"overlay not found: {name}")
 
 
-def get_repos(hub, source_name):
+def get_repos(source_name):
 	"""
 	Given a source definition, return a list of repositories with all data included (like urls
 	from the source definitions, etc.)
 	"""
 
-	sdefs = source_defs(hub, source_name)
+	sdefs = source_defs(source_name)
 
 	for repo_dict in sdefs:
 		if isinstance(repo_dict, str):
 			repo_dict = {"repo": repo_dict}
 		ov_name = repo_dict["repo"]
-		ov_data = get_overlay(hub, ov_name)
+		ov_data = get_overlay(ov_name)
 		repo_dict.update(ov_data)
 
 		if "src_sha1" not in repo_dict:
@@ -248,8 +248,8 @@ def get_repos(hub, source_name):
 		yield repo_dict
 
 
-def release_info(hub):
-	hub.merge.foundations.grab_fdata()
+def release_info():
+	grab_fdata()
 	release_out = {}
 	for release_dict in hub.FDATA["metadata"]:
 		release = list(release_dict.keys())[0]
