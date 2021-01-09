@@ -154,10 +154,7 @@ async def checkout_kit(ctx, pull=None):
 	except AttributeError:
 		pass
 
-	if getattr(hub, "NEST_KITS", True):
-		root = os.path.join(hub.MERGE_CONFIG.dest_trees, "meta-repo/kits", ctx.kit.name)
-	else:
-		root = os.path.join(hub.MERGE_CONFIG.dest_trees, ctx.kit.name)
+	root = get_kit_root(ctx.kit.name)
 
 	out_tree = git_class(ctx.kit.name, branch=branch, root=root, **kwargs)
 	out_tree.initialize()
@@ -168,6 +165,23 @@ async def checkout_kit(ctx, pull=None):
 	# TODO: If an auto-generated kit, we will want to still be able to push up to a remote location
 
 	return out_tree
+
+
+def get_kit_root(kit_name):
+	if getattr(hub, "NEST_KITS", True):
+		return os.path.join(hub.MERGE_CONFIG.dest_trees, "meta-repo/kits", kit_name)
+	else:
+		return os.path.join(hub.MERGE_CONFIG.dest_trees, kit_name)
+
+
+def wipe_indy_kits():
+	indy_roots = set()
+	for kit_dict in hub.KIT_GROUPS:
+		if kit_dict["kind"] == "independent":
+			indy_roots.add(get_kit_root(kit_dict["name"]))
+	for root in indy_roots:
+		if os.path.exists(root):
+			hub.merge.tree.runShell(f"rm -rf {root}")
 
 
 async def generate_kit(ctx):
@@ -323,6 +337,7 @@ def mirror_repository(repo_obj):
 	Mirror a repository to its mirror location, ie. GitHub.
 	"""
 	base_path = os.path.join(hub.MERGE_CONFIG.temp_path, "mirror_repos")
+	hub.merge.tree.runShell(f"rm -rf {base_path}")
 	os.makedirs(base_path, exist_ok=True)
 	hub.merge.tree.runShell(f"git clone --bare {repo_obj.root} {base_path}/{repo_obj.name}.pushme")
 	hub.merge.tree.runShell(

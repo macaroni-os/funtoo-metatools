@@ -101,23 +101,30 @@ def queue_all_indy_autogens():
 		logging.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
-async def gather_pending_tasks(task_list):
+async def gather_pending_tasks(task_list, throw=False):
 	"""
-	This function collects completed asyncio coroutines, catches any exceptions recorded during their execution
-	and logs them properly.
+	This function collects completed asyncio coroutines, catches any exceptions recorded during their execution.
 	"""
+	exceptions = []
+	results = []
 	cur_tasks = task_list
 	if not len(cur_tasks):
-		return
+		return [], []
 	while True:
 		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
 		for done_item in done_list:
-			try:
-				yield done_item.result()
-			except Exception as e:
-				ERRORS.append((e, sys.exc_info()))
+			if throw:
+				result = done_item.result()
+				results.append(result)
+			else:
+				try:
+					result = done_item.result()
+					results.append(result)
+				except Exception as e:
+					exceptions.append((e, sys.exc_info()))
 		if not len(cur_tasks):
 			break
+	return results, exceptions
 
 
 def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=None, gen_path=None):
@@ -212,13 +219,11 @@ async def execute_generator(
 
 			hub.THREAD_CTX.running_autogens.append(Task(gen_wrapper(pkginfo)))
 
-		async for result in gather_pending_tasks(hub.THREAD_CTX.running_autogens):
-			# This will return the pkginfo dict used for the autogen, if you want to inspect it:
-			pass
+		results, errors = await gather_pending_tasks(hub.THREAD_CTX.running_autogens)
+		# This will return the pkginfo dict used for the autogen, if you want to inspect it
 
-		async for result in gather_pending_tasks(hub.THREAD_CTX.running_breezybuilds):
-			# This will return the BreezyBuild object if you want to inspect it for debugging:
-			pass
+		results, errors = await gather_pending_tasks(hub.THREAD_CTX.running_breezybuilds)
+		# This will return the BreezyBuild object if you want to inspect it for debugging:
 
 	return generator_thread_task
 
@@ -329,35 +334,24 @@ def queue_all_yaml_autogens():
 				logging.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
-def load_autogen_config():
-	path = os.path.expanduser("~/.autogen")
-	if os.path.exists(path):
-		with open(path, "r") as f:
-			hub.AUTOGEN_CONFIG = yaml.safe_load(f)
-	else:
-		hub.AUTOGEN_CONFIG = {}
-
-
 async def execute_all_queued_generators():
 	futures = []
 	loop = asyncio.get_running_loop()
-	with ThreadPoolExecutor() as executor:
+	with ThreadPoolExecutor(max_workers=8) as executor:
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
 			async_func = await execute_generator(**task_args)
 			future = loop.run_in_executor(executor, hub.pkgtools.thread.run_async_adapter, async_func)
 			futures.append(future)
 
-	async for result in gather_pending_tasks(futures):
-		pass
+		results, exceptions = await gather_pending_tasks(futures)
 
 
-async def start(start_path=None, out_path=None, fetcher=None, release=None, kit=None, branch=None):
+async def start(start_path=None, out_path=None, fetcher=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
-	load_autogen_config()
 	hub.FETCHER = fetcher
 	hub.pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
 	hub.add("funtoo/generators")

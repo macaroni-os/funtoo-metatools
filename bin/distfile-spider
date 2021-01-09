@@ -1,0 +1,144 @@
+#!/usr/bin/env python3
+
+# So, this is the new distfile spider. What I want to do is to have this thing be able to load
+# metadata JSON and then check with mongodb to ensure files are in fastpull, and if not, run through
+# the JSON and try to grab missing files, and generate a report. Then exit. So it isn't a long-
+# running daemon -- it will run for as long as needed to do its thing.
+import logging
+import os
+import sys
+from argparse import ArgumentParser
+from collections import defaultdict
+from concurrent.futures.thread import ThreadPoolExecutor
+from datetime import datetime
+from multiprocessing import cpu_count
+
+from merge_utils.hub import Hub
+
+
+def expand_uris(src_uri_list):
+	real_uri = []
+	for src_uri in src_uri_list:
+		if src_uri.startswith("mirror://"):
+			real_uri.append(hub.merge.metadata.expand_thirdpartymirror(tp_mirrors, src_uri))
+		else:
+			slash_split = src_uri.split("/")
+			if len(slash_split) == 0:
+				continue
+			elif slash_split[0] not in ["http:", "https:", "ftp:"]:
+				continue
+			real_uri.append(src_uri)
+	return real_uri
+
+
+async def do_distfile_fetch(distinct_key, distinct_file_list):
+	"""
+	This function takes a "file" which is the JSON structure from a kit-cache JSON that describes a file associated
+	with a package. It will then see if the file is in the fastpull DB. If not, it will ensure the file is fetched,
+	which will then cause it to be inserted into the fastpull DB.
+	"""
+	sys.stdout.write("_")
+	sys.stdout.flush()
+	name, sha512, size = distinct_key
+
+	all_src_uris = set()
+	refs = []
+	ffile = None
+	for file, datums in distinct_file_list:
+		if ffile is None:
+			# grab first file for later use
+			ffile = file
+		all_src_uris = all_src_uris | set(file["src_uri"])
+		refs.append({"kit": datums["kit"], "catpkg": datums["catpkg"]})
+
+	src_uris = expand_uris(list(all_src_uris))
+	fp_path = hub.merge.fastpull.get_disk_path(sha512)
+
+	if not os.path.exists(fp_path):
+
+		# TODO: the file could still be locally fetched. So we may still be able to inject? Likely just a weird corner case:
+		if not len(src_uris):
+			return
+		try:
+			a = hub.pkgtools.ebuild.Artifact(url=src_uris[0], final_name=name, expect={"sha512": sha512, "size": size})
+			await hub.merge.fastpull.inject_into_fastpull(a)
+		except hub.pkgtools.ebuild.DigestFailure as af:
+			logging.error(af)
+			return
+	existing = hub.FASTPULL.find_one({"filename": name, "hashes.sha512": sha512})
+	if existing:
+		pass
+	else:
+		# store size inside hashes
+		hashes = ffile["hashes"].copy()
+		hashes["size"] = size
+		db_entry = {}
+		db_entry["fetched_on"] = datetime.utcnow()
+		db_entry["filename"] = name
+		db_entry["hashes"] = ffile["hashes"]
+		db_entry["src_uri"] = src_uris
+		db_entry["refs"] = refs
+		hub.FASTPULL.insert_one(db_entry)
+		sys.stdout.write(":")
+		sys.stdout.flush()
+
+
+exceptions = None
+
+
+async def main_thread():
+	global exceptions
+	mk_json = hub.merge.metadata.load_json(args.infile)
+	if mk_json is None:
+		print(f"Skipping {args.infile} due to old/invalid JSON format.")
+		return
+	futures = []
+	distinct_files = defaultdict(list)
+	for atom, datums in mk_json["atoms"].items():
+		if "files" in datums:
+			for file in datums["files"]:
+				if "hashes" in file and "sha512" in file["hashes"]:
+					distinct_key = (file["name"], file["hashes"]["sha512"], int(file["size"]))
+					distinct_files[distinct_key].append((file, datums))
+
+	with ThreadPoolExecutor(max_workers=cpu_count()) as threadpool:
+		for distinct_key, distinct_file_list in distinct_files.items():
+			future = hub.LOOP.run_in_executor(
+				threadpool, hub.pkgtools.thread.run_async_adapter, do_distfile_fetch, distinct_key, distinct_file_list
+			)
+			futures.append(future)
+		results, exceptions = await hub.pkgtools.autogen.gather_pending_tasks(futures, throw=True)
+
+
+if __name__ == "__main__":
+
+	hub = Hub()
+	hub.add("funtoo/merge")
+	hub.add("funtoo/pkgtools")
+
+	ap = ArgumentParser()
+	ap.add_argument("infile")
+	args = ap.parse_args()
+
+	# We need kit-fixups available so we can grab the thirdpartymirrors file from it.
+
+	hub.FIXUP_REPO = hub.merge.tree.GitTree(
+		"kit-fixups",
+		hub.MERGE_CONFIG.branch("kit-fixups"),
+		url=hub.MERGE_CONFIG.kit_fixups,
+		root=hub.MERGE_CONFIG.source_trees + "/kit-fixups",
+	)
+	hub.FIXUP_REPO.initialize()
+
+	tp_mirrors = hub.merge.metadata.get_thirdpartymirrors(
+		os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit")
+	)
+
+	hub.LOOP.run_until_complete(main_thread())
+	if len(exceptions):
+		print("Error: the following exceptions were encountered:")
+		for x in exceptions:
+			print(x)
+		sys.exit(1)
+
+# vim: ts=4 sw=4 noet

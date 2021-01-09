@@ -55,7 +55,6 @@ def __init__():
 
 @asynccontextmanager
 async def start_download(download):
-	assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 	"""
 	Automatically record the download as being active, and remove from our list when complete.
 	"""
@@ -81,65 +80,6 @@ HASHES = ["sha256", "sha512", "blake2b"]
 
 # TODO: implement different download strategies with different levels of security. Maybe as a
 #       declarative pipeline.
-
-
-async def ensure_completed(catpkg, artifact) -> bool:
-	"""
-	This function ensures that we can 'complete' the artifact -- meaning we have its hash data in the integrity database.
-	If this hash data is not found, then we need to fetch the artifact.
-
-	This function returns True if we do indeed have the artifact available to us, and False if there was some error
-	which prevents this.
-	"""
-	assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
-	integrity_item = hub.merge.deepdive.get_distfile_integrity(catpkg, distfile=artifact.final_name)
-	if integrity_item is not None:
-		artifact.final_data = integrity_item["final_data"]
-		return True
-	else:
-		return await ensure_fetched(artifact, catpkg=catpkg)
-
-
-async def ensure_fetched(artifact, catpkg=None) -> bool:
-	"""
-	This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
-	calculate its hashes or extract it.
-
-	Returns a boolean with True indicating success and False failure.
-	"""
-	assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
-	if artifact.is_fetched():
-		if artifact.final_data is not None:
-			return True
-		else:
-			# We will hit this condition only if for some reason we blew away our Distfile Integrity database or an
-			# entry for a distfile in it. In this scenario -- the file is fetched, so it's on disk, but we don't have
-			# any hashes for it yet. We want to re-populate the Distfile Integrity database if necessary so we don't
-			# keep recalculating hashes unnecessarily and they are persistently stored
-			#
-			# We can only do this if we are called from ensure_completed().
-			if catpkg:
-				integrity_item = hub.merge.deepdive.get_distfile_integrity(catpkg, distfile=artifact.final_name)
-				if integrity_item is not None:
-					artifact.final_data = integrity_item["final_data"]
-				else:
-					final_data = calc_hashes(artifact.final_path)
-					hub.merge.deepdive.store_distfile_integrity(catpkg, artifact.final_name, final_data)
-					artifact.record_final_data(final_data)
-			else:
-				final_data = calc_hashes(artifact.final_path)
-				artifact.record_final_data(final_data)
-			return True
-	else:
-		active_dl = get_download(artifact.final_name)
-		if active_dl is not None:
-			# Active download -- wait for it to finish:
-			logging.info(f"Waiting for {artifact.final_name} to finish")
-			return await active_dl.wait_for_completion(artifact)
-		else:
-			# No active download for this file -- start one:
-			dl_file = Download(artifact)
-			return await dl_file.download()
 
 
 class Download:
@@ -172,8 +112,7 @@ class Download:
 
 	def wait_for_completion(self, artifact):
 		self.artifacts.append(artifact)
-		assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
-		fut = asyncio.get_running_loop().create_future()
+		fut = hub.LOOP.create_future()
 		self.futures.append(fut)
 		return fut
 
@@ -189,35 +128,29 @@ class Download:
 		file, they will get True on success and False on failure (self.futures holds futures for others waiting
 		on this file, and we will future.set_result() with the boolean return code as well.)
 		"""
-		assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
+		print("starting download")
 		slot = await acquire_download_slot()
 		async with slot:
 			async with start_download(self):
-				assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 				success = True
-
 				try:
 					final_data = await _download(self.artifacts[0])
 				except hub.pkgtools.fetch.FetchError as fe:
+					logging.error(fe)
 					success = False
 
 				if success:
 					integrity_keys = {}
 					for artifact in self.artifacts:
 						artifact.record_final_data(final_data)
-						for catpkg in artifact.catpkgs:
-							integrity_keys[(catpkg, artifact.final_name)] = True
+						for breezybuild in artifact.breezybuilds:
+							integrity_keys[(breezybuild.catpkg, artifact.final_name)] = True
 
 					# For every final_name referenced by a catpkg, create a distfile integrity entry. We use integrity_keys to
 					# avoid duplicate records.
 
 					for catpkg, final_name in integrity_keys.keys():
 						hub.merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
-
-					# We only need to insert once into fastpull since it is the same underlying file.
-
-					if hub.MERGE_CONFIG.fastpull_enabled:
-						hub.pkgtools.fastpull.inject_into_fastpull(self.artifacts[0].final_path, final_data=final_data)
 
 		for future in self.futures:
 			future.set_result(success)
@@ -243,43 +176,46 @@ async def _download(artifact):
 	needs to catch and handle this.
 
 	"""
-	assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 	logging.info(f"Fetching {artifact.url}...")
 
 	temp_path = artifact.temp_path
 	os.makedirs(os.path.dirname(temp_path), exist_ok=True)
 	final_path = artifact.final_path
 
-	fd = open(temp_path, "wb")
-	hashes = {}
+	try:
+		fd = open(temp_path, "wb")
+		hashes = {}
 
-	for h in HASHES:
-		hashes[h] = getattr(hashlib, h)()
-	filesize = 0
+		for h in HASHES:
+			hashes[h] = getattr(hashlib, h)()
+		filesize = 0
 
-	def on_chunk(chunk):
-		# See https://stackoverflow.com/questions/5218895/python-nested-functions-variable-scoping
-		nonlocal filesize
-		fd.write(chunk)
-		for hash in HASHES:
-			hashes[hash].update(chunk)
-		filesize += len(chunk)
-		sys.stdout.write(".")
+		def on_chunk(chunk):
+			# See https://stackoverflow.com/questions/5218895/python-nested-functions-variable-scoping
+			nonlocal filesize
+			fd.write(chunk)
+			for hash in HASHES:
+				hashes[hash].update(chunk)
+			filesize += len(chunk)
+			sys.stdout.write(".")
+			sys.stdout.flush()
+
+		await hub.pkgtools.http.http_fetch_stream(artifact.url, on_chunk)
+
+		sys.stdout.write("x")
 		sys.stdout.flush()
+		fd.close()
+		os.link(temp_path, final_path)
 
-	await hub.pkgtools.http.http_fetch_stream(artifact.url, on_chunk)
+		final_data = {"size": filesize, "hashes": {}, "path": final_path}
 
-	sys.stdout.write("x")
-	sys.stdout.flush()
-	fd.close()
-	os.link(temp_path, final_path)
-	os.unlink(temp_path)
-	final_data = {"size": filesize, "hashes": {}, "path": final_path}
-
-	for h in HASHES:
-		final_data["hashes"][h] = hashes[h].hexdigest()
+		for h in HASHES:
+			final_data["hashes"][h] = hashes[h].hexdigest()
 
 	# TODO: this is likely a good place for GPG verification. Implement.
+	finally:
+		if os.path.exists(temp_path):
+			os.unlink(temp_path)
 
 	return final_data
 
