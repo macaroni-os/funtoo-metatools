@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
+
 import argparse
-import asyncio
 import sys
 from collections import defaultdict, OrderedDict
 from concurrent.futures import as_completed
@@ -74,19 +74,9 @@ async def main_thread():
 
 	# Mirroring to GitHub happens here:
 
-	kit_mirror_futures = []
-	with ThreadPoolExecutor(max_workers=8) as executor:
-		# Push all kits, then push meta-repo.
-		for kit_name, kit_tuple in hub.KIT_RESULTS.items():
-			ctx, tree_obj, tree_sha1 = kit_tuple
-			future = executor.submit(hub.merge.kit.mirror_repository, tree_obj)
-			kit_mirror_futures.append(future)
-		for future in as_completed(kit_mirror_futures):
-			kit_name = future.result()
-			print(f"Mirroring of {kit_name} complete.")
+	hub.merge.kit.mirror_all_repositories()
 
-	hub.merge.kit.mirror_repository(hub.META_REPO)
-	print("Mirroring of meta-repo complete.")
+
 	hub.merge.metadata.display_error_summary()
 
 

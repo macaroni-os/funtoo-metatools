@@ -4,6 +4,8 @@ import json
 import os
 import sys
 from collections import defaultdict
+from concurrent.futures._base import as_completed
+from concurrent.futures.thread import ThreadPoolExecutor
 
 hub = None
 
@@ -332,12 +334,11 @@ def generate_metarepo_metadata(output_sha1s):
 		a.write(json.dumps(rel_info, sort_keys=True, indent=4, ensure_ascii=False))
 
 
-def mirror_repository(repo_obj):
+def mirror_repository(repo_obj, base_path):
 	"""
 	Mirror a repository to its mirror location, ie. GitHub.
 	"""
-	base_path = os.path.join(hub.MERGE_CONFIG.temp_path, "mirror_repos")
-	hub.merge.tree.runShell(f"rm -rf {base_path}")
+
 	os.makedirs(base_path, exist_ok=True)
 	hub.merge.tree.runShell(f"git clone --bare {repo_obj.root} {base_path}/{repo_obj.name}.pushme")
 	hub.merge.tree.runShell(
@@ -345,3 +346,20 @@ def mirror_repository(repo_obj):
 	)
 	hub.merge.tree.runShell(f"rm -rf {base_path}/{repo_obj.name}.pushme")
 	return repo_obj.name
+
+
+def mirror_all_repositories():
+	base_path = os.path.join(hub.MERGE_CONFIG.temp_path, "mirror_repos")
+	hub.merge.tree.runShell(f"rm -rf {base_path}")
+	kit_mirror_futures = []
+	with ThreadPoolExecutor(max_workers=8) as executor:
+		# Push all kits, then push meta-repo.
+		for kit_name, kit_tuple in hub.KIT_RESULTS.items():
+			ctx, tree_obj, tree_sha1 = kit_tuple
+			future = executor.submit(mirror_repository, tree_obj, base_path)
+			kit_mirror_futures.append(future)
+		for future in as_completed(kit_mirror_futures):
+			kit_name = future.result()
+			print(f"Mirroring of {kit_name} complete.")
+	hub.merge.kit.mirror_repository(hub.META_REPO)
+	print("Mirroring of meta-repo complete.")
