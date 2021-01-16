@@ -123,7 +123,6 @@ if __name__ == "__main__":
 		# This means we'll just generate our own local git trees for the purposes of generating kits. This is generally used by developers to see what
 		# would end up in kits, when you don't really need to create any kits that will be used anywhere else.
 		hub.GIT_CLASS = hub.merge.tree.AutoCreatedGitTree
-		hub.GIT_CLASS_KWARGS_FN = None
 		hub.PUSH = False
 		hub.MIRROR = False
 		hub.META_REPO = meta_repo = hub.GIT_CLASS(
@@ -158,6 +157,7 @@ if __name__ == "__main__":
 		hub.MERGE_CONFIG.branch("kit-fixups"),
 		url=hub.MERGE_CONFIG.kit_fixups,
 		root=hub.MERGE_CONFIG.source_trees + "/kit-fixups",
+		checkout_all_branches=False
 	)
 
 	hub.CPM_LOGGER = None
