@@ -97,12 +97,19 @@ def create_ebuild_cond_dep(pyspec_str, atoms):
 	each string in the list implies a separate line.)
 	"""
 	out_atoms = []
-	pyspec = pyspec_to_cond_dep_args(pyspec_str)
+	pyspec = None
+	usespec = None
+	if pyspec_str.startswith("py:"):
+		pyspec = pyspec_to_cond_dep_args(pyspec_str)
+	elif pyspec_str.startswith("use:"):
+		usespec = pyspec_str[4:]
 
 	for atom in atoms:
 		out_atoms.append(expand_pydep(atom))
 
-	if not len(pyspec):
+	if usespec:
+		out = [f"{usespec}? ( {' '.join(out_atoms)} )"]
+	elif not len(pyspec):
 		# no condition -- these deps are for all python versions, so not a conditional dep:
 		out = out_atoms
 	else:
