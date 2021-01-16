@@ -361,5 +361,5 @@ def mirror_all_repositories():
 		for future in as_completed(kit_mirror_futures):
 			kit_name = future.result()
 			print(f"Mirroring of {kit_name} complete.")
-	hub.merge.kit.mirror_repository(hub.META_REPO)
+	hub.merge.kit.mirror_repository(hub.META_REPO, base_path)
 	print("Mirroring of meta-repo complete.")
