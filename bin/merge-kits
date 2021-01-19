@@ -76,7 +76,6 @@ async def main_thread():
 
 	hub.merge.kit.mirror_all_repositories()
 
-
 	hub.merge.metadata.display_error_summary()
 
 
@@ -157,7 +156,7 @@ if __name__ == "__main__":
 		hub.MERGE_CONFIG.branch("kit-fixups"),
 		url=hub.MERGE_CONFIG.kit_fixups,
 		root=hub.MERGE_CONFIG.source_trees + "/kit-fixups",
-		checkout_all_branches=False
+		checkout_all_branches=False,
 	)
 
 	hub.CPM_LOGGER = None

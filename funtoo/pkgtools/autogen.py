@@ -5,6 +5,7 @@ import subprocess
 import os
 import threading
 import sys
+import traceback
 from asyncio import FIRST_EXCEPTION, Task
 from collections import defaultdict
 from concurrent.futures.thread import ThreadPoolExecutor
@@ -220,9 +221,26 @@ async def execute_generator(
 			hub.THREAD_CTX.running_autogens.append(Task(gen_wrapper(pkginfo)))
 
 		results, errors = await gather_pending_tasks(hub.THREAD_CTX.running_autogens)
+		if errors:
+			print("Exceptions encountered:")
+			first_e = None
+			for e, exc_info in errors:
+				traceback.print_exception(*exc_info)
+				if first_e is None:
+					first_e = e
+			raise first_e
+
 		# This will return the pkginfo dict used for the autogen, if you want to inspect it
 
 		results, errors = await gather_pending_tasks(hub.THREAD_CTX.running_breezybuilds)
+		if errors:
+			print("Exceptions encountered:")
+			first_e = None
+			for e, exc_info in errors:
+				traceback.print_exception(*exc_info)
+				if first_e is None:
+					first_e = e
+			raise first_e
 		# This will return the BreezyBuild object if you want to inspect it for debugging:
 
 	return generator_thread_task

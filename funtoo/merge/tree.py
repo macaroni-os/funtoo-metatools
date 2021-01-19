@@ -260,7 +260,7 @@ class GitTree(Tree):
 		destfix: bool = False,
 		reclone: bool = False,
 		pull: bool = True,
-		checkout_all_branches: bool = True
+		checkout_all_branches: bool = True,
 	):
 
 		# note that if create=True, we are in a special 'local create' mode which is good for testing. We create the repo locally from
