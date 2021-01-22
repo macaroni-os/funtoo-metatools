@@ -2,7 +2,7 @@
 
 from funtoo.merge.tree import GitTree
 from funtoo.merge.steps import SyncFromTree
-from merge_utils.hub import Hub
+from subpop.hub import Hub
 
 # This function updates the gentoo-staging tree with all the latest gentoo updates:
 

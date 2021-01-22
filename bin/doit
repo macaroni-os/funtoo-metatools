@@ -5,7 +5,7 @@ import traceback
 import argparse
 import os
 import logging
-from merge_utils.hub import Hub
+from subpop.hub import Hub
 
 logging.basicConfig(level=logging.INFO)
 

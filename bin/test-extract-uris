@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 import sys
+from subpop.hub import Hub
 
 uri_strs = [
 	"https://foo.bar.com/blah-1.0.tar.gz",
@@ -33,5 +34,4 @@ def main_thread():
 
 if __name__ == "__main__":
 	hub = Hub()
-	hub.add("funtoo/merge")
 	main_thread()

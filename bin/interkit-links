@@ -8,7 +8,7 @@
 # simply refers to things referenced in the kit that can't be found within the kit.
 
 import sys
-from merge_utils.hub import Hub
+from subpop.hub import Hub
 
 if __name__ == "__main__":
 	hub = Hub()

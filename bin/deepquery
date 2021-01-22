@@ -12,7 +12,7 @@
 # for x in $(deepquery dev-perl | cut -f1 -d' '); do git rm -rf $x; done
 
 import sys
-from merge_utils.hub import Hub
+from subpop.hub import Hub
 
 if __name__ == "__main__":
 	hub = Hub()

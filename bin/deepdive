@@ -3,7 +3,7 @@
 
 from dict_tools.data import NamespaceDict
 from funtoo.merge.tree import GitTree
-from merge_utils.hub import Hub
+from subpop.hub import Hub
 
 
 async def insert_kit(ctx):

@@ -12,7 +12,7 @@ import os
 from argparse import ArgumentParser
 from dict_tools.data import NamespaceDict
 from funtoo.merge.tree import GitTree
-from merge_utils.hub import Hub
+from subpop.hub import Hub
 
 
 def sizeof_fmt(num, suffix="B"):

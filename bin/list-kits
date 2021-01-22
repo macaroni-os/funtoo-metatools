@@ -6,7 +6,7 @@
 
 import sys
 from funtoo.merge.tree import GitTree
-from merge_utils.hub import Hub
+from subpop.hub import Hub
 
 if __name__ == "__main__":
 	hub = Hub()

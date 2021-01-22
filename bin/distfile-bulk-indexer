@@ -12,7 +12,7 @@ from queue import Queue
 
 
 from merge_utils.config import Configuration
-from merge_utils.hub import Hub
+from subpop.hub import Hub
 
 num_indexers = multiprocessing.cpu_count()
 main_queue = Queue(maxsize=1000)
@@ -57,5 +57,4 @@ if __name__ == "__main__":
 	hub = Hub(lazy=False)
 	hub.add("funtoo/merge")
 	hub.add("funtoo/pkgtools")
-	hub.MERGE_CONFIG = config = Configuration()
 	asyncio.run(main_thread(sys.argv[1]))

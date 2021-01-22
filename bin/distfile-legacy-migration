@@ -32,7 +32,7 @@
 import asyncio
 
 from merge_utils.db_core import FastPullDatabase
-from merge_utils.hub import Hub
+from subpop.hub import Hub
 
 
 async def main_thread():

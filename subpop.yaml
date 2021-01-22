@@ -1,0 +1,11 @@
+subsystems:
+  pkgtools:
+    path: funtoo/pkgtools
+  merge:
+    path: funtoo/merge
+
+hub:
+  defaults:
+    subsystems:
+      - pkgtools
+      - merge

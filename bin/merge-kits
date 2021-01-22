@@ -8,7 +8,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime
 
 from dict_tools.data import NamespaceDict
-from merge_utils.hub import Hub
+from subpop.hub import Hub
 
 
 class MergeError(Exception):
@@ -104,19 +104,24 @@ def parse_args():
 
 if __name__ == "__main__":
 
-	hub = Hub()
-	hub.OPT = parse_args()
+	args = parse_args()
+
+	merge_kwargs = dict(
+		prod=args.prod,
+		release=args.release
+	)
+
+	hub = Hub(settings={"merge": merge_kwargs})
+
+	hub.OPT = args
 
 	# Parse options:
 
-	push = not hub.OPT.nopush
-	hub.PROD = prod = hub.OPT.prod
-	forcepush = hub.OPT.force
+	push = not args.nopush
+	hub.PROD = prod = args.prod
+	forcepush = args.force
 
 	# Initialize internal pop globals that are expected to be in place when the merge sub gets added:
-
-	hub.add("funtoo/merge", prod=prod, release=hub.OPT.release)
-	hub.add("funtoo/pkgtools")
 
 	if not prod:
 		# This means we'll just generate our own local git trees for the purposes of generating kits. This is generally used by developers to see what
