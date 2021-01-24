@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 
 import asyncio
-import subprocess
+import logging
 import os
-import threading
+import subprocess
 import sys
-import traceback
 from asyncio import FIRST_EXCEPTION, Task
 from collections import defaultdict
 from concurrent.futures.thread import ThreadPoolExecutor
 
-import yaml
 from yaml import safe_load
-import logging
 
 hub = None
 
@@ -102,7 +99,7 @@ def queue_all_indy_autogens():
 		logging.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
-async def gather_pending_tasks(task_list, throw=False):
+async def gather_pending_tasks(task_list, throw=True):
 	"""
 	This function collects completed asyncio coroutines, catches any exceptions recorded during their execution.
 	"""
@@ -191,7 +188,6 @@ async def execute_generator(
 	# and post-tasks:
 
 	async def generator_thread_task():
-		assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 		print(f"********************** Executing generator {generator_sub_name}")
 
 		hub.THREAD_CTX.sub = generator_sub
@@ -220,28 +216,8 @@ async def execute_generator(
 
 			hub.THREAD_CTX.running_autogens.append(Task(gen_wrapper(pkginfo)))
 
-		results, errors = await gather_pending_tasks(hub.THREAD_CTX.running_autogens)
-		if errors:
-			print("Exceptions encountered:")
-			first_e = None
-			for e, exc_info in errors:
-				traceback.print_exception(*exc_info)
-				if first_e is None:
-					first_e = e
-			raise first_e
-
-		# This will return the pkginfo dict used for the autogen, if you want to inspect it
-
-		results, errors = await gather_pending_tasks(hub.THREAD_CTX.running_breezybuilds)
-		if errors:
-			print("Exceptions encountered:")
-			first_e = None
-			for e, exc_info in errors:
-				traceback.print_exception(*exc_info)
-				if first_e is None:
-					first_e = e
-			raise first_e
-		# This will return the BreezyBuild object if you want to inspect it for debugging:
+		await gather_pending_tasks(hub.THREAD_CTX.running_autogens)
+		await gather_pending_tasks(hub.THREAD_CTX.running_breezybuilds)
 
 	return generator_thread_task
 
@@ -363,6 +339,8 @@ async def execute_all_queued_generators():
 			futures.append(future)
 
 		results, exceptions = await gather_pending_tasks(futures)
+		if len(exceptions):
+			print(exceptions)
 
 
 async def start(start_path=None, out_path=None, fetcher=None):

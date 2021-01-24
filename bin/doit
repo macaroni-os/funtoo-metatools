@@ -39,7 +39,6 @@ if __name__ == "__main__":
 
 	hub.add("funtoo/pkgtools")
 	hub.add("funtoo/merge", fastpull=hub.OPT.fastpull)
-
 	errors = hub.LOOP.run_until_complete(hub.pkgtools.autogen.start(**kwargs))
 
 	if len(errors):

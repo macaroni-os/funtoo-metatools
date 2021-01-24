@@ -283,7 +283,6 @@ class BreezyBuild:
 		      are not just calculated -- the distfile integrity entry should be created as well.
 
 		"""
-		assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 
 		fetch_tasks_dict = {}
 
