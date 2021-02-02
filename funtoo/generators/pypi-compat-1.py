@@ -27,7 +27,7 @@ def add_ebuild(hub, json_dict=None, compat_ebuild=False, **pkginfo):
 	if "distutils-r1" not in local_pkginfo["inherit"]:
 		local_pkginfo["inherit"].append("distutils-r1")
 
-	hub.pkgtools.pyhelper.expand_pydeps(local_pkginfo)
+	hub.pkgtools.pyhelper.expand_pydeps(local_pkginfo, compat_mode=True, compat_ebuild=compat_ebuild)
 
 	if compat_ebuild:
 		local_pkginfo["python_compat"] = "python2_7"
