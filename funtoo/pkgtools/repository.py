@@ -2,6 +2,9 @@
 
 import os
 import logging
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
+hub = None
 
 
 class Tree:
@@ -39,13 +42,13 @@ def set_context(start_path=None, out_path=None, name=None):
 	if out_path is None or start_path == out_path:
 		hub.OUTPUT_CONTEXT = hub.CONTEXT
 	else:
-		hub.OUTPUT_CONTEXT = hub._.repository_of(out_path, name=name)
+		hub.OUTPUT_CONTEXT = repository_of(out_path, name=name)
 	if hub.CONTEXT is None:
-		raise hub.pkgtools.ebuild.BreezyError(
+		raise pkgtools.ebuild.BreezyError(
 			"Could not determine repo context: %s -- please create a profiles/repo_name file in your repository." % start_path
 		)
 	elif hub.OUTPUT_CONTEXT is None:
-		raise hub.pkgtools.ebuild.BreezyError(
+		raise pkgtools.ebuild.BreezyError(
 			"Could not determine output repo context: %s -- please create a profiles/repo_name file in your repository."
 			% out_path
 		)

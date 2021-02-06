@@ -11,6 +11,11 @@ from concurrent.futures.thread import ThreadPoolExecutor
 
 from yaml import safe_load
 
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
+import dyne.org.funtoo.metatools.generators as generators
+
+from subpop.util import load_plugin
+
 hub = None
 
 """
@@ -179,10 +184,12 @@ async def execute_generator(
 	if generator_sub_path:
 		# This is an individual autogen.py. First grab the "base sub" (map the path), and then grab the actual sub-
 		# module we want by name.
-		generator_sub = hub.load_plugin(f"{generator_sub_path}/{generator_sub_name}.py", generator_sub_name)
+		generator_sub = load_plugin(f"{generator_sub_path}/{generator_sub_name}.py", generator_sub_name)
 	else:
 		# This is an official generator that is built-in to pkgtools:
-		generator_sub = getattr(hub.generators, generator_sub_name)
+		for plugin in generators:
+			logging.warning(f"PLUGIN {plugin}")
+		generator_sub = getattr(generators, generator_sub_name)
 
 	# The generate_wrapper wraps the call to `generate()` (in autogen.py or the generator) and performs setup
 	# and post-tasks:
@@ -335,7 +342,7 @@ async def execute_all_queued_generators():
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
 			async_func = await execute_generator(**task_args)
-			future = loop.run_in_executor(executor, hub.pkgtools.thread.run_async_adapter, async_func)
+			future = loop.run_in_executor(executor, pkgtools.thread.run_async_adapter, async_func)
 			futures.append(future)
 
 		results, exceptions = await gather_pending_tasks(futures)
@@ -349,8 +356,9 @@ async def start(start_path=None, out_path=None, fetcher=None):
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
 	hub.FETCHER = fetcher
-	hub.pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
-	hub.add("funtoo/generators")
+	pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
+	if getattr(hub, "pkgtools", None) is None:
+		hub.pkgtools = pkgtools
 	queue_all_indy_autogens()
 	queue_all_yaml_autogens()
 	await execute_all_queued_generators()

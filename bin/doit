@@ -5,7 +5,13 @@ import traceback
 import argparse
 import os
 import logging
+
+from dict_tools.data import NamespaceDict
 from subpop.hub import Hub
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 logging.basicConfig(level=logging.INFO)
 
@@ -31,15 +37,13 @@ def parse_args():
 
 
 if __name__ == "__main__":
-	hub = Hub()
 	hub.OPT = parse_args()
 	kwargs = {}
 	for arg in ["fetcher", "out_path", "start_path"]:
 		kwargs[arg] = getattr(hub.OPT, arg)
 
-	hub.add("funtoo/pkgtools")
-	hub.add("funtoo/merge", fastpull=hub.OPT.fastpull)
-	errors = hub.LOOP.run_until_complete(hub.pkgtools.autogen.start(**kwargs))
+	hub.set_model("org.funtoo.metatools/merge", fastpull=hub.OPT.fastpull)
+	errors = hub.LOOP.run_until_complete(pkgtools.autogen.start(**kwargs))
 
 	if len(errors):
 		sys.stderr.write("\n\n")

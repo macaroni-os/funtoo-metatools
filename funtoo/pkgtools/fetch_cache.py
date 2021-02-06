@@ -18,17 +18,6 @@ of the downloaded artifact -- its message digests and size at the time the downl
 
 """
 
-hub = None
-
-
-def __init__():
-	mc = MongoClient()
-	db_name = "metatools"
-	hub.MONGO_DB = getattr(mc, db_name)
-	hub.MONGO_FC = hub.MONGO_DB.fetch_cache
-	hub.MONGO_FC.create_index([("method_name", pymongo.ASCENDING), ("url", pymongo.ASCENDING)])
-	hub.MONGO_FC.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {"$exists": True}})
-
 
 async def fetch_cache_write(method_name, fetchable, body=None, metadata_only=False):
 	"""
