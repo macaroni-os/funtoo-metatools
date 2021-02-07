@@ -5,11 +5,15 @@ import traceback
 import argparse
 import os
 import logging
-
-from dict_tools.data import NamespaceDict
 from subpop.hub import Hub
 
-hub = Hub()
+class DoItHub(Hub):
+
+	@property
+	def pkgtools(self):
+		return globals()['pkgtools']
+
+hub = DoItHub()
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
@@ -19,7 +23,6 @@ CLI_CONFIG = {
 	"start_path": {"default": os.getcwd(), "os": "AUTOGEN_START_PATH", "help": "Where to start processing"},
 	"out_path": {"default": None, "os": "AUTOGEN_OUTPUT_PATH", "help": "Destination repository path"},
 	"name": {"default": None, "os": "AUTOGEN_REPONAME", "help": "Repository name (to override)"},
-	"fetcher": {"default": "default", "os": "AUTOGEN_FETCHER", "help": "What fetching plugin to use."},
 	"release": {"default": None, "help": "Specify a release (used for production distfile integrity/fastpull.)"},
 	"kit": {"default": None, "help": "Specify a kit (used for production distfile integrity/fastpull.)"},
 	"branch": {"default": None, "help": "Specify a branch (used for production distfile integrity/fastpull.)"},
@@ -39,7 +42,7 @@ def parse_args():
 if __name__ == "__main__":
 	hub.OPT = parse_args()
 	kwargs = {}
-	for arg in ["fetcher", "out_path", "start_path"]:
+	for arg in ["out_path", "start_path"]:
 		kwargs[arg] = getattr(hub.OPT, arg)
 
 	hub.set_model("org.funtoo.metatools/merge", fastpull=hub.OPT.fastpull)

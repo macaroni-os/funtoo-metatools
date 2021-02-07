@@ -9,6 +9,8 @@ from asyncio import Semaphore, Lock
 from subprocess import getstatusoutput
 from contextlib import asynccontextmanager
 
+import dyne.org.funtoo.metatools.merge as merge
+
 """
 This sub deals with the higher-level logic related to downloading of distfiles. Where the 'fetch.py'
 sub deals with grabbing HTTP data from APIs, this is much more geared towards grabbing tarballs that
@@ -150,7 +152,7 @@ class Download:
 					# avoid duplicate records.
 
 					for catpkg, final_name in integrity_keys.keys():
-						hub.merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
+						merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
 
 		for future in self.futures:
 			future.set_result(success)

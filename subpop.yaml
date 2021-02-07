@@ -1,3 +1,2 @@
 namespace: org.funtoo.metatools
-subsystems:
-  path: funtoo
+root: funtoo

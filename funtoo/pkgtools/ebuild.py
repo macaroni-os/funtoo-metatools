@@ -180,7 +180,7 @@ class Artifact(Fetchable):
 					self.validate_digests()
 				return True
 		else:
-			active_dl = pkgtools.download.get_pkgtools.download(self.final_name)
+			active_dl = pkgtools.download.get_download(self.final_name)
 			if active_dl is not None:
 				# Active download -- wait for it to finish:
 				logging.info(f"Waiting for {self.final_name} download to finish")
@@ -189,8 +189,8 @@ class Artifact(Fetchable):
 					self._final_data = active_dl.final_data
 			else:
 				# No active download for this file -- start one:
-				dl_file = pkgtools.download.pkgtools.download(self)
-				success = await dl_file.pkgtools.download()
+				dl_file = pkgtools.download.Download(self)
+				success = await dl_file.download()
 			if success:
 				# Will throw an exception if our new final data doesn't match any expected values.
 				self.validate_digests()

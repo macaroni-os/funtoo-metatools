@@ -13,6 +13,7 @@ from yaml import safe_load
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 import dyne.org.funtoo.metatools.generators as generators
+import dyne.org.funtoo.metatools.merge as merge
 
 from subpop.util import load_plugin
 
@@ -350,15 +351,18 @@ async def execute_all_queued_generators():
 			print(exceptions)
 
 
-async def start(start_path=None, out_path=None, fetcher=None):
+async def start(start_path=None, out_path=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
-	hub.FETCHER = fetcher
 	pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
-	if getattr(hub, "pkgtools", None) is None:
-		hub.pkgtools = pkgtools
+	# TODO:
+	# This is a hack to iterate through all plugins to ensure they are all loaded prior to starting threads, so we
+	# don't experience race conditions loading modules, as this clobbers sys.modules in a non-threadsafe way currently.
+	for plugin in pkgtools:
+		pass
+	getattr(merge, "deepdive")
 	queue_all_indy_autogens()
 	queue_all_yaml_autogens()
 	await execute_all_queued_generators()
