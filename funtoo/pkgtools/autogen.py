@@ -186,6 +186,8 @@ async def execute_generator(
 		# This is an individual autogen.py. First grab the "base sub" (map the path), and then grab the actual sub-
 		# module we want by name.
 		generator_sub = load_plugin(f"{generator_sub_path}/{generator_sub_name}.py", generator_sub_name)
+		# Do hub injection:
+		generator_sub.hub = hub
 	else:
 		# This is an official generator that is built-in to pkgtools:
 		for plugin in generators:
