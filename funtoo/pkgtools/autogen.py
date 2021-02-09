@@ -190,8 +190,6 @@ async def execute_generator(
 		generator_sub.hub = hub
 	else:
 		# This is an official generator that is built-in to pkgtools:
-		for plugin in generators:
-			logging.warning(f"PLUGIN {plugin}")
 		generator_sub = getattr(generators, generator_sub_name)
 
 	# The generate_wrapper wraps the call to `generate()` (in autogen.py or the generator) and performs setup
