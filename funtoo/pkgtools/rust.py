@@ -23,20 +23,21 @@ async def get_crates_artifacts(package_name, lock_path):
 	return dict(crates=crates, crates_artifacts=crates_artifacts)
 
 
-async def generate_crates_from_artifact(src_artifact, package_name, src_dir_glob="*", do_update=False):
+async def generate_crates_from_artifact(src_artifact, package_name, src_dir_glob="*"):
 	"""
 	This method, when passed an Artifact, will fetch the artifact, extract it, look in the directory
 	``src_dir_glob`` (a glob specifying the name of the source directory within the extracted files
 	which contains ``Cargo.lock`` -- you can also specify sub-directories as part of this glob), and
 	will then parse ``Cargo.lock`` for package names, and then generate a list of artifacts for each
-	crate discovered. This list of new artifacts will be returned as a list. Optionally, if there is
-	no ``Cargo.lock`` present in the artifact, the ``do_update`` argument can be set to True.
+	crate discovered. This list of new artifacts will be returned as a list. In the case there is no 
+	``Cargo.lock`` present in the artifact, ``cargo update`` will be run to generate one.
 	"""
 	await src_artifact.fetch()
 	src_artifact.extract()
 	src_dir = glob.glob(os.path.join(src_artifact.extract_path, src_dir_glob))[0]
-	if do_update:
+	glob_path = os.path.join(src_dir, "Cargo.lock")
+	if not os.path.exists(glob_path):
 		cargo_cmd = subprocess.Popen(["cargo", "update"], cwd=src_dir).wait()
-	artifacts = await get_crates_artifacts(package_name, os.path.join(src_dir, "Cargo.lock"))
+	artifacts = await get_crates_artifacts(package_name, glob_path)
 	src_artifact.cleanup()
 	return artifacts
