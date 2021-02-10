@@ -23,7 +23,7 @@ async def get_crates_artifacts(package_name, lock_path):
 	return dict(crates=crates, crates_artifacts=crates_artifacts)
 
 
-async def generate_crates_from_artifact(src_artifact, src_dir_glob, package_name):
+async def generate_crates_from_artifact(src_artifact, package_name, src_dir_glob, do_update=False):
 	"""
 	This method, when passed an Artifact, will fetch the artifact, extract it, look in the directory
 	``src_dir_glob`` (a glob specifying the name of the source directory within the extracted files
@@ -34,7 +34,8 @@ async def generate_crates_from_artifact(src_artifact, src_dir_glob, package_name
 	await src_artifact.fetch()
 	src_artifact.extract()
 	src_dir = glob.glob(os.path.join(src_artifact.extract_path, src_dir_glob))[0]
-	cargo_cmd = subprocess.Popen(["cargo", "update"], cwd=src_dir).wait()
+	if do_update:
+		cargo_cmd = subprocess.Popen(["cargo", "update"], cwd=src_dir).wait()
 	artifacts = await get_crates_artifacts(package_name, os.path.join(src_dir, "Cargo.lock"))
 	src_artifact.cleanup()
 	return artifacts
