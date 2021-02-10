@@ -30,7 +30,7 @@ async def generate_crates_from_artifact(src_artifact, package_name, src_dir_glob
 	which contains ``Cargo.lock`` -- you can also specify sub-directories as part of this glob), and
 	will then parse ``Cargo.lock`` for package names, and then generate a list of artifacts for each
 	crate discovered. This list of new artifacts will be returned as a list. Optionally, if there is
-    no ``Cargo.lock`` present in the artifact, the ``do_update`` argument can be set to True.
+	no ``Cargo.lock`` present in the artifact, the ``do_update`` argument can be set to True.
 	"""
 	await src_artifact.fetch()
 	src_artifact.extract()
