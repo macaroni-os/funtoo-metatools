@@ -23,7 +23,7 @@ async def get_crates_artifacts(package_name, lock_path):
 	return dict(crates=crates, crates_artifacts=crates_artifacts)
 
 
-async def generate_crates_from_artifact(src_artifact, package_name, src_dir_glob, do_update=False):
+async def generate_crates_from_artifact(src_artifact, package_name, src_dir_glob="*", do_update=False):
 	"""
 	This method, when passed an Artifact, will fetch the artifact, extract it, look in the directory
 	``src_dir_glob`` (a glob specifying the name of the source directory within the extracted files
