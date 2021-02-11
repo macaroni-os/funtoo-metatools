@@ -10,6 +10,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 import dyne.org.funtoo.metatools.merge as merge
 import dyne.org.funtoo.metatools.merge.steps
 
+
 def copy_from_fixups_steps(ctx):
 
 	# Phase 3: copy eclasses, licenses, profile info, and ebuild/eclass fixups from the kit-fixups repository.
@@ -71,9 +72,7 @@ def copy_from_fixups_steps(ctx):
 			# don't get this particular catpkg. Assume we may not have all these catpkgs listed in our package-set
 			# file...
 
-			steps += [
-				merge.steps.InsertEbuilds(hub.FIXUP_REPO, ebuildloc=fixup_path, select="all", skip=None, replace=True)
-			]
+			steps += [merge.steps.InsertEbuilds(hub.FIXUP_REPO, ebuildloc=fixup_path, select="all", skip=None, replace=True)]
 	return steps
 
 

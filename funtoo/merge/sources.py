@@ -7,6 +7,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 
 import dyne.org.funtoo.metatools.merge as merge
 
+
 def initialize_repo(repo_dict):
 	print("Going to initialize", repo_dict)
 	repo_name = repo_dict["name"]

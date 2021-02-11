@@ -9,10 +9,12 @@ from datetime import datetime
 
 from dict_tools.data import NamespaceDict
 from subpop.hub import Hub
+
 hub = Hub()
 
 import dyne.org.funtoo.metatools.merge as merge
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
 
 class MergeError(Exception):
 	pass
@@ -120,7 +122,7 @@ if __name__ == "__main__":
 	hub.set_model("org.funtoo.metatools/merge", prod=hub.OPT.prod, push=push, release=hub.OPT.release)
 	# force initialization
 	getattr(merge.tree, "foobar", None)
-	#logging.warning(f"in merge-kits: PROD {getattr(hub, 'PROD', 'NOT DEFINED')}")
+	# logging.warning(f"in merge-kits: PROD {getattr(hub, 'PROD', 'NOT DEFINED')}")
 	if not hub.PROD:
 		# This means we'll just generate our own local git trees for the purposes of generating kits. This is generally used by developers to see what
 		# would end up in kits, when you don't really need to create any kits that will be used anywhere else.

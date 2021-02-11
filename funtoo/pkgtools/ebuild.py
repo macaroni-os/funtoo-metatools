@@ -48,6 +48,13 @@ class Artifact(Fetchable):
 		self.expect = expect
 
 	@property
+	def catpkgs(self):
+		outstr = ""
+		for bzb in self.breezybuilds:
+			outstr = f"{outstr} {bzb.catpkg}"
+		return outstr.strip()
+
+	@property
 	def temp_path(self):
 		return os.path.join(hub.MERGE_CONFIG.fetch_download_path, f"{self.final_name}.__download__")
 

@@ -13,7 +13,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from dict_tools.data import NamespaceDict
 
-hub = None
+import dyne.org.funtoo.metatools.merge as merge
 
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
 # version, we'll consider the kit cache stale and regenerate it.
@@ -373,7 +373,7 @@ def extract_ebuild_metadata(repo_obj, atom, ebuild_path=None, env=None, eclass_p
 	# This tells ebuild.sh to write out the metadata to stdout (fd 1) which is where we will grab
 	# it from:
 	env["PORTAGE_PIPE_FD"] = "1"
-	result = hub.merge.tree.run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
+	result = merge.tree.run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
 	if result.returncode != 0:
 		repo_obj.METADATA_ERRORS[atom] = {"status": "ebuild.sh failure", "output": result.stderr}
 		return None

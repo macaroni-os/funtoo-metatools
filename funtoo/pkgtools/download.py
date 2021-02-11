@@ -107,6 +107,7 @@ class Download:
 		self.final_name = artifact.final_name
 		self.url = artifact.url
 		self.artifacts = [artifact]
+		self.final_data = None
 		self.futures = []
 
 	def add_artifact(self, artifact):
@@ -136,7 +137,7 @@ class Download:
 			async with start_download(self):
 				success = True
 				try:
-					final_data = await _download(self.artifacts[0])
+					self.final_data = await _download(self.artifacts[0])
 				except hub.pkgtools.fetch.FetchError as fe:
 					logging.error(fe)
 					success = False
@@ -144,7 +145,7 @@ class Download:
 				if success:
 					integrity_keys = {}
 					for artifact in self.artifacts:
-						artifact.record_final_data(final_data)
+						artifact.record_final_data(self.final_data)
 						for breezybuild in artifact.breezybuilds:
 							integrity_keys[(breezybuild.catpkg, artifact.final_name)] = True
 
@@ -152,7 +153,7 @@ class Download:
 					# avoid duplicate records.
 
 					for catpkg, final_name in integrity_keys.keys():
-						merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
+						merge.deepdive.store_distfile_integrity(catpkg, final_name, self.final_data)
 
 		for future in self.futures:
 			future.set_result(success)

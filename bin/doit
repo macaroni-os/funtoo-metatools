@@ -7,11 +7,12 @@ import os
 import logging
 from subpop.hub import Hub
 
-class DoItHub(Hub):
 
+class DoItHub(Hub):
 	@property
 	def pkgtools(self):
-		return globals()['pkgtools']
+		return globals()["pkgtools"]
+
 
 hub = DoItHub()
 

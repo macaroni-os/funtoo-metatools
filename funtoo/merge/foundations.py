@@ -6,6 +6,7 @@ import os
 
 import dyne.org.funtoo.metatools.merge as merge
 
+
 def get_kit_pre_post_steps(ctx):
 	kit_steps = {
 		"core-kit": {
