@@ -4,37 +4,32 @@ from collections import defaultdict
 import yaml
 import os
 
-hub = None
-
-
-def __init__():
-	hub.FDATA = None
-
+import dyne.org.funtoo.metatools.merge as merge
 
 def get_kit_pre_post_steps(ctx):
 	kit_steps = {
 		"core-kit": {
 			"pre": [
-				hub.merge.steps.GenerateRepoMetadata("core-kit", aliases=["gentoo"], priority=1000),
+				merge.steps.GenerateRepoMetadata("core-kit", aliases=["gentoo"], priority=1000),
 				# core-kit has special logic for eclasses -- we want all of them, so that third-party overlays can reference the full set.
 				# All other kits use alternate logic (not in kit_steps) to only grab the eclasses they actually use.
-				hub.merge.steps.SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "eclass"),
+				merge.steps.SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "eclass"),
 			],
 			"post": [
-				hub.merge.steps.ThirdPartyMirrors(),
-				hub.merge.steps.RunSed(["profiles/base/make.defaults"], ["/^PYTHON_TARGETS=/d", "/^PYTHON_SINGLE_TARGET=/d"]),
+				merge.steps.ThirdPartyMirrors(),
+				merge.steps.RunSed(["profiles/base/make.defaults"], ["/^PYTHON_TARGETS=/d", "/^PYTHON_SINGLE_TARGET=/d"]),
 			],
 		},
 		# masters of core-kit for regular kits and nokit ensure that masking settings set in core-kit for catpkgs in other kits are applied
 		# to the other kits. Without this, mask settings in core-kit apply to core-kit only.
 		"regular-kits": {
 			"pre": [
-				hub.merge.steps.GenerateRepoMetadata(ctx.kit.name, masters=["core-kit"], priority=500),
+				merge.steps.GenerateRepoMetadata(ctx.kit.name, masters=["core-kit"], priority=500),
 			]
 		},
 		"all-kits": {
 			"pre": [
-				hub.merge.steps.SyncFiles(
+				merge.steps.SyncFiles(
 					hub.FIXUP_REPO.root,
 					{
 						"COPYRIGHT.txt": "COPYRIGHT.txt",
@@ -45,7 +40,7 @@ def get_kit_pre_post_steps(ctx):
 		},
 		"nokit": {
 			"pre": [
-				hub.merge.steps.GenerateRepoMetadata("nokit", masters=["core-kit"], priority=-2000),
+				merge.steps.GenerateRepoMetadata("nokit", masters=["core-kit"], priority=-2000),
 			]
 		},
 	}

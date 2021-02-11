@@ -1,10 +1,19 @@
+import logging
+
 from merge_utils.config import Configuration
 import pymongo
 from pymongo import MongoClient
 
 
-def __init__(hub, release=None, **kwargs):
-
+def __init__(hub, prod=None, push=False, release=None, **kwargs):
+	hub.CURRENT_SOURCE_DEF = None
+	hub.SOURCE_REPOS = {}
+	hub.PUSH = push
+	hub.FDATA = None
+	hub.PROD = False
+	if prod is True:
+		hub.PROD = prod
+	logging.warning(f"PROD {getattr(hub, 'PROD', 'NOT DEFINED')}")
 	hub.RELEASE = release
 	# Passing "fastpull" kwarg to Configuration:
 	hub.MERGE_CONFIG = Configuration(**kwargs)
