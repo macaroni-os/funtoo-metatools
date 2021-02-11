@@ -118,7 +118,7 @@ def create_ebuild_cond_dep(pyspec_str, atoms):
 	return out
 
 
-def expand_pydeps(pkginfo):
+def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 	expanded_pydeps = []
 	if "pydeps" in pkginfo:
 		pytype = type(pkginfo["pydeps"])
@@ -127,6 +127,14 @@ def expand_pydeps(pkginfo):
 				expanded_pydeps.append(expand_pydep(dep))
 		elif pytype == dict:
 			for label, deps in pkginfo["pydeps"].items():
+				# 'compat mode' means we are actually generating 2 ebuilds, one for py3+ and one for py2
+				if compat_mode:
+					# If we are generating a 'compat' ebuild, automatically drop py3 deps
+					if compat_ebuild and label == "py:3":
+						continue
+					# If we are generating a 'non-compat' ebuild, automatically drop py2 deps
+					elif not compat_ebuild and label == "py:2":
+						continue
 				expanded_pydeps += create_ebuild_cond_dep(label, deps)
 	if "rdepend" not in pkginfo:
 		pkginfo["rdepend"] = "\n".join(expanded_pydeps)
