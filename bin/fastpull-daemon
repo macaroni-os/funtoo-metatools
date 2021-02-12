@@ -8,6 +8,10 @@ import tornado.ioloop
 from tornado.log import enable_pretty_logging
 from subpop.hub import Hub
 
+hub = Hub()
+
+import dyne.org.funtoo.metatools.merge as merge
+
 enable_pretty_logging()
 
 
@@ -37,7 +41,7 @@ class RedirectHandler(tornado.web.RequestHandler):
 """
 			)
 			return
-		fp_ent = hub.FASTPULL.find_one({"filename": fn})
+		fp_ent = merge.FASTPULL.find_one({"filename": fn})
 		if fp_ent:
 			sh = fp_ent["hashes"]["sha512"]
 			basepath = f"{sh[:2]}/{sh[2:4]}/{sh[4:6]}/{sh}"
@@ -68,8 +72,6 @@ class Application(tornado.web.Application):
 
 
 if __name__ == "__main__":
-	hub = Hub(lazy=False)
-	hub.add("funtoo/merge")
 	application = Application()
 	http_server = HTTPServer(application, xheaders=True)
 	http_server.bind(8080, "127.0.0.1")

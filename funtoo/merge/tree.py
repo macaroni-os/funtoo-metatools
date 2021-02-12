@@ -1,12 +1,11 @@
-import asyncio
 import glob
-import io
 import logging
 import os
 import subprocess
 
-hub = None
 debug = True
+
+import dyne.org.funtoo.metatools.merge as merge
 
 
 class ShellError(Exception):
@@ -87,7 +86,7 @@ class Tree:
 		print(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
 		# use subprocess.call so we can see the output of autogen:
 		retcode = subprocess.call(
-			f"cd {autogen_path} && doit --release {hub.RELEASE} --fastpull",
+			f"cd {autogen_path} && doit --release {merge.model.RELEASE} --fastpull",
 			shell=True,
 		)
 		if retcode != 0:
@@ -290,7 +289,7 @@ class GitTree(Tree):
 
 	def _initialize_tree(self):
 		if self.root is None:
-			base = hub.MERGE_CONFIG.source_trees
+			base = merge.model.MERGE_CONFIG.source_trees
 			self.root = "%s/%s" % (base, self.name)
 
 		if os.path.isdir("%s/.git" % self.root) and self.reclone:
@@ -485,7 +484,7 @@ class RsyncTree(Tree):
 		super().__init__()
 		self.name = name
 		self.url = url
-		base = hub.MERGE_CONFIG.source_trees
+		base = merge.model.MERGE_CONFIG.source_trees
 		self.root = "%s/%s" % (base, self.name)
 		if not os.path.exists(base):
 			os.makedirs(base)

@@ -24,11 +24,11 @@ will be running on a particular release, kit and branch, any reads and writes wi
 we don't need to arbitrate/lock access to the Distfile Integrity DB. The Architecture makes it safe.
 """
 
-hub = None
+import dyne.org.funtoo.metatools.merge as merge
 
 
 def get_distfile_integrity(catpkg=None, distfile=None):
-	return hub.DISTFILE_INTEGRITY.find_one({"catpkg": catpkg, "distfile": distfile})
+	return merge.model.DISTFILE_INTEGRITY.find_one({"catpkg": catpkg, "distfile": distfile})
 
 
 def store_distfile_integrity(catpkg, final_name, final_data, **kwargs):
@@ -41,4 +41,4 @@ def store_distfile_integrity(catpkg, final_name, final_data, **kwargs):
 		if extra in kwargs:
 			out[extra] = kwargs[extra]
 
-	hub.DISTFILE_INTEGRITY.insert_one(out)
+	merge.model.DISTFILE_INTEGRITY.insert_one(out)

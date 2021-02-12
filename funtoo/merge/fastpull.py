@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
+import dyne.org.funtoo.metatools.merge as merge
 
 
 def complete_artifact(artifact):
@@ -37,16 +38,16 @@ def complete_artifact(artifact):
 
 
 def get_disk_path(sh):
-	return os.path.join(hub.MERGE_CONFIG.fastpull_path, sh[:2], sh[2:4], sh[4:6], sh)
+	return os.path.join(merge.model.MERGE_CONFIG.fastpull_path, sh[:2], sh[2:4], sh[4:6], sh)
 
 
 def record_fastpull_db_entry(artifact):
 	refs = []
 	for bzb in artifact.breezybuilds:
 		refs.append({"catpkg": bzb.catpkg})
-	db_ent = hub.FASTPULL.find_one({"filename": artifact.final_name, "sha512": artifact.get_hash("sha512")})
+	db_ent = merge.model.FASTPULL.find_one({"filename": artifact.final_name, "sha512": artifact.get_hash("sha512")})
 	if db_ent:
-		hub.FASTPULL.update(
+		merge.model.FASTPULL.update(
 			{"filename": artifact.final_name, "sha512": artifact.get_hash("sha512")}, {"$addToSet": {"refs": {"$each": {refs}}}}
 		)
 	else:
@@ -55,7 +56,7 @@ def record_fastpull_db_entry(artifact):
 		db_entry["filename"] = artifact.final_name
 		db_entry["refs"] = refs
 		db_entry["fetched_on"] = datetime.utcnow()
-		hub.FASTPULL.insert_one(db_entry)
+		merge.model.FASTPULL.insert_one(db_entry)
 
 
 async def inject_into_fastpull(artifact):

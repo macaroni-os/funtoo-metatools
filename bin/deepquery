@@ -14,13 +14,14 @@
 import sys
 from subpop.hub import Hub
 
-if __name__ == "__main__":
-	hub = Hub()
-	hub.add("funtoo/merge")
+hub = Hub()
 
+import dyne.org.funtoo.metatools.merge as merge
+
+if __name__ == "__main__":
 	nodep_catpkgs = dict()
-	for pypak in hub.DEEPDIVE.find({"category": sys.argv[1]}):
-		dep_on_me = hub.DEEPDIVE.count_documents({"relations": {"$in": [pypak["catpkg"]]}})
+	for pypak in merge.DEEPDIVE.find({"category": sys.argv[1]}):
+		dep_on_me = merge.DEEPDIVE.count_documents({"relations": {"$in": [pypak["catpkg"]]}})
 		if dep_on_me == 0:
 			nodep_catpkgs[pypak["catpkg"]] = pypak["kit"]
 

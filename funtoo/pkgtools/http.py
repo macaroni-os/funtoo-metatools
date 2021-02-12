@@ -59,9 +59,9 @@ def get_auth_kwargs(hostname, url):
 	in ~/.autogen (YAML format.)
 	"""
 	kwargs = {}
-	if "authentication" in hub.AUTOGEN_CONFIG:
-		if hostname in hub.AUTOGEN_CONFIG["authentication"]:
-			auth_info = hub.AUTOGEN_CONFIG["authentication"][hostname]
+	if "authentication" in pkgtools.model.AUTOGEN_CONFIG:
+		if hostname in pkgtools.model.AUTOGEN_CONFIG["authentication"]:
+			auth_info = pkgtools.model.AUTOGEN_CONFIG["authentication"][hostname]
 			logging.warning(f"Using authentication (username {auth_info['username']}) for {url}")
 			kwargs = {"auth": aiohttp.BasicAuth(auth_info["username"], auth_info["password"])}
 	return kwargs

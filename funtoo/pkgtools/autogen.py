@@ -17,8 +17,6 @@ import dyne.org.funtoo.metatools.merge as merge
 
 from subpop.util import load_plugin
 
-hub = None
-
 """
 The `PENDING_QUE` will be built up to contain a full list of all the catpkgs we want to autogen in the full run
 of 'doit'. We queue up everything first so that we have the ability to add QA checks, such as for catpkgs that
@@ -66,7 +64,7 @@ def generate_manifests():
 	written once for each catpkg, rather than written as each individual ebuild is autogenned (which would create a
 	race condition writing to each Manifest file.)
 	"""
-	for manifest_file, manifest_lines in hub.MANIFEST_LINES.items():
+	for manifest_file, manifest_lines in pkgtools.model.MANIFEST_LINES.items():
 		manifest_lines = sorted(list(manifest_lines))
 		with open(manifest_file, "w") as myf:
 			pos = 0

@@ -5,21 +5,26 @@ import pymongo
 from pymongo import MongoClient
 
 
-def __init__(hub, prod=None, push=False, release=None, **kwargs):
-	hub.CURRENT_SOURCE_DEF = None
-	hub.SOURCE_REPOS = {}
-	hub.PUSH = push
-	hub.FDATA = None
-	hub.PROD = False
+def __init__(model, prod=None, push=False, release=None, **kwargs):
+	# When kits are being regenerated, we will update these variables to contain counts of various kinds of
+	# errors, so we can display a summary at the end of processing all kits. Users can consult the correct
+	# logs in ~/repo_tmp/tmp/ for details.
+	model.METADATA_ERROR_STATS = []
+	model.PROCESSING_WARNING_STATS = []
+	model.CURRENT_SOURCE_DEF = None
+	model.SOURCE_REPOS = {}
+	model.PUSH = push
+	model.FDATA = None
+	model.PROD = False
 	if prod is True:
-		hub.PROD = prod
-	logging.warning(f"PROD {getattr(hub, 'PROD', 'NOT DEFINED')}")
-	hub.RELEASE = release
+		model.PROD = prod
+	logging.warning(f"PROD {getattr(model, 'PROD', 'NOT DEFINED')}")
+	model.RELEASE = release
 	# Passing "fastpull" kwarg to Configuration:
-	hub.MERGE_CONFIG = Configuration(**kwargs)
+	model.MERGE_CONFIG = Configuration(**kwargs)
 
 	mc = MongoClient()
-	dd = hub.DEEPDIVE = mc.metatools.deepdive
+	dd = model.DEEPDIVE = mc.metatools.deepdive
 	dd.create_index("atom")
 	dd.create_index([("kit", pymongo.ASCENDING), ("category", pymongo.ASCENDING), ("package", pymongo.ASCENDING)])
 	dd.create_index("catpkg")
@@ -27,10 +32,10 @@ def __init__(hub, prod=None, push=False, release=None, **kwargs):
 	dd.create_index("md5")
 	dd.create_index("files.name", partialFilterExpression={"files": {"$exists": True}})
 
-	di = hub.DISTFILE_INTEGRITY = mc.metatools.distfile_integrity
+	di = model.DISTFILE_INTEGRITY = mc.metatools.distfile_integrity
 	di.create_index([("category", pymongo.ASCENDING), ("package", pymongo.ASCENDING), ("distfile", pymongo.ASCENDING)])
 
-	fp = hub.FASTPULL = mc.metatools.fastpull
+	fp = model.FASTPULL = mc.metatools.fastpull
 	fp.create_index([("hashes.sha512", pymongo.ASCENDING), ("filename", pymongo.ASCENDING)], unique=True)
 	# rand_ids don't need to be unique -- they can be shared if they are pointing to the same underlying file.
 	fp.create_index([("rand_id", pymongo.ASCENDING)])

@@ -17,6 +17,7 @@ class DoItHub(Hub):
 hub = DoItHub()
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
+import dyne.org.funtoo.metatools.merge as merge
 
 logging.basicConfig(level=logging.INFO)
 
@@ -46,7 +47,7 @@ if __name__ == "__main__":
 	for arg in ["out_path", "start_path"]:
 		kwargs[arg] = getattr(hub.OPT, arg)
 
-	hub.set_model("org.funtoo.metatools/merge", fastpull=hub.OPT.fastpull)
+	merge.apply_config(fastpull=hub.OPT.fastpull)
 	errors = hub.LOOP.run_until_complete(pkgtools.autogen.start(**kwargs))
 
 	if len(errors):

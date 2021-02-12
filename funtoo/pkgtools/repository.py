@@ -4,8 +4,6 @@ import os
 import logging
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
-hub = None
-
 
 class Tree:
 	def __init__(self, root=None, start=None, name=None):

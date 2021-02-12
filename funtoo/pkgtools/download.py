@@ -52,10 +52,6 @@ async def acquire_download_slot():
 	return DOWNLOAD_SLOT[id(loop)]
 
 
-def __init__():
-	hub.CHECK_DISK_HASHES = False
-
-
 @asynccontextmanager
 async def start_download(download):
 	"""
@@ -163,7 +159,7 @@ class Download:
 
 
 def extract_path(artifact):
-	return os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name)
+	return os.path.join(merge.model.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name)
 
 
 async def _download(artifact):
@@ -226,7 +222,7 @@ async def _download(artifact):
 
 def cleanup(artifact):
 	# TODO: check for path stuff like ../.. in final_name to avoid security issues.
-	getstatusoutput("rm -rf " + os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name))
+	getstatusoutput("rm -rf " + os.path.join(merge.model.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name))
 
 
 def extract(artifact):

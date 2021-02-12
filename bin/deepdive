@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+
 import logging
 
 from dict_tools.data import NamespaceDict
@@ -15,7 +16,7 @@ async def insert_kit(ctx):
 	if not len(items_to_insert):
 		logging.warning(f"No items to insert for {ctx.kit.name}")
 		return
-	result = hub.DEEPDIVE.insert_many(items_to_insert)
+	result = merge.model.DEEPDIVE.insert_many(items_to_insert)
 	print(f"kit {ctx.kit.name} - inserted {len(result.inserted_ids)} items.")
 	if len(items_to_insert) != len(result.inserted_ids):
 		raise KeyError("Number of inserted items does not match!")
@@ -23,31 +24,29 @@ async def insert_kit(ctx):
 
 if __name__ == "__main__":
 
-	hub.set_model("org.funtoo.metatools/merge", release="1.4-release")
-	# force init
-	getattr(merge, "foundations", None)
-	hub.GIT_CLASS = GitTree
-	hub.FIXUP_REPO = GitTree(
+	merge.apply_config(release="1.4-release")
+	merge.model.GIT_CLASS = GitTree
+	merge.model.FIXUP_REPO = GitTree(
 		"kit-fixups",
-		hub.MERGE_CONFIG.branch("kit-fixups"),
-		url=hub.MERGE_CONFIG.kit_fixups,
-		root=hub.MERGE_CONFIG.source_trees + "/kit-fixups",
+		merge.model.MERGE_CONFIG.branch("kit-fixups"),
+		url=merge.model.MERGE_CONFIG.kit_fixups,
+		root=merge.model.MERGE_CONFIG.source_trees + "/kit-fixups",
 	)
-	hub.META_REPO = meta_repo = GitTree(
+	merge.model.META_REPO = meta_repo = GitTree(
 		"meta-repo",
-		branch=hub.RELEASE,
-		url=hub.MERGE_CONFIG.meta_repo,
-		root=hub.MERGE_CONFIG.dest_trees + "/meta-repo",
+		branch=merge.model.RELEASE,
+		url=merge.model.MERGE_CONFIG.meta_repo,
+		root=merge.model.MERGE_CONFIG.dest_trees + "/meta-repo",
 		origin_check=False,
 		pull=False,
 	)
 
-	hub.META_REPO.initialize()
-	hub.FIXUP_REPO.initialize()
-	hub.KIT_GROUPS = list(merge.foundations.kit_groups())
+	merge.model.META_REPO.initialize()
+	merge.model.FIXUP_REPO.initialize()
+	merge.model.KIT_GROUPS = list(merge.foundations.kit_groups())
 	pipeline_keys, pipeline_groups = merge.sources.get_kits_in_correct_processing_order()
 
-	hub.DEEPDIVE.delete_many({})
+	merge.model.DEEPDIVE.delete_many({})
 	for source in pipeline_keys:
 		kit_dict_list = pipeline_groups[source]
 		for kit_dict in kit_dict_list:

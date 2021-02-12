@@ -6,17 +6,18 @@
 # It also contains code that I started to work on for the new distfile spider. So it's sort
 # of a mish-mash.
 
-import asyncio
 import json
 import os
 from argparse import ArgumentParser
-from dict_tools.data import NamespaceDict
-from funtoo.merge.tree import GitTree
+
 from subpop.hub import Hub
+from dict_tools.data import NamespaceDict
+
+from funtoo.merge.tree import GitTree
 
 hub = Hub()
 
-import org.funtoo.metatools.merge as merge
+import dyne.org.funtoo.metatools.merge as merge
 
 
 def sizeof_fmt(num, suffix="B"):
@@ -80,11 +81,11 @@ def add_stats(main_stats, new_stats):
 async def distfile_stats():
 	global_stats = create_stats()
 	out = []
-	for kit_group in hub.KIT_GROUPS:
+	for kit_group in merge.KIT_GROUPS:
 		ctx = NamespaceDict()
 		ctx["kit"] = kit = NamespaceDict(kit_group)
 		ctx["stats"] = stats = create_stats()
-		for pkg in hub.DEEPDIVE.find({"kit": kit.name, "branch": kit.branch}):
+		for pkg in merge.DEEPDIVE.find({"kit": kit.name, "branch": kit.branch}):
 			if "files" in pkg:
 				for file in pkg["files"]:
 
@@ -116,7 +117,7 @@ async def distfile_stats():
 					else:
 						stats.bytes_todo += sz_bytes
 						stats.files_todo += 1
-						if hub.OUT is not None:
+						if merge.OUT is not None:
 							out.append(file)
 		print_summary(ctx.stats, ctx.kit)
 		add_stats(global_stats, stats)
@@ -130,26 +131,24 @@ if __name__ == "__main__":
 	ap.add_argument("--out", default=None)
 	args = ap.parse_args()
 
-	hub.set_model("org.funtoo.metatools/merge", release=args.release)
-	# force init.
-	getattr(merge, "kits")
+	merge.apply_config(release=args.release)
 
-	hub.FIXUP_REPO = GitTree(
+	merge.FIXUP_REPO = GitTree(
 		"kit-fixups",
-		hub.MERGE_CONFIG.branch("kit-fixups"),
-		url=hub.MERGE_CONFIG.kit_fixups,
-		root=hub.MERGE_CONFIG.source_trees + "/kit-fixups",
+		merge.MERGE_CONFIG.branch("kit-fixups"),
+		url=merge.MERGE_CONFIG.kit_fixups,
+		root=merge.MERGE_CONFIG.source_trees + "/kit-fixups",
 	)
 
-	hub.FIXUP_REPO.initialize()
-	hub.KIT_GROUPS = list(merge.foundations.kit_groups())
-	hub.OUT = args.out
+	merge.FIXUP_REPO.initialize()
+	merge.KIT_GROUPS = list(merge.foundations.kit_groups())
+	merge.OUT = args.out
 
-	out = hub.LOOP.run_until_complete(distfile_stats())
-	if hub.OUT:
-		with open(hub.OUT, "w") as f:
+	out = merge.LOOP.run_until_complete(distfile_stats())
+	if merge.OUT:
+		with open(merge.OUT, "w") as f:
 			f.write(json.dumps(out))
-			print(f"Listing of missing files JSON written to {hub.OUT}.")
+			print(f"Listing of missing files JSON written to {merge.OUT}.")
 
 
 # vim: ts=4 sw=4 noet

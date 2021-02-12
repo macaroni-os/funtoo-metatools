@@ -3,12 +3,6 @@
 from concurrent.futures.thread import ThreadPoolExecutor
 from multiprocessing import cpu_count
 
-hub = None
-
-
-def __init__():
-	hub.CPU_BOUND_EXECUTOR = ThreadPoolExecutor(max_workers=cpu_count())
-
 
 def get_threadpool():
 	return ThreadPoolExecutor(max_workers=cpu_count())

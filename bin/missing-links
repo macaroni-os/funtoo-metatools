@@ -11,19 +11,22 @@ from subpop.hub import Hub
 
 hub = Hub()
 
+import dyne.org.funtoo.metatools.merge as merge
+
+
 if __name__ == "__main__":
 
 	nodep_catpkgs = dict()
 	all_relations = set()
 	all_catpkgs = set()
-	for pypak in hub.DEEPDIVE.find({"kit": sys.argv[1], "branch": sys.argv[2]}):
+	for pypak in merge.DEEPDIVE.find({"kit": sys.argv[1], "branch": sys.argv[2]}):
 		all_catpkgs.add(pypak["catpkg"])
 		all_relations = all_relations | set(pypak["relations"])
 
 	inter_kitlink_catpkgs = all_relations - all_catpkgs
 	missing_catpkgs = set()
 	for catpkg in inter_kitlink_catpkgs:
-		pak = hub.DEEPDIVE.find({"catpkg": catpkg})
+		pak = merge.DEEPDIVE.find({"catpkg": catpkg})
 		if pak is None:
 			missing_catpkgs.add(catpkg)
 	for catpkg in sorted(list(missing_catpkgs)):

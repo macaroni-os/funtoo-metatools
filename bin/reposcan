@@ -16,8 +16,8 @@ async def main_thread(repo_plus_overlays):
 		out_tree = await merge.kit.checkout_kit(ctx)
 
 		if pos == 0:
-			hub.ECLASS_ROOT = out_tree.root
-			hub.ECLASS_HASHES = merge.metadata.get_eclass_hashes(hub.ECLASS_ROOT)
+			merge.ECLASS_ROOT = out_tree.root
+			merge.ECLASS_HASHES = merge.metadata.get_eclass_hashes(merge.ECLASS_ROOT)
 
 		merge.metadata.fetch_kit(out_tree)
 		merge.metadata.gen_cache(out_tree)

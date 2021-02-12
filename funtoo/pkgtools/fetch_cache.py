@@ -36,13 +36,13 @@ async def fetch_cache_write(method_name, fetchable, body=None, metadata_only=Fal
 	now = datetime.utcnow()
 	if not metadata_only:
 
-		hub.MONGO_FC.update_one(
+		pkgtools.model.MONGO_FC.update_one(
 			{"method_name": method_name, "url": url},
 			{"$set": {"last_attempt": now, "fetched_on": now, "metadata": metadata, "body": body}},
 			upsert=True,
 		)
 	else:
-		hub.MONGO_FC.update_one(
+		pkgtools.model.MONGO_FC.update_one(
 			{"method_name": method_name, "url": url},
 			{
 				"$set": {
@@ -71,7 +71,7 @@ async def fetch_cache_read(method_name, fetchable, max_age=None, refresh_interva
 		url = fetchable
 	else:
 		url = fetchable.url
-	result = hub.MONGO_FC.find_one({"method_name": method_name, "url": url})
+	result = pkgtools.model.MONGO_FC.find_one({"method_name": method_name, "url": url})
 	if result is None or "fetched_on" not in result:
 		raise pkgtools.fetch.CacheMiss()
 	elif refresh_interval is not None:
@@ -95,7 +95,7 @@ async def record_fetch_failure(method_name, fetchable, failure_reason):
 	else:
 		url = fetchable.url
 	now = datetime.utcnow()
-	hub.MONGO_FC.update_one(
+	pkgtools.model.MONGO_FC.update_one(
 		{"method_name": method_name, "url": url},
 		{
 			"$set": {"last_attempt": now, "last_failure_on": now},

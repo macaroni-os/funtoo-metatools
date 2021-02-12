@@ -377,20 +377,6 @@ class ZapMatchingEbuilds(MergeStep):
 				merge.tree.run_shell("rm -rf %s" % dest_pkgdir)
 
 
-class RecordAllCatPkgs(MergeStep):
-	"""
-	This is used for non-auto-generated kits where we should record the catpkgs as belonging to a particular kit
-	but perform no other action. A kit generation NO-OP, compared to InsertEbuilds
-	"""
-
-	def __init__(self, srctree):
-		self.srctree = srctree
-
-	async def run(self, desttree=None):
-		for catpkg in self.srctree.getAllCatPkgs():
-			hub.CPM_LOGGER.record(self.srctree.name, catpkg, is_fixup=False)
-
-
 class InsertEbuilds(MergeStep):
 	"""
 	Insert ebuilds in source tre into destination tree.
@@ -558,20 +544,9 @@ class InsertEbuilds(MergeStep):
 						checks.append(tpkgdir)
 				if copied:
 					# log XML here.
-					if hub.CPM_LOGGER:
-						hub.CPM_LOGGER.recordCopyToXML(self.srctree, desttree, catpkg)
-						if isinstance(self.select, regextype):
-							# If a regex was used to match the copied catpkg, record the regex.
-							hub.CPM_LOGGER.record(desttree.name, catpkg, regex_matched=self.select)
-						else:
-							# otherwise, record the literal catpkg matched.
-							hub.CPM_LOGGER.record(desttree.name, catpkg)
-							if tcatpkg is not None:
-								# This means we did a package move. Record the "new name" of the package, too. So both
-								# old name and new name get marked as being part of this kit.
-								hub.CPM_LOGGER.record(desttree.name, tcatpkg)
+					pass
 		if script_out:
-			temp_out = os.path.join(hub.MERGE_CONFIG.temp_path, desttree.name + "_copyfiles.sh")
+			temp_out = os.path.join(merge.model.MERGE_CONFIG.temp_path, desttree.name + "_copyfiles.sh")
 			os.makedirs(os.path.dirname(temp_out), exist_ok=True)
 			with open(temp_out, "w") as f:
 				f.write("#!/bin/bash\n")

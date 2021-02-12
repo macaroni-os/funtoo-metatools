@@ -71,7 +71,7 @@ async def do_distfile_fetch(distinct_key, distinct_file_list):
 		except pkgtools.ebuild.DigestFailure as af:
 			logging.error(af)
 			return
-	existing = hub.FASTPULL.find_one({"filename": name, "hashes.sha512": sha512})
+	existing = merge.FASTPULL.find_one({"filename": name, "hashes.sha512": sha512})
 	if existing:
 		pass
 	else:
@@ -84,12 +84,9 @@ async def do_distfile_fetch(distinct_key, distinct_file_list):
 		db_entry["hashes"] = ffile["hashes"]
 		db_entry["src_uri"] = src_uris
 		db_entry["refs"] = refs
-		hub.FASTPULL.insert_one(db_entry)
+		merge.FASTPULL.insert_one(db_entry)
 		sys.stdout.write(":")
 		sys.stdout.flush()
-
-
-exceptions = None
 
 
 async def main_thread():
@@ -124,21 +121,16 @@ if __name__ == "__main__":
 
 	# We need kit-fixups available so we can grab the thirdpartymirrors file from it.
 
-	hub.FIXUP_REPO = merge.tree.GitTree(
+	merge.FIXUP_REPO = merge.tree.GitTree(
 		"kit-fixups",
-		hub.MERGE_CONFIG.branch("kit-fixups"),
-		url=hub.MERGE_CONFIG.kit_fixups,
-		root=hub.MERGE_CONFIG.source_trees + "/kit-fixups",
+		merge.MERGE_CONFIG.branch("kit-fixups"),
+		url=merge.MERGE_CONFIG.kit_fixups,
+		root=merge.MERGE_CONFIG.source_trees + "/kit-fixups",
 	)
-	hub.FIXUP_REPO.initialize()
+	merge.FIXUP_REPO.initialize()
 
 	tp_mirrors = merge.metadata.get_thirdpartymirrors(os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit"))
 
 	hub.LOOP.run_until_complete(main_thread())
-	if len(exceptions):
-		print("Error: the following exceptions were encountered:")
-		for x in exceptions:
-			print(x)
-		sys.exit(1)
 
 # vim: ts=4 sw=4 noet

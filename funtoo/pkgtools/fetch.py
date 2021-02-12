@@ -57,7 +57,7 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 	url = fetchable if type(fetchable) == str else fetchable.url
 	attempts = 0
 	fail_reason = None
-	while attempts < hub.FETCH_ATTEMPTS:
+	while attempts < pkgtools.model.FETCH_ATTEMPTS:
 		attempts += 1
 		try:
 			if refresh_interval is not None:
@@ -78,7 +78,7 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 			await pkgtools.fetch_cache.fetch_cache_write(fetch_method.__name__, fetchable, body=result)
 			return result
 		except FetchError as e:
-			if e.retry and attempts + 1 < hub.FETCH_ATTEMPTS:
+			if e.retry and attempts + 1 < pkgtools.model.FETCH_ATTEMPTS:
 				logging.error(f"Fetch method {fetch_method.__name__}: {e.msg}; retrying...")
 				continue
 			# if we got here, we are on our LAST retry attempt or retry is False:

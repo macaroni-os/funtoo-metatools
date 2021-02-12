@@ -13,13 +13,11 @@ import dyne.org.funtoo.metatools.merge as merge
 hub = Hub()
 
 if __name__ == "__main__":
-	hub.set_model("org.funtoo.metatools/merge", release=sys.argv[1])
-	# force init
-	getattr(merge, "kits")
-	hub.FIXUP_REPO = GitTree(
+	merge.apply_config(release=sys.argv[1])
+	merge.FIXUP_REPO = GitTree(
 		"kit-fixups",
-		hub.MERGE_CONFIG.branch("kit-fixups"),
-		url=hub.MERGE_CONFIG.kit_fixups,
+		merge.MERGE_CONFIG.branch("kit-fixups"),
+		url=merge.MERGE_CONFIG.kit_fixups,
 		root="/home/drobbins/development/kit-fixups-dr",
 	)
 

@@ -56,7 +56,7 @@ class Artifact(Fetchable):
 
 	@property
 	def temp_path(self):
-		return os.path.join(hub.MERGE_CONFIG.fetch_download_path, f"{self.final_name}.__download__")
+		return os.path.join(merge.model.MERGE_CONFIG.fetch_download_path, f"{self.final_name}.__download__")
 
 	@property
 	def extract_path(self):
@@ -67,7 +67,7 @@ class Artifact(Fetchable):
 		if self._final_path:
 			return self._final_path
 		else:
-			return os.path.join(hub.MERGE_CONFIG.fetch_download_path, self.final_name)
+			return os.path.join(merge.model.MERGE_CONFIG.fetch_download_path, self.final_name)
 
 	@property
 	def final_name(self):
@@ -390,7 +390,7 @@ class BreezyBuild:
 			success = await artifact.ensure_completed()
 			if not success:
 				raise BreezyError(f"Something prevented us from storing Manifest data for {key}.")
-			hub.MANIFEST_LINES[key].add(
+			pkgtools.model.MANIFEST_LINES[key].add(
 				"DIST %s %s BLAKE2B %s SHA512 %s\n"
 				% (artifact.final_name, artifact.size, artifact.hash("blake2b"), artifact.hash("sha512"))
 			)

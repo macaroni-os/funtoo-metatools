@@ -4,16 +4,23 @@ from funtoo.merge.tree import GitTree
 from funtoo.merge.steps import SyncFromTree
 from subpop.hub import Hub
 
+hub = Hub()
+
+import dyne.org.funtoo.metatools.merge as merge
+
 # This function updates the gentoo-staging tree with all the latest gentoo updates:
 
 
 async def gentoo_staging_update():
 	gentoo_staging_w = GitTree(
-		"gentoo-staging", "master", url=hub.MERGE_CONFIG.gentoo_staging, root=hub.MERGE_CONFIG.dest_trees + "/gentoo-staging"
+		"gentoo-staging",
+		"master",
+		url=merge.MERGE_CONFIG.gentoo_staging,
+		root=merge.MERGE_CONFIG.dest_trees + "/gentoo-staging",
 	)
 	gentoo_staging_w.initialize()
 
-	gentoo_src = GitTree("gentoo-x86", "master", "https://github.com/gentoo/gentoo.git", pull=True)
+	gentoo_src = GitTree("gentoo-x86", "master", "https://gitmerge.com/gentoo/gentoo.git", pull=True)
 	gentoo_src.initialize()
 
 	all_steps = [
@@ -28,7 +35,7 @@ async def gentoo_staging_update():
 
 
 if __name__ == "__main__":
-	hub = Hub()
+
 	hub.LOOP.run_until_complete(gentoo_staging_update())
 
 # vim: ts=4 sw=4 noet

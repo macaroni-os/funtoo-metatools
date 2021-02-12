@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 
-hub = None
-
 
 def sdist_artifact_url(releases, version):
 	# Sometimes a version does not have a source tarball. This function lets us know if our version is legit.

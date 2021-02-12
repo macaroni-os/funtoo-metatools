@@ -8,7 +8,6 @@ from concurrent.futures._base import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 
 import dyne.org.funtoo.metatools.merge as merge
-import dyne.org.funtoo.metatools.merge.steps
 
 
 def copy_from_fixups_steps(ctx):
@@ -38,41 +37,43 @@ def copy_from_fixups_steps(ctx):
 
 	steps = []
 	# Here is the core logic that copies all the fix-ups from kit-fixups (eclasses and ebuilds) into place:
-	eclass_release_path = "eclass/%s" % hub.RELEASE
-	if os.path.exists(os.path.join(hub.FIXUP_REPO.root, eclass_release_path)):
-		steps += [merge.steps.SyncDir(hub.FIXUP_REPO.root, eclass_release_path, "eclass")]
+	eclass_release_path = "eclass/%s" % merge.model.RELEASE
+	if os.path.exists(os.path.join(merge.model.FIXUP_REPO.root, eclass_release_path)):
+		steps += [merge.steps.SyncDir(merge.model.FIXUP_REPO.root, eclass_release_path, "eclass")]
 	fixup_dirs = ["global", "curated", ctx.kit.branch]
 	for fixup_dir in fixup_dirs:
 		fixup_path = ctx.kit.name + "/" + fixup_dir
-		if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path):
-			if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path + "/eclass"):
+		if os.path.exists(merge.model.FIXUP_REPO.root + "/" + fixup_path):
+			if os.path.exists(merge.model.FIXUP_REPO.root + "/" + fixup_path + "/eclass"):
 				steps += [
 					merge.steps.InsertFilesFromSubdir(
-						hub.FIXUP_REPO, "eclass", ".eclass", select="all", skip=None, src_offset=fixup_path
+						merge.model.FIXUP_REPO, "eclass", ".eclass", select="all", skip=None, src_offset=fixup_path
 					)
 				]
-			if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path + "/licenses"):
+			if os.path.exists(merge.model.FIXUP_REPO.root + "/" + fixup_path + "/licenses"):
 				steps += [
 					merge.steps.InsertFilesFromSubdir(
-						hub.FIXUP_REPO, "licenses", None, select="all", skip=None, src_offset=fixup_path
+						merge.model.FIXUP_REPO, "licenses", None, select="all", skip=None, src_offset=fixup_path
 					)
 				]
-			if os.path.exists(hub.FIXUP_REPO.root + "/" + fixup_path + "/profiles"):
+			if os.path.exists(merge.model.FIXUP_REPO.root + "/" + fixup_path + "/profiles"):
 				steps += [
 					merge.steps.InsertFilesFromSubdir(
-						hub.FIXUP_REPO, "profiles", None, select="all", skip=["repo_name", "categories"], src_offset=fixup_path
+						merge.model.FIXUP_REPO, "profiles", None, select="all", skip=["repo_name", "categories"], src_offset=fixup_path
 					)
 				]
 			# copy appropriate kit readme into place:
 			readme_path = fixup_path + "/README.rst"
-			if os.path.exists(hub.FIXUP_REPO.root + "/" + readme_path):
-				steps += [merge.steps.SyncFiles(hub.FIXUP_REPO.root, {readme_path: "README.rst"})]
+			if os.path.exists(merge.model.FIXUP_REPO.root + "/" + readme_path):
+				steps += [merge.steps.SyncFiles(merge.model.FIXUP_REPO.root, {readme_path: "README.rst"})]
 
 			# We now add a step to insert the fixups, and we want to record them as being copied so successive kits
 			# don't get this particular catpkg. Assume we may not have all these catpkgs listed in our package-set
 			# file...
 
-			steps += [merge.steps.InsertEbuilds(hub.FIXUP_REPO, ebuildloc=fixup_path, select="all", skip=None, replace=True)]
+			steps += [
+				merge.steps.InsertEbuilds(merge.model.FIXUP_REPO, ebuildloc=fixup_path, select="all", skip=None, replace=True)
+			]
 	return steps
 
 
@@ -130,10 +131,10 @@ async def checkout_kit(ctx, pull=None):
 		if ctx.kit.get("url", None):
 			kwargs["url"] = ctx.kit.url
 		else:
-			kwargs["url"] = hub.MERGE_CONFIG.url(ctx.kit.name, kind="indy")
+			kwargs["url"] = merge.model.MERGE_CONFIG.url(ctx.kit.name, kind="indy")
 		if ctx.kit.get("commit_sha1", None):
 			kwargs["commit_sha1"] = ctx.kit.commit_sha1
-		if not getattr(hub, "PROD", False):
+		if not getattr(merge, "PROD", False):
 			# If generating indy kits locally, the indy kit was sourced from the Internet, so it's not an
 			# AutoCreatedGitTree (we had to pull it.) But it will diverge from upstream. So we can't really
 			# keep pulling in upstream changes:
@@ -142,16 +143,16 @@ async def checkout_kit(ctx, pull=None):
 			kwargs["pull"] = True
 	else:
 		# For auto-generated kits, if we are in 'dev mode' then simply create a Tree from scratch.
-		git_class = getattr(hub, "GIT_CLASS", merge.tree.GitTree)
-		kwargs["url"] = hub.MERGE_CONFIG.url(ctx.kit.name, kind="auto")
+		git_class = getattr(merge.model, "GIT_CLASS", merge.tree.GitTree)
+		kwargs["url"] = merge.model.MERGE_CONFIG.url(ctx.kit.name, kind="auto")
 
 	# Allow overriding of pull behavior.
 	if pull is not None:
 		kwargs["pull"] = pull
 
 	try:
-		if hub.MIRROR:
-			kwargs["mirror"] = hub.MERGE_CONFIG.mirror.rstrip("/") + "/" + ctx.kit.name
+		if merge.model.MIRROR:
+			kwargs["mirror"] = merge.model.MERGE_CONFIG.mirror.rstrip("/") + "/" + ctx.kit.name
 	except AttributeError:
 		pass
 
@@ -169,15 +170,15 @@ async def checkout_kit(ctx, pull=None):
 
 
 def get_kit_root(kit_name):
-	if getattr(hub, "NEST_KITS", True):
-		return os.path.join(hub.MERGE_CONFIG.dest_trees, "meta-repo/kits", kit_name)
+	if getattr(merge.model, "NEST_KITS", True):
+		return os.path.join(merge.model.MERGE_CONFIG.dest_trees, "meta-repo/kits", kit_name)
 	else:
-		return os.path.join(hub.MERGE_CONFIG.dest_trees, kit_name)
+		return os.path.join(merge.model.MERGE_CONFIG.dest_trees, kit_name)
 
 
 def wipe_indy_kits():
 	indy_roots = set()
-	for kit_dict in hub.KIT_GROUPS:
+	for kit_dict in merge.model.KIT_GROUPS:
 		if kit_dict["kind"] == "independent":
 			indy_roots.add(get_kit_root(kit_dict["name"]))
 	for root in indy_roots:
@@ -219,12 +220,12 @@ async def generate_kit(ctx):
 
 		# Copy files specified in 'eclasses' and 'copyfiles' sections in the kit's YAML:
 		for repo_name, copyfile_tuples in merge.foundations.get_copyfiles_from_yaml(ctx).items():
-			steps += [merge.steps.CopyFiles(hub.SOURCE_REPOS[repo_name], copyfile_tuples)]
+			steps += [merge.steps.CopyFiles(merge.model.SOURCE_REPOS[repo_name], copyfile_tuples)]
 
 		# Copy over catpkgs listed in 'packages' section:
 
 		for repo_name, packages in merge.foundations.get_kit_packages(ctx):
-			from_tree = hub.SOURCE_REPOS[repo_name]
+			from_tree = merge.model.SOURCE_REPOS[repo_name]
 			# TODO: add move maps below
 			steps += [merge.steps.InsertEbuilds(from_tree, skip=None, replace=True, move_maps=None, select=packages)]
 
@@ -239,7 +240,7 @@ async def generate_kit(ctx):
 		merge.steps.Minify(),
 		merge.steps.ELTSymlinkWorkaround(),
 		merge.steps.CreateCategories(),
-		merge.steps.SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "licenses"),
+		merge.steps.SyncDir(merge.model.SOURCE_REPOS["gentoo-staging"].root, "licenses"),
 	]
 
 	await out_tree.run(steps)
@@ -249,8 +250,8 @@ async def generate_kit(ctx):
 	# be available for all successive metadata gen runs:
 
 	if ctx.kit.name == "core-kit":
-		hub.ECLASS_ROOT = out_tree.root
-		hub.ECLASS_HASHES = merge.metadata.get_eclass_hashes(hub.ECLASS_ROOT)
+		merge.model.ECLASS_ROOT = out_tree.root
+		merge.model.ECLASS_HASHES = merge.metadata.get_eclass_hashes(merge.model.ECLASS_ROOT)
 
 	# We will execute all the steps that we have queued up to this point, which will result in out_tree.KIT_CACHE
 	# being populated with all the metadata from the kit. Which will allow the next steps to run successfully.
@@ -273,7 +274,7 @@ async def generate_kit(ctx):
 	else:
 		update_msg = "Autogenerated tree updates."
 
-	out_tree.gitCommit(message=update_msg, push=hub.PUSH)
+	out_tree.gitCommit(message=update_msg, push=merge.model.PUSH)
 
 	# save in-memory metadata cache to JSON:
 	merge.metadata.flush_kit(out_tree)
@@ -285,23 +286,23 @@ def generate_metarepo_metadata(output_sha1s):
 	"""
 	Generates the metadata in /var/git/meta-repo/metadata/...
 	:param release: the release string, like "1.3-release".
-	:param hub.META_REPO: the meta-repo GitTree.
+	:param merge.model.META_REPO: the meta-repo GitTree.
 	:return: None.
 	"""
 
-	if not os.path.exists(hub.META_REPO.root + "/metadata"):
-		os.makedirs(hub.META_REPO.root + "/metadata")
+	if not os.path.exists(merge.model.META_REPO.root + "/metadata"):
+		os.makedirs(merge.model.META_REPO.root + "/metadata")
 
-	with open(hub.META_REPO.root + "/metadata/kit-sha1.json", "w") as a:
+	with open(merge.model.META_REPO.root + "/metadata/kit-sha1.json", "w") as a:
 		a.write(json.dumps(output_sha1s, sort_keys=True, indent=4, ensure_ascii=False))
 
-	outf = hub.META_REPO.root + "/metadata/kit-info.json"
+	outf = merge.model.META_REPO.root + "/metadata/kit-info.json"
 	all_kit_names = sorted(output_sha1s.keys())
 
 	with open(outf, "w") as a:
 		k_info = {}
 		out_settings = defaultdict(lambda: defaultdict(dict))
-		for kit_dict in hub.KIT_GROUPS:
+		for kit_dict in merge.model.KIT_GROUPS:
 			kit_name = kit_dict["name"]
 			# specific keywords that can be set for each branch to identify its current quality level
 			out_settings[kit_name]["stability"][kit_dict["branch"]] = kit_dict["stability"]
@@ -320,7 +321,9 @@ def generate_metarepo_metadata(output_sha1s):
 		rdefs = {}
 		for kit_name in all_kit_names:
 			rdefs[kit_name] = []
-			for def_kit in filter(lambda x: x["name"] == kit_name and x["stability"] not in ["deprecated"], hub.KIT_GROUPS):
+			for def_kit in filter(
+				lambda x: x["name"] == kit_name and x["stability"] not in ["deprecated"], merge.model.KIT_GROUPS
+			):
 				rdefs[kit_name].append(def_kit["branch"])
 
 		rel_info = merge.foundations.release_info()
@@ -329,7 +332,7 @@ def generate_metarepo_metadata(output_sha1s):
 		k_info["release_info"] = rel_info
 		a.write(json.dumps(k_info, sort_keys=True, indent=4, ensure_ascii=False))
 
-	with open(hub.META_REPO.root + "/metadata/version.json", "w") as a:
+	with open(merge.model.META_REPO.root + "/metadata/version.json", "w") as a:
 		a.write(json.dumps(rel_info, sort_keys=True, indent=4, ensure_ascii=False))
 
 
@@ -348,17 +351,17 @@ def mirror_repository(repo_obj, base_path):
 
 
 def mirror_all_repositories():
-	base_path = os.path.join(hub.MERGE_CONFIG.temp_path, "mirror_repos")
+	base_path = os.path.join(merge.model.MERGE_CONFIG.temp_path, "mirror_repos")
 	merge.tree.run_shell(f"rm -rf {base_path}")
 	kit_mirror_futures = []
 	with ThreadPoolExecutor(max_workers=8) as executor:
 		# Push all kits, then push meta-repo.
-		for kit_name, kit_tuple in hub.KIT_RESULTS.items():
+		for kit_name, kit_tuple in merge.model.KIT_RESULTS.items():
 			ctx, tree_obj, tree_sha1 = kit_tuple
 			future = executor.submit(mirror_repository, tree_obj, base_path)
 			kit_mirror_futures.append(future)
 		for future in as_completed(kit_mirror_futures):
 			kit_name = future.result()
 			print(f"Mirroring of {kit_name} complete.")
-	merge.kit.mirror_repository(hub.META_REPO, base_path)
+	merge.kit.mirror_repository(merge.model.META_REPO, base_path)
 	print("Mirroring of meta-repo complete.")
