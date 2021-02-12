@@ -45,7 +45,6 @@ async def generate_gosum_from_artifact(src_artifact, src_dir_glob="*"):
 	src_artifact.extract()
 	src_dir = glob.glob(os.path.join(src_artifact.extract_path, src_dir_glob))[0]
 	gosum_path = os.path.join(src_dir, "go.sum")
-	os.remove(gosum_path)
 	if not os.path.exists(gosum_path):
 		subprocess.Popen(["go", "mod", "download"], cwd=src_dir).wait()
 	artifacts = await get_gosum_artifacts(gosum_path)
