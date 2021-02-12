@@ -1,9 +1,0 @@
-#!/usr/bin/env python3
-
-from subpop.hub import Hub
-
-if __name__ == "__main__":
-	hub = Hub()
-	print(
-		hub.merge.metadata.get_catpkg_relations_from_depstring(">=dev-ruby/test-unit-2.1.0-r1:2[ruby_targets_ruby26(-)]")
-	)

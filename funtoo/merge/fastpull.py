@@ -4,8 +4,7 @@ import logging
 import os
 from datetime import datetime
 
-import pymongo
-from pymongo import MongoClient
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
 def complete_artifact(artifact):
@@ -27,7 +26,7 @@ def complete_artifact(artifact):
 	fp = artifact.fastpull_path
 	if not fp:
 		return None
-	hashes = hub.pkgtools.download.calc_hashes(fp)
+	hashes = pkgtools.download.calc_hashes(fp)
 	if hashes["sha512"] != artifact.final_data["sha512"]:
 		return None
 	if hashes["size"] != artifact.final_data["size"]:

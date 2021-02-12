@@ -8,9 +8,14 @@ import sys
 from funtoo.merge.tree import GitTree
 from subpop.hub import Hub
 
+import dyne.org.funtoo.metatools.merge as merge
+
+hub = Hub()
+
 if __name__ == "__main__":
-	hub = Hub()
-	hub.pop.sub.add("funtoo/merge", release=sys.argv[1])
+	hub.set_model("org.funtoo.metatools/merge", release=sys.argv[1])
+	# force init
+	getattr(merge, "kits")
 	hub.FIXUP_REPO = GitTree(
 		"kit-fixups",
 		hub.MERGE_CONFIG.branch("kit-fixups"),
@@ -18,5 +23,5 @@ if __name__ == "__main__":
 		root="/home/drobbins/development/kit-fixups-dr",
 	)
 
-	for kit_group in hub.merge.foundations.kit_groups():
+	for kit_group in merge.foundations.kit_groups():
 		print(kit_group)

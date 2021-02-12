@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 
 from datetime import datetime
-
-import pymongo
-import pymongo.errors
-from pymongo import MongoClient
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 """
 
@@ -76,14 +73,14 @@ async def fetch_cache_read(method_name, fetchable, max_age=None, refresh_interva
 		url = fetchable.url
 	result = hub.MONGO_FC.find_one({"method_name": method_name, "url": url})
 	if result is None or "fetched_on" not in result:
-		raise hub.pkgtools.fetch.CacheMiss()
+		raise pkgtools.fetch.CacheMiss()
 	elif refresh_interval is not None:
 		if datetime.utcnow() - result["fetched_on"] <= refresh_interval:
 			return result
 		else:
-			raise hub.pkgtools.fetch.CacheMiss()
+			raise pkgtools.fetch.CacheMiss()
 	elif max_age is not None and datetime.utcnow() - result["fetched_on"] > max_age:
-		raise hub.pkgtools.fetch.CacheMiss()
+		raise pkgtools.fetch.CacheMiss()
 	else:
 		return result
 

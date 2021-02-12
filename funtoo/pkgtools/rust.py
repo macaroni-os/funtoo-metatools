@@ -3,6 +3,8 @@ import os
 import subprocess
 import toml
 
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
 
 async def get_crates_artifacts(lock_path):
 	"""
@@ -19,7 +21,7 @@ async def get_crates_artifacts(lock_path):
 		crates = crates + package["name"] + "-" + package["version"] + "\n"
 		crates_url = "https://crates.io/api/v1/crates/" + package["name"] + "/" + package["version"] + "/download"
 		crates_file = package["name"] + "-" + package["version"] + ".crate"
-		crates_artifacts.append(hub.pkgtools.ebuild.Artifact(url=crates_url, final_name=crates_file))
+		crates_artifacts.append(pkgtools.ebuild.Artifact(url=crates_url, final_name=crates_file))
 	return dict(crates=crates, crates_artifacts=crates_artifacts)
 
 

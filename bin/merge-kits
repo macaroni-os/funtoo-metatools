@@ -61,7 +61,7 @@ async def main_thread():
 				# For simplicity, set up a context variable to pass around, where ctx.kit contains the kit information:
 				ctx = NamespaceDict()
 				ctx["kit"] = NamespaceDict(kit_dict)
-				# hub.merge.kit.generate_kit does the real work:
+				# merge.kit.generate_kit does the real work:
 				future = executor.submit(pkgtools.thread.run_async_adapter, merge.kit.generate_kit, ctx)
 				regen_futures.append(future)
 			for future in as_completed(regen_futures):

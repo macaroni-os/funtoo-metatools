@@ -9,8 +9,10 @@
 import sys
 from subpop.hub import Hub
 
+hub = Hub()
+
 if __name__ == "__main__":
-	hub = Hub()
+
 	nodep_catpkgs = dict()
 	all_relations = set()
 	all_catpkgs = set()

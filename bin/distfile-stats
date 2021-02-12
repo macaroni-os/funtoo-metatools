@@ -14,6 +14,10 @@ from dict_tools.data import NamespaceDict
 from funtoo.merge.tree import GitTree
 from subpop.hub import Hub
 
+hub = Hub()
+
+import org.funtoo.metatools.merge as merge
+
 
 def sizeof_fmt(num, suffix="B"):
 	for unit in ["", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "Zi"]:
@@ -105,7 +109,7 @@ async def distfile_stats():
 						continue
 
 					sz_bytes = int(file["size"])
-					dp = hub.merge.fastpull.get_disk_path(file["hashes"]["sha512"])
+					dp = merge.fastpull.get_disk_path(file["hashes"]["sha512"])
 					if os.path.exists(dp):
 						stats.bytes_exist += sz_bytes
 						stats.files_exist += 1
@@ -121,15 +125,14 @@ async def distfile_stats():
 
 
 if __name__ == "__main__":
-	hub = Hub()
-
 	ap = ArgumentParser()
 	ap.add_argument("release")
 	ap.add_argument("--out", default=None)
 	args = ap.parse_args()
 
-	hub.add("funtoo/merge", release=args.release)
-	hub.add("funtoo/pkgtools")
+	hub.set_model("org.funtoo.metatools/merge", release=args.release)
+	# force init.
+	getattr(merge, "kits")
 
 	hub.FIXUP_REPO = GitTree(
 		"kit-fixups",
@@ -139,12 +142,10 @@ if __name__ == "__main__":
 	)
 
 	hub.FIXUP_REPO.initialize()
-	hub.KIT_GROUPS = list(hub.merge.foundations.kit_groups())
+	hub.KIT_GROUPS = list(merge.foundations.kit_groups())
 	hub.OUT = args.out
 
-	loop = asyncio.get_event_loop()
-
-	out = loop.run_until_complete(distfile_stats())
+	out = hub.LOOP.run_until_complete(distfile_stats())
 	if hub.OUT:
 		with open(hub.OUT, "w") as f:
 			f.write(json.dumps(out))

@@ -10,10 +10,12 @@
 import sys
 from subpop.hub import Hub
 
-if __name__ == "__main__":
-	hub = Hub()
-	hub.add("funtoo/merge")
+hub = Hub()
 
+import dyne.org.funtoo.metatools.merge as merge
+
+if __name__ == "__main__":
+	getattr(merge, "kits")
 	nodep_catpkgs = dict()
 	all_relations = set()
 	all_catpkgs = set()

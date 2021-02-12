@@ -10,6 +10,7 @@ from subprocess import getstatusoutput
 from contextlib import asynccontextmanager
 
 import dyne.org.funtoo.metatools.merge as merge
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 """
 This sub deals with the higher-level logic related to downloading of distfiles. Where the 'fetch.py'
@@ -30,7 +31,7 @@ This allows asyncio downloads of potentially identical files to work without com
 the autogen.py files or generators so that this complexity does not have to be dealt with by those
 who are simply writing autogens.
 """
-hub = None
+
 DL_ACTIVE_LOCK = Lock()
 DL_ACTIVE = dict()
 DOWNLOAD_SLOT = {}
@@ -138,7 +139,7 @@ class Download:
 				success = True
 				try:
 					self.final_data = await _download(self.artifacts[0])
-				except hub.pkgtools.fetch.FetchError as fe:
+				except pkgtools.fetch.FetchError as fe:
 					logging.error(fe)
 					success = False
 
@@ -175,7 +176,7 @@ async def _download(artifact):
 	Upon success, the function will update the Artifact's hashes dict to contain hashes and
 	filesize of the downloaded artifact.
 
-	Will raise hub.pkgtools.fetch.FetchError if there was some kind of error downloading. Caller
+	Will raise pkgtools.fetch.FetchError if there was some kind of error downloading. Caller
 	needs to catch and handle this.
 
 	"""
@@ -203,7 +204,7 @@ async def _download(artifact):
 			sys.stdout.write(".")
 			sys.stdout.flush()
 
-		await hub.pkgtools.http.http_fetch_stream(artifact.url, on_chunk)
+		await pkgtools.http.http_fetch_stream(artifact.url, on_chunk)
 
 		sys.stdout.write("x")
 		sys.stdout.flush()
@@ -237,7 +238,7 @@ def extract(artifact):
 	cmd = "tar -C %s -xf %s" % (ep, artifact.final_path)
 	s, o = getstatusoutput(cmd)
 	if s != 0:
-		raise hub.pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
+		raise pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
 
 
 def calc_hashes(fn):

@@ -4,6 +4,7 @@
 # metadata JSON and then check with mongodb to ensure files are in fastpull, and if not, run through
 # the JSON and try to grab missing files, and generate a report. Then exit. So it isn't a long-
 # running daemon -- it will run for as long as needed to do its thing.
+
 import logging
 import os
 import sys
@@ -15,12 +16,17 @@ from multiprocessing import cpu_count
 
 from subpop.hub import Hub
 
+hub = Hub()
+
+import dyne.org.funtoo.metatools.merge as merge
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
 
 def expand_uris(src_uri_list):
 	real_uri = []
 	for src_uri in src_uri_list:
 		if src_uri.startswith("mirror://"):
-			real_uri.append(hub.merge.metadata.expand_thirdpartymirror(tp_mirrors, src_uri))
+			real_uri.append(merge.metadata.expand_thirdpartymirror(tp_mirrors, src_uri))
 		else:
 			slash_split = src_uri.split("/")
 			if len(slash_split) == 0:
@@ -52,7 +58,7 @@ async def do_distfile_fetch(distinct_key, distinct_file_list):
 		refs.append({"kit": datums["kit"], "catpkg": datums["catpkg"]})
 
 	src_uris = expand_uris(list(all_src_uris))
-	fp_path = hub.merge.fastpull.get_disk_path(sha512)
+	fp_path = merge.fastpull.get_disk_path(sha512)
 
 	if not os.path.exists(fp_path):
 
@@ -60,9 +66,9 @@ async def do_distfile_fetch(distinct_key, distinct_file_list):
 		if not len(src_uris):
 			return
 		try:
-			a = hub.pkgtools.ebuild.Artifact(url=src_uris[0], final_name=name, expect={"sha512": sha512, "size": size})
-			await hub.merge.fastpull.inject_into_fastpull(a)
-		except hub.pkgtools.ebuild.DigestFailure as af:
+			a = pkgtools.ebuild.Artifact(url=src_uris[0], final_name=name, expect={"sha512": sha512, "size": size})
+			await merge.fastpull.inject_into_fastpull(a)
+		except pkgtools.ebuild.DigestFailure as af:
 			logging.error(af)
 			return
 	existing = hub.FASTPULL.find_one({"filename": name, "hashes.sha512": sha512})
@@ -88,7 +94,7 @@ exceptions = None
 
 async def main_thread():
 	global exceptions
-	mk_json = hub.merge.metadata.load_json(args.infile)
+	mk_json = merge.metadata.load_json(args.infile)
 	if mk_json is None:
 		print(f"Skipping {args.infile} due to old/invalid JSON format.")
 		return
@@ -104,15 +110,13 @@ async def main_thread():
 	with ThreadPoolExecutor(max_workers=cpu_count()) as threadpool:
 		for distinct_key, distinct_file_list in distinct_files.items():
 			future = hub.LOOP.run_in_executor(
-				threadpool, hub.pkgtools.thread.run_async_adapter, do_distfile_fetch, distinct_key, distinct_file_list
+				threadpool, pkgtools.thread.run_async_adapter, do_distfile_fetch, distinct_key, distinct_file_list
 			)
 			futures.append(future)
-		results, exceptions = await hub.pkgtools.autogen.gather_pending_tasks(futures, throw=True)
+		results, exceptions = await pkgtools.autogen.gather_pending_tasks(futures, throw=True)
 
 
 if __name__ == "__main__":
-
-	hub = Hub()
 
 	ap = ArgumentParser()
 	ap.add_argument("infile")
@@ -120,7 +124,7 @@ if __name__ == "__main__":
 
 	# We need kit-fixups available so we can grab the thirdpartymirrors file from it.
 
-	hub.FIXUP_REPO = hub.merge.tree.GitTree(
+	hub.FIXUP_REPO = merge.tree.GitTree(
 		"kit-fixups",
 		hub.MERGE_CONFIG.branch("kit-fixups"),
 		url=hub.MERGE_CONFIG.kit_fixups,
@@ -128,9 +132,7 @@ if __name__ == "__main__":
 	)
 	hub.FIXUP_REPO.initialize()
 
-	tp_mirrors = hub.merge.metadata.get_thirdpartymirrors(
-		os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit")
-	)
+	tp_mirrors = merge.metadata.get_thirdpartymirrors(os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit"))
 
 	hub.LOOP.run_until_complete(main_thread())
 	if len(exceptions):
