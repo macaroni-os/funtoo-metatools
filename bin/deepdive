@@ -1,13 +1,20 @@
 #!/usr/bin/python3
-
+import logging
 
 from dict_tools.data import NamespaceDict
 from funtoo.merge.tree import GitTree
 from subpop.hub import Hub
 
+hub = Hub()
+
+import dyne.org.funtoo.metatools.merge as merge
+
 
 async def insert_kit(ctx):
-	ctx, items_to_insert = await hub.merge.kit.get_deepdive_kit_items(ctx)
+	ctx, items_to_insert = await merge.kit.get_deepdive_kit_items(ctx)
+	if not len(items_to_insert):
+		logging.warning(f"No items to insert for {ctx.kit.name}")
+		return
 	result = hub.DEEPDIVE.insert_many(items_to_insert)
 	print(f"kit {ctx.kit.name} - inserted {len(result.inserted_ids)} items.")
 	if len(items_to_insert) != len(result.inserted_ids):
@@ -15,10 +22,10 @@ async def insert_kit(ctx):
 
 
 if __name__ == "__main__":
-	hub = Hub()
-	hub.add("funtoo/pkgtools")
-	hub.add("funtoo/merge", release="1.4-release")
 
+	hub.set_model("org.funtoo.metatools/merge", release="1.4-release")
+	# force init
+	getattr(merge, "foundations", None)
 	hub.GIT_CLASS = GitTree
 	hub.FIXUP_REPO = GitTree(
 		"kit-fixups",
@@ -37,8 +44,8 @@ if __name__ == "__main__":
 
 	hub.META_REPO.initialize()
 	hub.FIXUP_REPO.initialize()
-	hub.KIT_GROUPS = list(hub.merge.foundations.kit_groups())
-	pipeline_keys, pipeline_groups = hub.merge.sources.get_kits_in_correct_processing_order()
+	hub.KIT_GROUPS = list(merge.foundations.kit_groups())
+	pipeline_keys, pipeline_groups = merge.sources.get_kits_in_correct_processing_order()
 
 	hub.DEEPDIVE.delete_many({})
 	for source in pipeline_keys:

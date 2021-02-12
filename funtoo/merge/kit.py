@@ -182,7 +182,7 @@ def wipe_indy_kits():
 			indy_roots.add(get_kit_root(kit_dict["name"]))
 	for root in indy_roots:
 		if os.path.exists(root):
-			merge.tree.runShell(f"rm -rf {root}")
+			merge.tree.run_shell(f"rm -rf {root}")
 
 
 async def generate_kit(ctx):
@@ -339,17 +339,17 @@ def mirror_repository(repo_obj, base_path):
 	"""
 
 	os.makedirs(base_path, exist_ok=True)
-	merge.tree.runShell(f"git clone --bare {repo_obj.root} {base_path}/{repo_obj.name}.pushme")
-	merge.tree.runShell(
+	merge.tree.run_shell(f"git clone --bare {repo_obj.root} {base_path}/{repo_obj.name}.pushme")
+	merge.tree.run_shell(
 		f"cd {base_path}/{repo_obj.name}.pushme && git remote add upstream {repo_obj.mirror} && git push --mirror upstream"
 	)
-	merge.tree.runShell(f"rm -rf {base_path}/{repo_obj.name}.pushme")
+	merge.tree.run_shell(f"rm -rf {base_path}/{repo_obj.name}.pushme")
 	return repo_obj.name
 
 
 def mirror_all_repositories():
 	base_path = os.path.join(hub.MERGE_CONFIG.temp_path, "mirror_repos")
-	merge.tree.runShell(f"rm -rf {base_path}")
+	merge.tree.run_shell(f"rm -rf {base_path}")
 	kit_mirror_futures = []
 	with ThreadPoolExecutor(max_workers=8) as executor:
 		# Push all kits, then push meta-repo.

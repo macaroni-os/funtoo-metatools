@@ -70,7 +70,7 @@ class SyncDir(MergeStep):
 		if self.delete:
 			cmd += "--delete --delete-excluded "
 		cmd += "%s %s" % (src, dest)
-		merge.tree.runShell(cmd)
+		merge.tree.run_shell(cmd)
 
 
 class SyncFromTree(SyncDir):
@@ -130,7 +130,7 @@ class FindAndRemove(MergeStep):
 	async def run(self, tree):
 		for glob in self.globs:
 			cmd = f"find {tree.root} -name {glob} -exec rm -rf {{}} +"
-			merge.tree.runShell(cmd, abort_on_failure=False)
+			merge.tree.run_shell(cmd, abort_on_failure=False)
 
 
 class RemoveFiles(MergeStep):
@@ -142,7 +142,7 @@ class RemoveFiles(MergeStep):
 	async def run(self, tree):
 		for glob in self.globs:
 			cmd = "rm -rf %s/%s" % (tree.root, glob)
-			merge.tree.runShell(cmd)
+			merge.tree.run_shell(cmd)
 
 
 class CopyFiles(MergeStep):
@@ -175,7 +175,7 @@ class CopyFiles(MergeStep):
 			parent = os.path.dirname(f_dst_path)
 			if not os.path.exists(parent):
 				os.makedirs(parent, exist_ok=True)
-			merge.tree.runShell(f"cp -a {f_src_path} {f_dst_path}")
+			merge.tree.run_shell(f"cp -a {f_src_path} {f_dst_path}")
 
 
 class CopyAndRename(MergeStep):
@@ -190,7 +190,7 @@ class CopyAndRename(MergeStep):
 		for f in os.listdir(srcpath):
 			destfile = os.path.join(tree.root, self.dest)
 			destfile = os.path.join(destfile, self.ren_fun(f))
-			merge.tree.runShell(f"cp -a {srcpath}/{f} {destfile}")
+			merge.tree.run_shell(f"cp -a {srcpath}/{f} {destfile}")
 
 
 class SyncFiles(MergeStep):
@@ -239,7 +239,7 @@ class CleanTree(MergeStep):
 			if fn in self.exclude:
 				continue
 			files += " '" + fn + "'"
-		merge.tree.runShell(f"cd {tree.root} && rm -rf {files[1:]}")
+		merge.tree.run_shell(f"cd {tree.root} && rm -rf {files[1:]}")
 
 
 class ELTSymlinkWorkaround(MergeStep):
@@ -291,7 +291,7 @@ class InsertFilesFromSubdir(MergeStep):
 				if self.skip.match(e):
 					continue
 			real_dst = os.path.basename(os.path.join(dst, e))
-			merge.tree.runShell("cp -a %s/%s %s" % (src, e, dst))
+			merge.tree.run_shell("cp -a %s/%s %s" % (src, e, dst))
 
 
 class InsertEclasses(InsertFilesFromSubdir):
@@ -374,7 +374,7 @@ class ZapMatchingEbuilds(MergeStep):
 				if not os.path.exists(dest_pkgdir):
 					# don't need to zap as it doesn't exist
 					continue
-				merge.tree.runShell("rm -rf %s" % dest_pkgdir)
+				merge.tree.run_shell("rm -rf %s" % dest_pkgdir)
 
 
 class RecordAllCatPkgs(MergeStep):
@@ -576,7 +576,7 @@ class InsertEbuilds(MergeStep):
 			with open(temp_out, "w") as f:
 				f.write("#!/bin/bash\n")
 				f.write(script_out)
-			merge.tree.runShell(f"/bin/bash {temp_out}")
+			merge.tree.run_shell(f"/bin/bash {temp_out}")
 			os.unlink(temp_out)
 		for check in checks:
 			if not os.path.exists(check):
@@ -598,7 +598,7 @@ class ProfileDepFix(MergeStep):
 				sp = line.split()
 				if len(sp) >= 2:
 					prof_path = sp[1]
-					merge.tree.runShell("rm -f %s/profiles/%s/deprecated" % (tree.root, prof_path))
+					merge.tree.run_shell("rm -f %s/profiles/%s/deprecated" % (tree.root, prof_path))
 
 
 class RunSed(MergeStep):
@@ -617,7 +617,7 @@ class RunSed(MergeStep):
 	async def run(self, tree):
 		commands = list(itertools.chain.from_iterable(("-e", command) for command in self.commands))
 		files = [os.path.join(tree.root, file) for file in self.files]
-		merge.tree.runShell(["sed"] + commands + ["-i"] + files)
+		merge.tree.run_shell(["sed"] + commands + ["-i"] + files)
 
 
 class GenCache(MergeStep):
@@ -635,8 +635,8 @@ class Minify(MergeStep):
 	"""Minify removes ChangeLogs and shrinks Manifests."""
 
 	async def run(self, tree):
-		merge.tree.runShell("( cd %s && find -iname ChangeLog | xargs rm -f )" % tree.root, abort_on_failure=False)
-		merge.tree.runShell("( cd %s && find -iname Manifest | xargs -i@ sed -ni '/^DIST/p' @ )" % tree.root)
+		merge.tree.run_shell("( cd %s && find -iname ChangeLog | xargs rm -f )" % tree.root, abort_on_failure=False)
+		merge.tree.run_shell("( cd %s && find -iname Manifest | xargs -i@ sed -ni '/^DIST/p' @ )" % tree.root)
 
 
 class GenPythonUse(MergeStep):
