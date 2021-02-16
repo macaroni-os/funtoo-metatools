@@ -108,3 +108,39 @@ async def inject_into_fastpull(artifact):
 		except Exception as e:
 			# Multiple doits running in parallel, trying to link the same file -- could cause exceptions:
 			logging.error(f"Exception encountered when trying to link into fastpull (may be harmless) -- {repr(e)}")
+
+
+def parse_mcafee_logs(logf, path_prefix="/opt"):
+	"""
+	This method takes a McAfee Virus Scanner log file as an argument, and will scan the log for filenames that showed
+	up in it. This is useful for when things in the fastpull mirror are showing up in a McAfee scan. The function will
+	then extract the sha512's and return these as a list.
+
+	The McAfee logs use "-" at the end of line to indicate the line is continued on the next line. This function has
+	to potentially re-assemble split sha512 digests, as well as detect mutiple files listed on a single line.
+	"""
+	out_digests = []
+	with open(logf, "r") as f:
+		lines = f.readlines()
+		new_lines = []
+		pos = 0
+		while pos < len(lines):
+			cur_line = lines[pos].strip()
+			pos += 1
+			if path_prefix not in cur_line:
+				continue
+
+			while cur_line.endswith("-"):
+				cur_line = cur_line[:-1] + lines[pos + 1]
+				pos += 1
+
+			new_lines.append(cur_line)
+
+		for line in new_lines:
+			ls = line.split()
+			for part in ls:
+				if part.startswith("/opt"):
+					part_strip = part.rstrip(",")
+					out_digests.append(part_strip.split("/")[-1])
+
+	return out_digests
