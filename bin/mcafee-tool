@@ -4,26 +4,28 @@
 # output.
 import os
 import sys
-from subpop.hub import Hub
 
-hub = Hub()
-
-import dyne.org.funtoo.metatools.merge as merge
+from merge_utils.hub import Hub
 
 if __name__ == "__main__":
+	hub = Hub()
+	hub.add("funtoo/merge")
+
 	action = sys.argv[1]
 	log_file = sys.argv[2]
 	if not os.path.exists(log_file):
 		print("Specified file not found.")
 		sys.exit(1)
-	for sha512 in merge.fastpull.parse_mcafee_logs(log_file):
-		db_ent = merge.model.FASTPULL.find_one({"sha512": sha512})
+	for sha512 in hub.merge.fastpull.parse_mcafee_logs(log_file):
+		db_ent = hub.FASTPULL.find_one({"sha512": sha512})
 		print(db_ent)
+
 #	nodep_catpkgs = dict()
-#	for pypak in merge.DEEPDIVE.find({"category": sys.argv[1]}):
-#		dep_on_me = merge.DEEPDIVE.count_documents({"relations": {"$in": [pypak["catpkg"]]}})
+#	for pypak in hub.DEEPDIVE.find({"category": sys.argv[1]}):
+#		dep_on_me = hub.DEEPDIVE.count_documents({"relations": {"$in": [pypak["catpkg"]]}})
 #		if dep_on_me == 0:
 #			nodep_catpkgs[pypak["catpkg"]] = pypak["kit"]
 #
 #	for item in sorted(list(nodep_catpkgs.keys())):
 #		print(item, nodep_catpkgs[item])
+

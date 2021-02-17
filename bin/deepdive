@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 
-
 from dict_tools.data import NamespaceDict
 from funtoo.merge.tree import GitTree
 from merge_utils.hub import Hub
