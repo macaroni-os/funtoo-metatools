@@ -17,8 +17,8 @@ if __name__ == "__main__":
 		print("Specified file not found.")
 		sys.exit(1)
 	for sha512 in hub.merge.fastpull.parse_mcafee_logs(log_file):
-		db_ent = hub.FASTPULL.find_one({"sha512": sha512})
-		print(db_ent)
+		db_ent = hub.FASTPULL.find_one({"hashes.sha512": sha512})
+		print(sha512, db_ent)
 
 #	nodep_catpkgs = dict()
 #	for pypak in hub.DEEPDIVE.find({"category": sys.argv[1]}):
