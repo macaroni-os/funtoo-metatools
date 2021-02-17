@@ -7,7 +7,8 @@ import tornado.gen
 import tornado.ioloop
 from tornado.log import enable_pretty_logging
 from merge_utils.hub import Hub
-
+from bson.json_util import loads, CANONICAL_JSON_OPTIONS, dumps
+from pprint import PrettyPrinter
 enable_pretty_logging()
 
 
@@ -15,6 +16,18 @@ class UptimeHandler(tornado.web.RequestHandler):
 	def get(self):
 		self.set_status(200)
 		return
+
+
+class DistfileQueryHandler(tornado.web.RequestHandler):
+
+	def get(self, sha512):
+		self.set_header("Content-Type", "text/plain")
+		db_ent = hub.FASTPULL.find_one({"hashes.sha512": sha512})
+		if db_ent is None:
+			self.write("Not found.")
+		else:
+			pp = PrettyPrinter(indent=4)
+			self.write(pp.pformat(db_ent))
 
 
 class RedirectHandler(tornado.web.RequestHandler):
@@ -59,6 +72,7 @@ class Application(tornado.web.Application):
 	handlers = [
 		(r"/distfiles/distfiles/(.*)", RedirectHandler),
 		(r"/distfiles/(.*)", RedirectHandler),
+		(r"/query/(.*)", DistfileQueryHandler),
 		(r"/up", UptimeHandler),
 		(r"/(.*)", RedirectHandler),
 	]
