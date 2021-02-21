@@ -59,8 +59,9 @@ class RedirectHandler(tornado.web.RequestHandler):
 class DistfileHashHandler(tornado.web.RequestHandler):
 
 	def get(self, hp1, hp2, hp3, full_hash):
-		if hp1 != full_hash[0:2] or hp2 != full_hash[2:4] or hp3 != full_hash[4:6]:
-			self.set_status(404)
+		if hp1 != full_hash[0:2] or hp2 != full_hash[2:4] or hp3 != full_hash[4:6] or len(full_hash) != 128:
+			print("problems", hp1, hp2, hp3, full_hash)
+			self.set_status(503)
 			return
 
 		basepath = f"{hp1}/{hp2}/{hp3}/{full_hash}"
