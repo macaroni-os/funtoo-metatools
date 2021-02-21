@@ -91,13 +91,14 @@ class Application(tornado.web.Application):
 	handlers = [
 		(r"/layout.conf", LayoutConfHandler),
 		(r"/distfiles/layout.conf", LayoutConfHandler),
+		(r"/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler),
+		(r"/distfiles/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler),
 		(r"/distfiles/distfiles/(.*)", RedirectHandler),
 		(r"/distfiles/(.*)", RedirectHandler),
 		(r"/query/(.*)", DistfileQueryHandler),
 		(r"/up", UptimeHandler),
 		(r"/(.*)", RedirectHandler),
-		(r"/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler),
-		(r"/distfiles/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler)
+
 	]
 
 	def __init__(self):
