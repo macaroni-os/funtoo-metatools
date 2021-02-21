@@ -69,13 +69,20 @@ class DistfileHashHandler(tornado.web.RequestHandler):
 		self.redirect(url, permanent=False)
 
 
+DISTFILE_HASHES = False
+
 class LayoutConfHandler(tornado.web.RequestHandler):
 
 	def get(self):
 		self.set_header("Content-Type", "text/plain")
-		self.write("""[structure]
+		if DISTFILE_HASHES:
+			self.write("""[structure]
 0=content-hash SHA512 8:8:8
 1=flat
+""")
+		else:
+			self.write("""[structure]
+0=flat
 """)
 
 
