@@ -96,8 +96,8 @@ class Application(tornado.web.Application):
 		(r"/query/(.*)", DistfileQueryHandler),
 		(r"/up", UptimeHandler),
 		(r"/(.*)", RedirectHandler),
-		(r"/([0-9a-f]\{2\})/([0-9a-f]\{2\})/([0-9a-f]\{2\})/([0-9a-f]\{128\})", DistfileHashHandler),
-		(r"/distfiles/([0-9a-f]\{2\})/([0-9a-f]\{2\})/([0-9a-f]\{2\})/([0-9a-f]\{128\})", DistfileHashHandler)
+		(r"/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler),
+		(r"/distfiles/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler)
 	]
 
 	def __init__(self):
