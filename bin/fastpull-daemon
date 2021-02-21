@@ -30,14 +30,10 @@ class DistfileQueryHandler(tornado.web.RequestHandler):
 			self.write(pp.pformat(db_ent))
 
 
+redirect_url = "https://1153732560.rsc.cdn77.org/"
+
+
 class RedirectHandler(tornado.web.RequestHandler):
-
-	# send people to google...
-	# redirect_url = "https://storage.googleapis.com/fastpull-us/%s/%s/%s"
-
-	# or send people to us...
-	# redirect_url = "/%s/%s/%s"
-	redirect_url = "https://1153732560.rsc.cdn77.org/"
 
 	def get(self, fn):
 		fn = os.path.basename(fn)
@@ -54,10 +50,32 @@ class RedirectHandler(tornado.web.RequestHandler):
 		if fp_ent:
 			sh = fp_ent["hashes"]["sha512"]
 			basepath = f"{sh[:2]}/{sh[2:4]}/{sh[4:6]}/{sh}"
-			url = self.redirect_url + basepath
+			url = redirect_url + basepath
 			self.redirect(url, permanent=False)
 		else:
 			self.set_status(404)
+
+
+class DistfileHashHandler(tornado.web.RequestHandler):
+
+	def get(self, hp1, hp2, hp3, full_hash):
+		if hp1 != full_hash[0:2] or hp2 != full_hash[2:4] or hp3 != full_hash[4:6]:
+			self.set_status(404)
+			return
+
+		basepath = f"{hp1}/{hp2}/{hp3}/{full_hash}"
+		url = redirect_url + basepath
+		self.redirect(url, permanent=False)
+
+
+class LayoutConfHandler(tornado.web.RequestHandler):
+
+	def get(self):
+		self.set_header("Content-Type", "text/plain")
+		self.write("""[structure]
+0=content-hash SHA512 8:8:8
+1=flat
+""")
 
 
 settings = {
@@ -68,13 +86,17 @@ settings = {
 
 class Application(tornado.web.Application):
 
-	name = "fastpull alpha service"
+	name = "fastpull beta service"
 	handlers = [
+		(r"/layout.conf", LayoutConfHandler),
+		(r"/distfiles/layout.conf", LayoutConfHandler),
 		(r"/distfiles/distfiles/(.*)", RedirectHandler),
 		(r"/distfiles/(.*)", RedirectHandler),
 		(r"/query/(.*)", DistfileQueryHandler),
 		(r"/up", UptimeHandler),
 		(r"/(.*)", RedirectHandler),
+		(r"/([0-9a-f]\{2\}/([0-9a-f]\{2\}/([0-9a-f]\{2\}/(([0-9a-f]\{128\})", DistfileHashHandler),
+		(r"/distfiles/([0-9a-f]\{2\}/([0-9a-f]\{2\}/([0-9a-f]\{2\}/(([0-9a-f]\{128\})", DistfileHashHandler)
 	]
 
 	def __init__(self):
