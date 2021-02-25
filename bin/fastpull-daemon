@@ -9,6 +9,7 @@ from tornado.log import enable_pretty_logging
 from merge_utils.hub import Hub
 from bson.json_util import loads, CANONICAL_JSON_OPTIONS, dumps
 from pprint import PrettyPrinter
+
 enable_pretty_logging()
 
 
@@ -19,7 +20,6 @@ class UptimeHandler(tornado.web.RequestHandler):
 
 
 class DistfileQueryHandler(tornado.web.RequestHandler):
-
 	def get(self, sha512):
 		self.set_header("Content-Type", "text/plain")
 		db_ent = hub.FASTPULL.find_one({"hashes.sha512": sha512})
@@ -34,7 +34,6 @@ redirect_url = "https://1153732560.rsc.cdn77.org/"
 
 
 class RedirectHandler(tornado.web.RequestHandler):
-
 	def get(self, fn):
 		fn = os.path.basename(fn)
 		success = False
@@ -57,7 +56,6 @@ class RedirectHandler(tornado.web.RequestHandler):
 
 
 class DistfileHashHandler(tornado.web.RequestHandler):
-
 	def get(self, hp1, hp2, hp3, full_hash):
 		if hp1 != full_hash[0:2] or hp2 != full_hash[2:4] or hp3 != full_hash[4:6] or len(full_hash) != 128:
 			print("problems", hp1, hp2, hp3, full_hash)
@@ -71,25 +69,33 @@ class DistfileHashHandler(tornado.web.RequestHandler):
 
 DISTFILE_HASHES = False
 
-class LayoutConfHandler(tornado.web.RequestHandler):
 
+class LayoutConfHandler(tornado.web.RequestHandler):
 	def get(self):
 		self.set_header("Content-Type", "text/plain")
 		if DISTFILE_HASHES:
-			self.write("""[structure]
+			self.write(
+				"""[structure]
 0=content-hash SHA512 8:8:8
 1=flat
-""")
+"""
+			)
 		else:
-			self.write("""[structure]
+			self.write(
+				"""[structure]
 0=flat
-""")
+"""
+			)
 
 
 settings = {
 	"xsrf_cookies": False,
 	"cache_json": False,
 }
+
+# TODO: I am not sure why, but layout.conf seems to come from the fastpull directory itself rather than
+#       being served by LayoutConfHandler. So I can't send something different to whoever is pulling our
+#       rsync.
 
 
 class Application(tornado.web.Application):
@@ -105,7 +111,6 @@ class Application(tornado.web.Application):
 		(r"/query/(.*)", DistfileQueryHandler),
 		(r"/up", UptimeHandler),
 		(r"/(.*)", RedirectHandler),
-
 	]
 
 	def __init__(self):
