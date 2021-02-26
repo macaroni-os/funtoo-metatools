@@ -36,15 +36,6 @@ redirect_url = "https://1153732560.rsc.cdn77.org/"
 class RedirectHandler(tornado.web.RequestHandler):
 	def get(self, fn):
 		fn = os.path.basename(fn)
-		success = False
-		if fn == "layout.conf":
-			self.set_header("Content-Type", "text/plain")
-			self.write(
-				"""[structure]
-0=flat
-"""
-			)
-			return
 		fp_ent = hub.FASTPULL.find_one({"filename": fn})
 		if fp_ent:
 			sh = fp_ent["hashes"]["sha512"]
@@ -104,6 +95,7 @@ class Application(tornado.web.Application):
 	handlers = [
 		(r"/layout.conf", LayoutConfHandler),
 		(r"/distfiles/layout.conf", LayoutConfHandler),
+		(r"/distfiles/distfiles/layout.conf", LayoutConfHandler),
 		(r"/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler),
 		(r"/distfiles/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler),
 		(r"/distfiles/distfiles/(.*)", RedirectHandler),
