@@ -76,29 +76,39 @@ async def http_fetch_stream(url, on_chunk):
 	"""
 	hostname = get_hostname(url)
 	semi = await acquire_host_semaphore(hostname)
+	rec_bytes = 0
+	attempts = 0
+	completed = False
 	async with semi:
-		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ssl=False)
-		try:
-			async with aiohttp.ClientSession(connector=connector) as http_session:
-				async with http_session.get(
-					url, headers=get_fetch_headers(), timeout=None, **get_auth_kwargs(hostname, url)
-				) as response:
-					if response.status != 200:
-						reason = (await response.text()).strip()
-						raise pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}")
-					while True:
-						try:
+		while not completed and attempts < 200:
+			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ssl=False)
+			try:
+				async with aiohttp.ClientSession(connector=connector) as http_session:
+					headers = get_fetch_headers()
+					if rec_bytes:
+						headers["Range"] = f"bytes={rec_bytes}-"
+						logging.warning(f"Resuming at {rec_bytes}")
+					async with http_session.get(url, headers=headers, timeout=None, **get_auth_kwargs(hostname, url)) as response:
+						if response.status not in [200, 206]:
+							reason = (await response.text()).strip()
+							raise pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}")
+						while not completed:
 							chunk = await response.content.read(chunk_size)
+							rec_bytes += len(chunk)
 							if not chunk:
+								completed = True
 								break
 							else:
 								sys.stdout.write(".")
 								sys.stdout.flush()
 								on_chunk(chunk)
-						except aiohttp.EofStream:
-							pass
-		except Exception as e:
-			raise pkgtools.fetch.FetchError(url, f"{e.__class__.__name__}: {str(e)}")
+			except Exception as e:
+				logging.error(f"Encountered {e} during fetch")
+				if attempts + 1 < 20:
+					attempts += 1
+					continue
+				else:
+					raise pkgtools.fetch.FetchError(url, f"{e.__class__.__name__}: {str(e)}")
 		return None
 
 
