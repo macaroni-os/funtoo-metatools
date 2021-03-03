@@ -5,12 +5,7 @@ from collections import defaultdict
 from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 
-hub = None
-
-
-def __init__():
-	hub.CURRENT_SOURCE_DEF = None
-	hub.SOURCE_REPOS = {}
+import dyne.org.funtoo.metatools.merge as merge
 
 
 def initialize_repo(repo_dict):
@@ -20,31 +15,31 @@ def initialize_repo(repo_dict):
 	repo_key = repo_name
 	repo_branch = repo_dict["branch"] if "branch" in repo_dict else "master"
 	repo_sha1 = repo_dict["src_sha1"] if "src_sha1" in repo_dict else None
-	if repo_key in hub.SOURCE_REPOS:
-		repo_obj = hub.SOURCE_REPOS[repo_key]
+	if repo_key in merge.model.SOURCE_REPOS:
+		repo_obj = merge.model.SOURCE_REPOS[repo_key]
 		if repo_sha1:
 			repo_obj.gitCheckout(sha1=repo_sha1)
 		elif repo_branch:
 			repo_obj.gitCheckout(branch=repo_branch)
 	else:
 		path = repo_name
-		repo_obj = hub.merge.tree.GitTree(
+		repo_obj = merge.tree.GitTree(
 			repo_name,
 			url=repo_url,
-			root="%s/%s" % (hub.MERGE_CONFIG.source_trees, path),
+			root="%s/%s" % (merge.model.MERGE_CONFIG.source_trees, path),
 			branch=repo_branch,
 			commit_sha1=repo_sha1,
 			origin_check=False,
 			reclone=False,
 		)
 		repo_obj.initialize()
-		hub.SOURCE_REPOS[repo_key] = repo_obj
+		merge.model.SOURCE_REPOS[repo_key] = repo_obj
 
 
 async def initialize_sources(source):
-	if hub.CURRENT_SOURCE_DEF == source:
+	if merge.model.CURRENT_SOURCE_DEF == source:
 		return
-	repos = list(hub.merge.foundations.get_repos(source))
+	repos = list(merge.foundations.get_repos(source))
 	repo_futures = []
 	with ThreadPoolExecutor(max_workers=8) as executor:
 		for repo_dict in repos:
@@ -52,7 +47,7 @@ async def initialize_sources(source):
 			repo_futures.append(fut)
 	for repo_fut in as_completed(repo_futures):
 		continue
-	hub.CURRENT_SOURCE_DEF = source
+	merge.model.CURRENT_SOURCE_DEF = source
 
 
 def get_kits_in_correct_processing_order():
@@ -115,7 +110,7 @@ def get_kits_in_correct_processing_order():
 			return pipeline_key
 		return None
 
-	for kit_dict in hub.KIT_GROUPS:
+	for kit_dict in merge.model.KIT_GROUPS:
 		if kit_dict["name"] == "core-kit":
 			if len(kit_pipeline_slots["core-kit"]):
 				raise ValueError("You must only define one core-kit in your kit groups.")

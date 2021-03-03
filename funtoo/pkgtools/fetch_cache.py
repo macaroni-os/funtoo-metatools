@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 
 from datetime import datetime
-
-import pymongo
-import pymongo.errors
-from pymongo import MongoClient
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 """
 
@@ -17,17 +14,6 @@ of the downloaded artifact -- its message digests and size at the time the downl
 2) regenerate ebuilds even if we don't have archives available (feature not yet implemented, but possible)
 
 """
-
-hub = None
-
-
-def __init__():
-	mc = MongoClient()
-	db_name = "metatools"
-	hub.MONGO_DB = getattr(mc, db_name)
-	hub.MONGO_FC = hub.MONGO_DB.fetch_cache
-	hub.MONGO_FC.create_index([("method_name", pymongo.ASCENDING), ("url", pymongo.ASCENDING)])
-	hub.MONGO_FC.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {"$exists": True}})
 
 
 async def fetch_cache_write(method_name, fetchable, body=None, metadata_only=False):
@@ -50,13 +36,13 @@ async def fetch_cache_write(method_name, fetchable, body=None, metadata_only=Fal
 	now = datetime.utcnow()
 	if not metadata_only:
 
-		hub.MONGO_FC.update_one(
+		pkgtools.model.MONGO_FC.update_one(
 			{"method_name": method_name, "url": url},
 			{"$set": {"last_attempt": now, "fetched_on": now, "metadata": metadata, "body": body}},
 			upsert=True,
 		)
 	else:
-		hub.MONGO_FC.update_one(
+		pkgtools.model.MONGO_FC.update_one(
 			{"method_name": method_name, "url": url},
 			{
 				"$set": {
@@ -85,16 +71,16 @@ async def fetch_cache_read(method_name, fetchable, max_age=None, refresh_interva
 		url = fetchable
 	else:
 		url = fetchable.url
-	result = hub.MONGO_FC.find_one({"method_name": method_name, "url": url})
+	result = pkgtools.model.MONGO_FC.find_one({"method_name": method_name, "url": url})
 	if result is None or "fetched_on" not in result:
-		raise hub.pkgtools.fetch.CacheMiss()
+		raise pkgtools.fetch.CacheMiss()
 	elif refresh_interval is not None:
 		if datetime.utcnow() - result["fetched_on"] <= refresh_interval:
 			return result
 		else:
-			raise hub.pkgtools.fetch.CacheMiss()
+			raise pkgtools.fetch.CacheMiss()
 	elif max_age is not None and datetime.utcnow() - result["fetched_on"] > max_age:
-		raise hub.pkgtools.fetch.CacheMiss()
+		raise pkgtools.fetch.CacheMiss()
 	else:
 		return result
 
@@ -109,7 +95,7 @@ async def record_fetch_failure(method_name, fetchable, failure_reason):
 	else:
 		url = fetchable.url
 	now = datetime.utcnow()
-	hub.MONGO_FC.update_one(
+	pkgtools.model.MONGO_FC.update_one(
 		{"method_name": method_name, "url": url},
 		{
 			"$set": {"last_attempt": now, "last_failure_on": now},

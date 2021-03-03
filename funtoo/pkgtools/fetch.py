@@ -3,16 +3,12 @@ import asyncio
 import json
 import logging
 
-hub = None
-
 """
 This sub implements high-level fetching logic. Not the lower-level HTTP stuff. Things involving
 retrying, using our fetch cache, etc.
 """
 
-
-def __init__():
-	hub.FETCH_ATTEMPTS = 3
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
 class FetchError(Exception):
@@ -61,7 +57,7 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 	url = fetchable if type(fetchable) == str else fetchable.url
 	attempts = 0
 	fail_reason = None
-	while attempts < hub.FETCH_ATTEMPTS:
+	while attempts < pkgtools.model.FETCH_ATTEMPTS:
 		attempts += 1
 		try:
 			if refresh_interval is not None:
@@ -70,7 +66,7 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 				# This call will return our cached resource if it's available and refresh_interval hasn't yet expired, i.e.
 				# it is not yet 'stale'.
 				try:
-					result = await hub.pkgtools.fetch_cache.fetch_cache_read(
+					result = await pkgtools.fetch_cache.fetch_cache_read(
 						fetch_method.__name__, fetchable, refresh_interval=refresh_interval
 					)
 					logging.info(f"Retrieved cached result for {url}")
@@ -79,17 +75,17 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 					# We'll continue and attempt a live fetch of the resource...
 					pass
 			result = await fetch_method(fetchable)
-			await hub.pkgtools.fetch_cache.fetch_cache_write(fetch_method.__name__, fetchable, body=result)
+			await pkgtools.fetch_cache.fetch_cache_write(fetch_method.__name__, fetchable, body=result)
 			return result
 		except FetchError as e:
-			if e.retry and attempts + 1 < hub.FETCH_ATTEMPTS:
+			if e.retry and attempts + 1 < pkgtools.model.FETCH_ATTEMPTS:
 				logging.error(f"Fetch method {fetch_method.__name__}: {e.msg}; retrying...")
 				continue
 			# if we got here, we are on our LAST retry attempt or retry is False:
 			logging.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
 			# TODO: these should be logged persistently so they can be investigated.
 			try:
-				got = await hub.pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable)
+				got = await pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable)
 				return got["body"]
 			except CacheMiss as ce:
 				# raise original exception
@@ -99,10 +95,10 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 
 	# If we've gotten here, we've performed all of our attempts to do live fetching.
 	try:
-		result = await hub.pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
+		result = await pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
 		return result["body"]
 	except CacheMiss:
-		await hub.pkgtools.fetch_cache.record_fetch_failure(fetch_method.__name__, fetchable, fail_reason=fail_reason)
+		await pkgtools.fetch_cache.record_fetch_failure(fetch_method.__name__, fetchable, fail_reason=fail_reason)
 		raise FetchError(
 			fetchable,
 			f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.",
@@ -110,10 +106,7 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 
 
 async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False):
-	method = getattr(hub.pkgtools.http, "get_page", None)
-	if method is None:
-		raise FetchError(fetchable, "Method get_page not implemented for fetcher.")
-	result = await fetch_harness(method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
+	result = await fetch_harness(pkgtools.http.get_page, fetchable, max_age=max_age, refresh_interval=refresh_interval)
 	if not is_json:
 		return result
 	try:
@@ -123,7 +116,7 @@ async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False
 		logging.warning(repr(e))
 		logging.warning("JSON appears corrupt -- trying to get cached version of resource...")
 		try:
-			result = await hub.pkgtools.fetch_cache.fetch_cache_read("get_page", fetchable, max_age=max_age)
+			result = await pkgtools.fetch_cache.fetch_cache_read("get_page", fetchable, max_age=max_age)
 			return json.loads(result)
 		except CacheMiss:
 			# bumm3r.
@@ -136,10 +129,9 @@ async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False
 
 
 async def get_url_from_redirect(fetchable, max_age=None, refresh_interval=None):
-	method = getattr(hub.pkgtools.http, "get_url_from_redirect", None)
-	if method is None:
-		raise FetchError(fetchable, "Method get_url_from_redirect not implemented for fetcher.")
-	return await fetch_harness(method, fetchable, max_age=max_age, refresh_interval=refresh_interval)
+	return await fetch_harness(
+		pkgtools.http.get_url_from_redirect, fetchable, max_age=max_age, refresh_interval=refresh_interval
+	)
 
 
 # vim: ts=4 sw=4 noet

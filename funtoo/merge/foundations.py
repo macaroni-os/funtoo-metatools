@@ -4,38 +4,34 @@ from collections import defaultdict
 import yaml
 import os
 
-hub = None
-
-
-def __init__():
-	hub.FDATA = None
+import dyne.org.funtoo.metatools.merge as merge
 
 
 def get_kit_pre_post_steps(ctx):
 	kit_steps = {
 		"core-kit": {
 			"pre": [
-				hub.merge.steps.GenerateRepoMetadata("core-kit", aliases=["gentoo"], priority=1000),
+				merge.steps.GenerateRepoMetadata("core-kit", aliases=["gentoo"], priority=1000),
 				# core-kit has special logic for eclasses -- we want all of them, so that third-party overlays can reference the full set.
 				# All other kits use alternate logic (not in kit_steps) to only grab the eclasses they actually use.
-				hub.merge.steps.SyncDir(hub.SOURCE_REPOS["gentoo-staging"].root, "eclass"),
+				merge.steps.SyncDir(merge.model.SOURCE_REPOS["gentoo-staging"].root, "eclass"),
 			],
 			"post": [
-				hub.merge.steps.ThirdPartyMirrors(),
-				hub.merge.steps.RunSed(["profiles/base/make.defaults"], ["/^PYTHON_TARGETS=/d", "/^PYTHON_SINGLE_TARGET=/d"]),
+				merge.steps.ThirdPartyMirrors(),
+				merge.steps.RunSed(["profiles/base/make.defaults"], ["/^PYTHON_TARGETS=/d", "/^PYTHON_SINGLE_TARGET=/d"]),
 			],
 		},
 		# masters of core-kit for regular kits and nokit ensure that masking settings set in core-kit for catpkgs in other kits are applied
 		# to the other kits. Without this, mask settings in core-kit apply to core-kit only.
 		"regular-kits": {
 			"pre": [
-				hub.merge.steps.GenerateRepoMetadata(ctx.kit.name, masters=["core-kit"], priority=500),
+				merge.steps.GenerateRepoMetadata(ctx.kit.name, masters=["core-kit"], priority=500),
 			]
 		},
 		"all-kits": {
 			"pre": [
-				hub.merge.steps.SyncFiles(
-					hub.FIXUP_REPO.root,
+				merge.steps.SyncFiles(
+					merge.model.FIXUP_REPO.root,
 					{
 						"COPYRIGHT.txt": "COPYRIGHT.txt",
 						"LICENSE.txt": "LICENSE.txt",
@@ -45,7 +41,7 @@ def get_kit_pre_post_steps(ctx):
 		},
 		"nokit": {
 			"pre": [
-				hub.merge.steps.GenerateRepoMetadata("nokit", masters=["core-kit"], priority=-2000),
+				merge.steps.GenerateRepoMetadata("nokit", masters=["core-kit"], priority=-2000),
 			]
 		},
 	}
@@ -77,9 +73,9 @@ def get_kit_pre_post_steps(ctx):
 
 
 def grab_fdata():
-	if hub.FDATA is None:
-		with open(os.path.join(hub.FIXUP_REPO.root, "foundations.yaml"), "r") as f:
-			hub.FDATA = yaml.safe_load(f)
+	if merge.model.FDATA is None:
+		with open(os.path.join(merge.model.FIXUP_REPO.root, "foundations.yaml"), "r") as f:
+			merge.model.FDATA = yaml.safe_load(f)
 
 
 def grab_pdata(ctx):
@@ -88,9 +84,9 @@ def grab_pdata(ctx):
 		# already loaded
 		return
 	# Try to use branch-specific packages.yaml if it exists. Fall back to global kit-specific YAML:
-	fn = f"{hub.FIXUP_REPO.root}/{ctx.kit.name}/{ctx.kit.branch}/packages.yaml"
+	fn = f"{merge.model.FIXUP_REPO.root}/{ctx.kit.name}/{ctx.kit.branch}/packages.yaml"
 	if not os.path.exists(fn):
-		fn = f"{hub.FIXUP_REPO.root}/{ctx.kit.name}/packages.yaml"
+		fn = f"{merge.model.FIXUP_REPO.root}/{ctx.kit.name}/packages.yaml"
 	with open(fn, "r") as f:
 		ctx["PDATA"] = yaml.safe_load(f)
 
@@ -142,9 +138,9 @@ def get_kit_packages(ctx):
 
 def python_kit_settings():
 	grab_fdata()
-	for section in hub.FDATA["python-settings"]:
+	for section in merge.model.FDATA["python-settings"]:
 		release = list(section.keys())[0]
-		if release != hub.RELEASE:
+		if release != merge.model.RELEASE:
 			continue
 		return section[release][0]
 	return None
@@ -152,7 +148,7 @@ def python_kit_settings():
 
 def release_exists(release):
 	grab_fdata()
-	for release_dict in hub.FDATA["kit-groups"]["releases"]:
+	for release_dict in merge.model.FDATA["kit-groups"]["releases"]:
 		cur_release = list(release_dict.keys())[0]
 		if cur_release == release:
 			return True
@@ -161,14 +157,14 @@ def release_exists(release):
 
 def kit_groups():
 	grab_fdata()
-	defaults = hub.FDATA["kit-groups"]["defaults"] if "defaults" in hub.FDATA["kit-groups"] else {}
-	for release_dict in hub.FDATA["kit-groups"]["releases"]:
+	defaults = merge.model.FDATA["kit-groups"]["defaults"] if "defaults" in merge.model.FDATA["kit-groups"] else {}
+	for release_dict in merge.model.FDATA["kit-groups"]["releases"]:
 
 		# unbundle from singleton dict:
 		release = list(release_dict.keys())[0]
 		release_data = release_dict[release]
 
-		if release != hub.RELEASE:
+		if release != merge.model.RELEASE:
 			continue
 
 		for kg in release_data:
@@ -184,7 +180,7 @@ def kit_groups():
 
 def source_defs(name):
 	grab_fdata()
-	for sdef in hub.FDATA["source-defs"]:
+	for sdef in merge.model.FDATA["source-defs"]:
 		sdef_name = list(sdef.keys())[0]
 		if sdef_name != name:
 			continue
@@ -198,7 +194,7 @@ def get_overlay(name):
 	Gets data on a specific overlay
 	"""
 	grab_fdata()
-	for ov_dict in hub.FDATA["overlays"]:
+	for ov_dict in merge.model.FDATA["overlays"]:
 
 		if isinstance(ov_dict, str):
 			ov_name = ov_dict
@@ -213,7 +209,7 @@ def get_overlay(name):
 		if ov_name != name:
 			continue
 
-		url = hub.MERGE_CONFIG.get_option("sources", ov_name)
+		url = merge.model.MERGE_CONFIG.get_option("sources", ov_name)
 		if url is not None:
 			ov_data["url"] = url
 
@@ -240,7 +236,7 @@ def get_repos(source_name):
 		repo_dict.update(ov_data)
 
 		if "src_sha1" not in repo_dict:
-			branch = hub.MERGE_CONFIG.get_option("branches", ov_name)
+			branch = merge.model.MERGE_CONFIG.get_option("branches", ov_name)
 			if branch is not None:
 				repo_dict["branch"] = branch
 			else:
@@ -251,9 +247,9 @@ def get_repos(source_name):
 def release_info():
 	grab_fdata()
 	release_out = {}
-	for release_dict in hub.FDATA["metadata"]:
+	for release_dict in merge.model.FDATA["metadata"]:
 		release = list(release_dict.keys())[0]
-		if release != hub.RELEASE:
+		if release != merge.model.RELEASE:
 			continue
 		release_info = release_dict[release]
 		# We now need to de-listify any lists

@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-import json
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 GLOBAL_DEFAULTS = {"cat": "dev-python", "refresh_interval": None, "python_compat": "python3+"}
 
@@ -12,7 +12,7 @@ async def generate(hub, **pkginfo):
 	else:
 		pypi_name = pkginfo["name"]
 
-	json_dict = await hub.pkgtools.fetch.get_page(
+	json_dict = await pkgtools.fetch.get_page(
 		f"https://pypi.org/pypi/{pypi_name}/json", refresh_interval=pkginfo["refresh_interval"], is_json=True
 	)
 
@@ -28,7 +28,7 @@ async def generate(hub, **pkginfo):
 	assert (
 		artifact_url is not None
 	), f"Artifact URL could not be found in {pkginfo}. This can indicate a PyPi package without a 'source' distribution."
-	ebuild = hub.pkgtools.ebuild.BreezyBuild(**pkginfo, artifacts=[hub.pkgtools.ebuild.Artifact(url=artifact_url)])
+	ebuild = pkgtools.ebuild.BreezyBuild(**pkginfo, artifacts=[pkgtools.ebuild.Artifact(url=artifact_url)])
 	ebuild.push()
 
 

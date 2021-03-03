@@ -1,14 +1,19 @@
 #!/usr/bin/python3
 
 import os
-from tornado.httpserver import HTTPServer
-import tornado.web
+from pprint import PrettyPrinter
+
 import tornado.gen
 import tornado.ioloop
+import tornado.web
+from tornado.httpserver import HTTPServer
 from tornado.log import enable_pretty_logging
-from merge_utils.hub import Hub
-from bson.json_util import loads, CANONICAL_JSON_OPTIONS, dumps
-from pprint import PrettyPrinter
+
+from subpop.hub import Hub
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.merge as merge
 
 enable_pretty_logging()
 
@@ -36,7 +41,16 @@ redirect_url = "https://1153732560.rsc.cdn77.org/"
 class RedirectHandler(tornado.web.RequestHandler):
 	def get(self, fn):
 		fn = os.path.basename(fn)
-		fp_ent = hub.FASTPULL.find_one({"filename": fn})
+		success = False
+		if fn == "layout.conf":
+			self.set_header("Content-Type", "text/plain")
+			self.write(
+				"""[structure]
+0=flat
+"""
+			)
+			return
+		fp_ent = merge.FASTPULL.find_one({"filename": fn})
 		if fp_ent:
 			sh = fp_ent["hashes"]["sha512"]
 			basepath = f"{sh[:2]}/{sh[2:4]}/{sh[4:6]}/{sh}"
@@ -110,8 +124,6 @@ class Application(tornado.web.Application):
 
 
 if __name__ == "__main__":
-	hub = Hub(lazy=False)
-	hub.add("funtoo/merge")
 	application = Application()
 	http_server = HTTPServer(application, xheaders=True)
 	http_server.bind(8080, "127.0.0.1")

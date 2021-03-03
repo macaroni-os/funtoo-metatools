@@ -12,15 +12,16 @@
 # for x in $(deepquery dev-perl | cut -f1 -d' '); do git rm -rf $x; done
 
 import sys
-from merge_utils.hub import Hub
+from subpop.hub import Hub
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.merge as merge
 
 if __name__ == "__main__":
-	hub = Hub()
-	hub.add("funtoo/merge")
-
 	nodep_catpkgs = dict()
-	for pypak in hub.DEEPDIVE.find({"category": sys.argv[1]}):
-		dep_on_me = hub.DEEPDIVE.count_documents({"relations": {"$in": [pypak["catpkg"]]}})
+	for pypak in merge.DEEPDIVE.find({"category": sys.argv[1]}):
+		dep_on_me = merge.DEEPDIVE.count_documents({"relations": {"$in": [pypak["catpkg"]]}})
 		if dep_on_me == 0:
 			nodep_catpkgs[pypak["catpkg"]] = pypak["kit"]
 

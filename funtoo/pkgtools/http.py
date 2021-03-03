@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import asyncio
+
 from asyncio import Semaphore
 from collections import defaultdict
 from urllib.parse import urlparse
@@ -10,35 +10,31 @@ import sys
 import logging
 import socket
 
-hub = None
-
 """
 This sub implements lower-level HTTP fetching logic, such as actually grabbing the data, sending the
 proper headers and authentication, etc.
 """
 
-RESOLVERS = {}
-# This is used to limit simultaneous connections to a particular hostname to a reasonable value.
-SEMAPHORES = {}
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
 async def get_resolver():
 	"""
 	This returns a DNS resolver local to the ioloop of the caller.
 	"""
-	global RESOLVERS
-	loop = asyncio.get_running_loop()
-	if id(loop) not in RESOLVERS:
-		RESOLVERS[id(loop)] = aiohttp.AsyncResolver(nameservers=["1.1.1.1", "1.0.0.1"], timeout=5, tries=3)
-	return RESOLVERS[id(loop)]
+	resolver = getattr(hub.THREAD_CTX, "http_resolver", None)
+	if resolver is None:
+		resolver = hub.THREAD_CTX.http_resolver = aiohttp.AsyncResolver(
+			nameservers=["1.1.1.1", "1.0.0.1"], timeout=5, tries=3
+		)
+	return resolver
 
 
 async def acquire_host_semaphore(hostname):
-	global SEMAPHORES
-	loop = asyncio.get_running_loop()
-	if id(loop) not in SEMAPHORES:
-		SEMAPHORES[id(loop)] = defaultdict(lambda: Semaphore(value=8))
-	return SEMAPHORES[id(loop)][hostname]
+	semaphores = getattr(hub.THREAD_CTX, "http_semaphores", None)
+	if semaphores is None:
+		semaphores = hub.THREAD_CTX.http_semaphores = defaultdict(lambda: Semaphore(value=8))
+	return semaphores[hostname]
 
 
 http_data_timeout = 60
@@ -63,15 +59,15 @@ def get_auth_kwargs(hostname, url):
 	in ~/.autogen (YAML format.)
 	"""
 	kwargs = {}
-	if "authentication" in hub.AUTOGEN_CONFIG:
-		if hostname in hub.AUTOGEN_CONFIG["authentication"]:
-			auth_info = hub.AUTOGEN_CONFIG["authentication"][hostname]
+	if "authentication" in pkgtools.model.AUTOGEN_CONFIG:
+		if hostname in pkgtools.model.AUTOGEN_CONFIG["authentication"]:
+			auth_info = pkgtools.model.AUTOGEN_CONFIG["authentication"][hostname]
 			logging.warning(f"Using authentication (username {auth_info['username']}) for {url}")
 			kwargs = {"auth": aiohttp.BasicAuth(auth_info["username"], auth_info["password"])}
 	return kwargs
 
 
-async def http_fetch_stream(url, on_chunk):
+async def http_fetch_stream(url, on_chunk, retry=True):
 	"""
 	This is a streaming HTTP fetcher that will call on_chunk(bytes) for each chunk.
 	On_chunk is called with literal bytes from the response body so no decoding is
@@ -82,9 +78,13 @@ async def http_fetch_stream(url, on_chunk):
 	semi = await acquire_host_semaphore(hostname)
 	rec_bytes = 0
 	attempts = 0
+	if retry:
+		max_attempts = 20
+	else:
+		max_attempts = 1
 	completed = False
 	async with semi:
-		while not completed and attempts < 200:
+		while not completed and attempts < max_attempts:
 			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ssl=False)
 			try:
 				async with aiohttp.ClientSession(connector=connector) as http_session:
@@ -95,7 +95,7 @@ async def http_fetch_stream(url, on_chunk):
 					async with http_session.get(url, headers=headers, timeout=None, **get_auth_kwargs(hostname, url)) as response:
 						if response.status not in [200, 206]:
 							reason = (await response.text()).strip()
-							raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}")
+							raise pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}")
 						while not completed:
 							chunk = await response.content.read(chunk_size)
 							rec_bytes += len(chunk)
@@ -108,11 +108,11 @@ async def http_fetch_stream(url, on_chunk):
 								on_chunk(chunk)
 			except Exception as e:
 				logging.error(f"Encountered {e} during fetch")
-				if attempts + 1 < 20:
+				if attempts + 1 < max_attempts:
 					attempts += 1
 					continue
 				else:
-					raise hub.pkgtools.fetch.FetchError(url, f"{e.__class__.__name__}: {str(e)}")
+					raise pkgtools.fetch.FetchError(url, f"{e.__class__.__name__}: {str(e)}")
 		return None
 
 
@@ -131,7 +131,7 @@ async def http_fetch(url):
 			) as response:
 				if response.status != 200:
 					reason = (await response.text()).strip()
-					raise hub.pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason}")
+					raise pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason}")
 				return await response.text()
 		return None
 
@@ -146,12 +146,12 @@ async def get_page(url):
 	try:
 		return await http_fetch(url)
 	except Exception as e:
-		if isinstance(e, hub.pkgtools.fetch.FetchError):
+		if isinstance(e, pkgtools.fetch.FetchError):
 			raise e
 		else:
 			msg = f"Couldn't get_page due to exception {repr(e)}"
 			logging.error(url + ": " + msg)
-			raise hub.pkgtools.fetch.FetchError(url, msg)
+			raise pkgtools.fetch.FetchError(url, msg)
 
 
 async def get_url_from_redirect(url):
@@ -169,7 +169,7 @@ async def get_url_from_redirect(url):
 		if e.response.code == 302:
 			return e.response.headers["location"]
 	except Exception as e:
-		raise hub.pkgtools.fetch.FetchError(url, f"Couldn't get_url_from_redirect due to exception {repr(e)}")
+		raise pkgtools.fetch.FetchError(url, f"Couldn't get_url_from_redirect due to exception {repr(e)}")
 
 
 # vim: ts=4 sw=4 noet

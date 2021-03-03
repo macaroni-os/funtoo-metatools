@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 
 import asyncio
-import subprocess
+import logging
 import os
-import threading
+import subprocess
 import sys
-import traceback
 from asyncio import FIRST_EXCEPTION, Task
 from collections import defaultdict
 from concurrent.futures.thread import ThreadPoolExecutor
 
-import yaml
 from yaml import safe_load
-import logging
 
-hub = None
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
+import dyne.org.funtoo.metatools.generators as generators
+import dyne.org.funtoo.metatools.merge as merge
+
+from subpop.util import load_plugin
 
 """
 The `PENDING_QUE` will be built up to contain a full list of all the catpkgs we want to autogen in the full run
@@ -63,7 +64,7 @@ def generate_manifests():
 	written once for each catpkg, rather than written as each individual ebuild is autogenned (which would create a
 	race condition writing to each Manifest file.)
 	"""
-	for manifest_file, manifest_lines in hub.MANIFEST_LINES.items():
+	for manifest_file, manifest_lines in pkgtools.model.MANIFEST_LINES.items():
 		manifest_lines = sorted(list(manifest_lines))
 		with open(manifest_file, "w") as myf:
 			pos = 0
@@ -102,7 +103,7 @@ def queue_all_indy_autogens():
 		logging.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
-async def gather_pending_tasks(task_list, throw=False):
+async def gather_pending_tasks(task_list, throw=True):
 	"""
 	This function collects completed asyncio coroutines, catches any exceptions recorded during their execution.
 	"""
@@ -182,16 +183,17 @@ async def execute_generator(
 	if generator_sub_path:
 		# This is an individual autogen.py. First grab the "base sub" (map the path), and then grab the actual sub-
 		# module we want by name.
-		generator_sub = hub.load_plugin(f"{generator_sub_path}/{generator_sub_name}.py", generator_sub_name)
+		generator_sub = load_plugin(f"{generator_sub_path}/{generator_sub_name}.py", generator_sub_name)
+		# Do hub injection:
+		generator_sub.hub = hub
 	else:
 		# This is an official generator that is built-in to pkgtools:
-		generator_sub = getattr(hub.generators, generator_sub_name)
+		generator_sub = getattr(generators, generator_sub_name)
 
 	# The generate_wrapper wraps the call to `generate()` (in autogen.py or the generator) and performs setup
 	# and post-tasks:
 
 	async def generator_thread_task():
-		assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 		print(f"********************** Executing generator {generator_sub_name}")
 
 		hub.THREAD_CTX.sub = generator_sub
@@ -220,28 +222,8 @@ async def execute_generator(
 
 			hub.THREAD_CTX.running_autogens.append(Task(gen_wrapper(pkginfo)))
 
-		results, errors = await gather_pending_tasks(hub.THREAD_CTX.running_autogens)
-		if errors:
-			print("Exceptions encountered:")
-			first_e = None
-			for e, exc_info in errors:
-				traceback.print_exception(*exc_info)
-				if first_e is None:
-					first_e = e
-			raise first_e
-
-		# This will return the pkginfo dict used for the autogen, if you want to inspect it
-
-		results, errors = await gather_pending_tasks(hub.THREAD_CTX.running_breezybuilds)
-		if errors:
-			print("Exceptions encountered:")
-			first_e = None
-			for e, exc_info in errors:
-				traceback.print_exception(*exc_info)
-				if first_e is None:
-					first_e = e
-			raise first_e
-		# This will return the BreezyBuild object if you want to inspect it for debugging:
+		await gather_pending_tasks(hub.THREAD_CTX.running_autogens)
+		await gather_pending_tasks(hub.THREAD_CTX.running_breezybuilds)
 
 	return generator_thread_task
 
@@ -359,20 +341,26 @@ async def execute_all_queued_generators():
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
 			async_func = await execute_generator(**task_args)
-			future = loop.run_in_executor(executor, hub.pkgtools.thread.run_async_adapter, async_func)
+			future = loop.run_in_executor(executor, pkgtools.thread.run_async_adapter, async_func)
 			futures.append(future)
 
 		results, exceptions = await gather_pending_tasks(futures)
+		if len(exceptions):
+			print(exceptions)
 
 
-async def start(start_path=None, out_path=None, fetcher=None):
+async def start(start_path=None, out_path=None):
 
 	"""
 	This method will start the auto-generation of packages in an ebuild repository.
 	"""
-	hub.FETCHER = fetcher
-	hub.pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
-	hub.add("funtoo/generators")
+	pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
+	# TODO:
+	# This is a hack to iterate through all plugins to ensure they are all loaded prior to starting threads, so we
+	# don't experience race conditions loading modules, as this clobbers sys.modules in a non-threadsafe way currently.
+	for plugin in pkgtools:
+		pass
+	getattr(merge, "deepdive")
 	queue_all_indy_autogens()
 	queue_all_yaml_autogens()
 	await execute_all_queued_generators()

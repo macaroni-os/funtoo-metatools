@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 
 from dict_tools.data import NamespaceDict
-from merge_utils.hub import Hub
+from subpop.hub import Hub
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.merge as merge
 
 
 async def main_thread(repo_plus_overlays):
@@ -9,22 +13,20 @@ async def main_thread(repo_plus_overlays):
 	for kit_dict in repo_plus_overlays:
 		ctx = NamespaceDict()
 		ctx["kit"] = NamespaceDict(kit_dict)
-		out_tree = await hub.merge.kit.checkout_kit(ctx)
+		out_tree = await merge.kit.checkout_kit(ctx)
 
 		if pos == 0:
-			hub.ECLASS_ROOT = out_tree.root
-			hub.ECLASS_HASHES = hub.merge.metadata.get_eclass_hashes(hub.ECLASS_ROOT)
+			merge.ECLASS_ROOT = out_tree.root
+			merge.ECLASS_HASHES = merge.metadata.get_eclass_hashes(merge.ECLASS_ROOT)
 
-		hub.merge.metadata.fetch_kit(out_tree)
-		hub.merge.metadata.gen_cache(out_tree)
-		hub.merge.metadata.flush_kit(out_tree)
+		merge.metadata.fetch_kit(out_tree)
+		merge.metadata.gen_cache(out_tree)
+		merge.metadata.flush_kit(out_tree)
 		pos += 1
 
 
 if __name__ == "__main__":
-	hub = Hub()
-	hub.add("funtoo/merge")
-	hub.merge.metadata.cleanup_error_logs()
+	merge.metadata.cleanup_error_logs()
 	repo_plus_overlays = [
 		{
 			"name": "gentoo",

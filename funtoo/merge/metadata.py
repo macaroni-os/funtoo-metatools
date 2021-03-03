@@ -13,7 +13,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from multiprocessing import cpu_count
 from dict_tools.data import NamespaceDict
 
-hub = None
+import dyne.org.funtoo.metatools.merge as merge
 
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
 # version, we'll consider the kit cache stale and regenerate it.
@@ -21,25 +21,17 @@ hub = None
 CACHE_DATA_VERSION = "1.0.5"
 
 
-def __init__():
-	# When kits are being regenerated, we will update these variables to contain counts of various kinds of
-	# errors, so we can display a summary at the end of processing all kits. Users can consult the correct
-	# logs in ~/repo_tmp/tmp/ for details.
-	hub.METADATA_ERROR_STATS = []
-	hub.PROCESSING_WARNING_STATS = []
-
-
 def cleanup_error_logs():
 	# This should be explicitly called at the beginning of every command that generates metadata for kits:
 
-	for file in glob.glob(os.path.join(hub.MERGE_CONFIG.temp_path, "metadata-errors*.log")):
+	for file in glob.glob(os.path.join(merge.model.MERGE_CONFIG.temp_path, "metadata-errors*.log")):
 		os.unlink(file)
 
 
 def display_error_summary():
 	for stat_list, name, shortname in [
-		(hub.METADATA_ERROR_STATS, "metadata extraction errors", "errors"),
-		(hub.PROCESSING_WARNING_STATS, "warnings", "warnings"),
+		(merge.model.METADATA_ERROR_STATS, "metadata extraction errors", "errors"),
+		(merge.model.PROCESSING_WARNING_STATS, "warnings", "warnings"),
 	]:
 		if len(stat_list):
 			for stat_info in stat_list:
@@ -47,7 +39,7 @@ def display_error_summary():
 				logging.warning(f"The following kits had {name}:")
 				branch_info = f"{stat_info.name} branch {stat_info.branch}".ljust(30)
 				logging.warning(f"* {branch_info} -- {stat_info.count} {shortname}.")
-			logging.warning(f"{name} errors logged to {hub.MERGE_CONFIG.temp_path}.")
+			logging.warning(f"{name} errors logged to {merge.model.MERGE_CONFIG.temp_path}.")
 
 
 def get_thirdpartymirrors(repo_path):
@@ -373,7 +365,7 @@ def extract_ebuild_metadata(repo_obj, atom, ebuild_path=None, env=None, eclass_p
 	# This tells ebuild.sh to write out the metadata to stdout (fd 1) which is where we will grab
 	# it from:
 	env["PORTAGE_PIPE_FD"] = "1"
-	result = hub.merge.tree.run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
+	result = merge.tree.run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
 	if result.returncode != 0:
 		repo_obj.METADATA_ERRORS[atom] = {"status": "ebuild.sh failure", "output": result.stderr}
 		return None
@@ -674,8 +666,8 @@ def gen_cache(repo):
 		fut_map = {}
 
 		# core-kit's eclass hashes are cached here:
-		eclass_hashes = hub.ECLASS_HASHES.hashes.copy()
-		eclass_paths = [hub.ECLASS_HASHES.path]
+		eclass_hashes = merge.model.ECLASS_HASHES.hashes.copy()
+		eclass_paths = [merge.model.ECLASS_HASHES.path]
 
 		if repo.name != "core-kit":
 			# Add in any eclasses that exist local to the kit.
@@ -780,8 +772,8 @@ def do_package_use_line(pkg, def_python, bk_python, imps):
 
 
 def get_outpath(repo_obj):
-	os.makedirs(os.path.join(hub.MERGE_CONFIG.temp_path, "kit_cache"), exist_ok=True)
-	return os.path.join(hub.MERGE_CONFIG.temp_path, "kit_cache", f"{repo_obj.name}-{repo_obj.branch}")
+	os.makedirs(os.path.join(merge.model.MERGE_CONFIG.temp_path, "kit_cache"), exist_ok=True)
+	return os.path.join(merge.model.MERGE_CONFIG.temp_path, "kit_cache", f"{repo_obj.name}-{repo_obj.branch}")
 
 
 def load_json(fn, validate=True):
@@ -862,9 +854,11 @@ def flush_kit(repo_obj, save=True, prune=True):
 
 		# Add summary to hub of error count for this kit, and also write out the error logs:
 
-		error_outpath = os.path.join(hub.MERGE_CONFIG.temp_path, f"metadata-errors-{repo_obj.name}-{repo_obj.branch}.log")
+		error_outpath = os.path.join(
+			merge.model.MERGE_CONFIG.temp_path, f"metadata-errors-{repo_obj.name}-{repo_obj.branch}.log"
+		)
 		if len(repo_obj.METADATA_ERRORS):
-			hub.METADATA_ERROR_STATS.append(
+			merge.model.METADATA_ERROR_STATS.append(
 				{"name": repo_obj.name, "branch": repo_obj.branch, "count": len(repo_obj.METADATA_ERRORS)}
 			)
 			with open(error_outpath, "w") as f:
@@ -873,9 +867,9 @@ def flush_kit(repo_obj, save=True, prune=True):
 			if os.path.exists(error_outpath):
 				os.unlink(error_outpath)
 
-		error_outpath = os.path.join(hub.MERGE_CONFIG.temp_path, f"warnings-{repo_obj.name}-{repo_obj.branch}.log")
+		error_outpath = os.path.join(merge.model.MERGE_CONFIG.temp_path, f"warnings-{repo_obj.name}-{repo_obj.branch}.log")
 		if len(repo_obj.PROCESSING_WARNINGS):
-			hub.PROCESSING_WARNING_STATS.append(
+			merge.model.PROCESSING_WARNING_STATS.append(
 				{"name": repo_obj.name, "branch": repo_obj.branch, "count": len(repo_obj.PROCESSING_WARNINGS)}
 			)
 			with open(error_outpath, "w") as f:

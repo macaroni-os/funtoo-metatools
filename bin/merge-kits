@@ -8,7 +8,12 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime
 
 from dict_tools.data import NamespaceDict
-from merge_utils.hub import Hub
+from subpop.hub import Hub
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.merge as merge
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
 class MergeError(Exception):
@@ -19,25 +24,25 @@ async def main_thread():
 
 	# Before we start looking at YAML, we need to ensure our two critical source repos are checked out
 
-	hub.META_REPO.initialize()
-	hub.FIXUP_REPO.initialize()
-	hub.merge.metadata.cleanup_error_logs()
+	merge.model.META_REPO.initialize()
+	merge.model.FIXUP_REPO.initialize()
+	merge.metadata.cleanup_error_logs()
 
-	hub.KIT_GROUPS = list(hub.merge.foundations.kit_groups())
+	merge.model.KIT_GROUPS = list(merge.foundations.kit_groups())
 
-	if not hub.merge.foundations.release_exists(hub.RELEASE):
-		print(f"Release not found: {hub.RELEASE}.")
+	if not merge.foundations.release_exists(merge.model.RELEASE):
+		print(f"Release not found: {merge.model.RELEASE}.")
 		sys.exit(1)
 
 	# We want to delete all locally-cloned independent kits before we start processing, so we re-clone them to get
 	# pristine copies with the latest commits (see FL-7935):
 
-	hub.merge.kit.wipe_indy_kits()
+	merge.kit.wipe_indy_kits()
 
-	thread_keys, thread_groups = hub.merge.sources.get_kits_in_correct_processing_order()
+	thread_keys, thread_groups = merge.sources.get_kits_in_correct_processing_order()
 
-	hub.KIT_RESULTS = OrderedDict()
-	hub.KIT_SHA1S = defaultdict(dict)
+	merge.model.KIT_RESULTS = OrderedDict()
+	merge.model.KIT_SHA1S = defaultdict(dict)
 
 	# This will generate core-kit, as well as all other kits:
 	for source in thread_keys:
@@ -50,33 +55,33 @@ async def main_thread():
 
 			if kit_dict["kind"] != "independent":
 				# This initializes the "source repos" that are used to grab catpkgs from to generate this kit:
-				await hub.merge.sources.initialize_sources(kit_dict["source"])
+				await merge.sources.initialize_sources(kit_dict["source"])
 
 			for kit_dict in kit_dict_list:
 				# For simplicity, set up a context variable to pass around, where ctx.kit contains the kit information:
 				ctx = NamespaceDict()
 				ctx["kit"] = NamespaceDict(kit_dict)
-				# hub.merge.kit.generate_kit does the real work:
-				future = executor.submit(hub.pkgtools.thread.run_async_adapter, hub.merge.kit.generate_kit, ctx)
+				# merge.kit.generate_kit does the real work:
+				future = executor.submit(pkgtools.thread.run_async_adapter, merge.kit.generate_kit, ctx)
 				regen_futures.append(future)
 			for future in as_completed(regen_futures):
 				ctx, tree_obj, tree_sha1 = future.result()
-				hub.KIT_RESULTS[ctx.kit.name] = (ctx, tree_obj, tree_sha1)
-				hub.KIT_SHA1S[ctx.kit.name][ctx.kit.branch] = tree_sha1
+				merge.model.KIT_RESULTS[ctx.kit.name] = (ctx, tree_obj, tree_sha1)
+				merge.model.KIT_SHA1S[ctx.kit.name][ctx.kit.branch] = tree_sha1
 
 	# Create meta-repo commit referencing our updated kits:
-	hub.merge.kit.generate_metarepo_metadata(hub.KIT_SHA1S)
-	hub.META_REPO.gitCommit(message="kit updates", skip=["kits"], push=hub.PUSH)
+	merge.kit.generate_metarepo_metadata(merge.model.KIT_SHA1S)
+	merge.model.META_REPO.gitCommit(message="kit updates", skip=["kits"], push=merge.model.PUSH)
 
-	if not hub.MIRROR:
-		hub.merge.metadata.display_error_summary()
+	if not merge.model.MIRROR:
+		merge.metadata.display_error_summary()
 		return
 
 	# Mirroring to GitHub happens here:
 
-	hub.merge.kit.mirror_all_repositories()
+	merge.kit.mirror_all_repositories()
 
-	hub.merge.metadata.display_error_summary()
+	merge.metadata.display_error_summary()
 
 
 CLI_CONFIG = {
@@ -104,62 +109,58 @@ def parse_args():
 
 if __name__ == "__main__":
 
-	hub = Hub()
 	hub.OPT = parse_args()
 
 	# Parse options:
 
 	push = not hub.OPT.nopush
-	hub.PROD = prod = hub.OPT.prod
+
 	forcepush = hub.OPT.force
 
 	# Initialize internal pop globals that are expected to be in place when the merge sub gets added:
 
-	hub.add("funtoo/merge", prod=prod, release=hub.OPT.release)
-	hub.add("funtoo/pkgtools")
-
-	if not prod:
+	merge.apply_config(prod=hub.OPT.prod, push=push, release=hub.OPT.release)
+	if not merge.model.PROD:
 		# This means we'll just generate our own local git trees for the purposes of generating kits. This is generally used by developers to see what
 		# would end up in kits, when you don't really need to create any kits that will be used anywhere else.
-		hub.GIT_CLASS = hub.merge.tree.AutoCreatedGitTree
-		hub.PUSH = False
-		hub.MIRROR = False
-		hub.META_REPO = meta_repo = hub.GIT_CLASS(
-			name="meta-repo", branch=hub.RELEASE, root=hub.MERGE_CONFIG.dest_trees + "/meta-repo"
+		merge.model.GIT_CLASS = merge.tree.AutoCreatedGitTree
+		merge.model.PUSH = False
+		merge.model.MIRROR = False
+		merge.model.META_REPO = meta_repo = merge.model.GIT_CLASS(
+			name="meta-repo", branch=merge.model.RELEASE, root=merge.model.MERGE_CONFIG.dest_trees + "/meta-repo"
 		)
-		hub.NEST_KITS = True
+		merge.model.NEST_KITS = True
 	else:
 
 		# In this mode, we're actually wanting to update real kits, and likely are going to push our updates to remotes (unless --nopush is specified as an arg.)
 		# This might be used by people generating their own custom kits for use on other systems, or by Funtoo itself for updating official kits and meta-repo.
 
-		hub.NEST_KITS = False
-		hub.PUSH = push
-		hub.MIRROR = push
-		hub.GIT_CLASS = hub.merge.tree.GitTree
+		merge.model.NEST_KITS = False
+		merge.model.PUSH = push
+		merge.model.MIRROR = push
+		merge.model.GIT_CLASS = merge.tree.GitTree
 
 		kwargs = {}
-		if hub.MIRROR:
-			kwargs["mirror"] = hub.MERGE_CONFIG.mirror.rstrip("/") + "/meta-repo"
-		hub.META_REPO = meta_repo = hub.merge.tree.GitTree(
+		if merge.model.MIRROR:
+			kwargs["mirror"] = merge.model.MERGE_CONFIG.mirror.rstrip("/") + "/meta-repo"
+		merge.model.META_REPO = meta_repo = merge.tree.GitTree(
 			"meta-repo",
-			branch=hub.RELEASE,
-			url=hub.MERGE_CONFIG.meta_repo,
-			root=hub.MERGE_CONFIG.dest_trees + "/meta-repo",
+			branch=merge.model.RELEASE,
+			url=merge.model.MERGE_CONFIG.meta_repo,
+			root=merge.model.MERGE_CONFIG.dest_trees + "/meta-repo",
 			origin_check=True,
 			**kwargs,
 		)
 
-	hub.START_TIME = datetime.utcnow()
-	hub.FIXUP_REPO = hub.merge.tree.GitTree(
+	merge.model.START_TIME = datetime.utcnow()
+	merge.model.FIXUP_REPO = merge.tree.GitTree(
 		"kit-fixups",
-		hub.MERGE_CONFIG.branch("kit-fixups"),
-		url=hub.MERGE_CONFIG.kit_fixups,
-		root=hub.MERGE_CONFIG.source_trees + "/kit-fixups",
+		merge.model.MERGE_CONFIG.branch("kit-fixups"),
+		url=merge.model.MERGE_CONFIG.kit_fixups,
+		root=merge.model.MERGE_CONFIG.source_trees + "/kit-fixups",
 		checkout_all_branches=False,
 	)
 
-	hub.CPM_LOGGER = None
 	hub.LOOP.run_until_complete(main_thread())
 
 	# if len(hub.METADATA_ERRORS):

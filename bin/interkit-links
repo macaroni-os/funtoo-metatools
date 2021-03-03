@@ -8,16 +8,17 @@
 # simply refers to things referenced in the kit that can't be found within the kit.
 
 import sys
-from merge_utils.hub import Hub
+from subpop.hub import Hub
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.merge as merge
 
 if __name__ == "__main__":
-	hub = Hub()
-	hub.add("funtoo/merge")
-
 	nodep_catpkgs = dict()
 	all_relations = set()
 	all_catpkgs = set()
-	for pypak in hub.DEEPDIVE.find({"kit": sys.argv[1], "branch": sys.argv[2]}):
+	for pypak in merge.DEEPDIVE.find({"kit": sys.argv[1], "branch": sys.argv[2]}):
 		all_catpkgs.add(pypak["catpkg"])
 		all_relations = all_relations | set(pypak["relations"])
 

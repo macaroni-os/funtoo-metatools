@@ -9,6 +9,9 @@ from asyncio import Semaphore, Lock
 from subprocess import getstatusoutput
 from contextlib import asynccontextmanager
 
+import dyne.org.funtoo.metatools.merge as merge
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
 """
 This sub deals with the higher-level logic related to downloading of distfiles. Where the 'fetch.py'
 sub deals with grabbing HTTP data from APIs, this is much more geared towards grabbing tarballs that
@@ -28,7 +31,7 @@ This allows asyncio downloads of potentially identical files to work without com
 the autogen.py files or generators so that this complexity does not have to be dealt with by those
 who are simply writing autogens.
 """
-hub = None
+
 DL_ACTIVE_LOCK = Lock()
 DL_ACTIVE = dict()
 DOWNLOAD_SLOT = {}
@@ -47,10 +50,6 @@ async def acquire_download_slot():
 	if id(loop) not in DOWNLOAD_SLOT:
 		DOWNLOAD_SLOT[id(loop)] = Semaphore(value=24)
 	return DOWNLOAD_SLOT[id(loop)]
-
-
-def __init__():
-	hub.CHECK_DISK_HASHES = False
 
 
 @asynccontextmanager
@@ -105,6 +104,7 @@ class Download:
 		self.final_name = artifact.final_name
 		self.url = artifact.url
 		self.artifacts = [artifact]
+		self.final_data = None
 		self.futures = []
 
 	def add_artifact(self, artifact):
@@ -116,7 +116,7 @@ class Download:
 		self.futures.append(fut)
 		return fut
 
-	async def download(self) -> bool:
+	async def download(self, throw=False) -> bool:
 		"""
 		This method attempts to start a download. It hooks into ``download_slot`` which is used to limit the number
 		of simultaneous downloads.
@@ -134,15 +134,18 @@ class Download:
 			async with start_download(self):
 				success = True
 				try:
-					final_data = await _download(self.artifacts[0])
-				except hub.pkgtools.fetch.FetchError as fe:
+					self.final_data = await _download(self.artifacts[0], retry=not throw)
+				except pkgtools.fetch.FetchError as fe:
 					logging.error(fe)
-					success = False
+					if throw:
+						raise fe
+					else:
+						success = False
 
 				if success:
 					integrity_keys = {}
 					for artifact in self.artifacts:
-						artifact.record_final_data(final_data)
+						artifact.record_final_data(self.final_data)
 						for breezybuild in artifact.breezybuilds:
 							integrity_keys[(breezybuild.catpkg, artifact.final_name)] = True
 
@@ -150,7 +153,7 @@ class Download:
 					# avoid duplicate records.
 
 					for catpkg, final_name in integrity_keys.keys():
-						hub.merge.deepdive.store_distfile_integrity(catpkg, final_name, final_data)
+						merge.deepdive.store_distfile_integrity(catpkg, final_name, self.final_data)
 
 		for future in self.futures:
 			future.set_result(success)
@@ -159,10 +162,10 @@ class Download:
 
 
 def extract_path(artifact):
-	return os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name)
+	return os.path.join(merge.model.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name)
 
 
-async def _download(artifact):
+async def _download(artifact, retry=True):
 	"""
 
 	This function is used to download tarballs and other artifacts. Because files can be large,
@@ -172,7 +175,7 @@ async def _download(artifact):
 	Upon success, the function will update the Artifact's hashes dict to contain hashes and
 	filesize of the downloaded artifact.
 
-	Will raise hub.pkgtools.fetch.FetchError if there was some kind of error downloading. Caller
+	Will raise pkgtools.fetch.FetchError if there was some kind of error downloading. Caller
 	needs to catch and handle this.
 
 	"""
@@ -200,7 +203,7 @@ async def _download(artifact):
 			sys.stdout.write(".")
 			sys.stdout.flush()
 
-		await hub.pkgtools.http.http_fetch_stream(artifact.url, on_chunk)
+		await pkgtools.http.http_fetch_stream(artifact.url, on_chunk, retry=retry)
 
 		sys.stdout.write("x")
 		sys.stdout.flush()
@@ -222,7 +225,7 @@ async def _download(artifact):
 
 def cleanup(artifact):
 	# TODO: check for path stuff like ../.. in final_name to avoid security issues.
-	getstatusoutput("rm -rf " + os.path.join(hub.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name))
+	getstatusoutput("rm -rf " + os.path.join(merge.model.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name))
 
 
 def extract(artifact):
@@ -234,7 +237,7 @@ def extract(artifact):
 	cmd = "tar -C %s -xf %s" % (ep, artifact.final_path)
 	s, o = getstatusoutput(cmd)
 	if s != 0:
-		raise hub.pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
+		raise pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
 
 
 def calc_hashes(fn):

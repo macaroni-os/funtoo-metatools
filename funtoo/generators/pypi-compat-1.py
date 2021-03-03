@@ -14,11 +14,12 @@
 import json
 import os
 from collections import OrderedDict
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 GLOBAL_DEFAULTS = {"cat": "dev-python", "refresh_interval": None, "python_compat": "python3+"}
 
 
-def add_ebuild(hub, json_dict=None, compat_ebuild=False, **pkginfo):
+def add_ebuild(json_dict=None, compat_ebuild=False, **pkginfo):
 	local_pkginfo = pkginfo.copy()
 	assert "python_compat" in local_pkginfo, f"python_compat is not defined in {local_pkginfo}"
 	local_pkginfo["compat_ebuild"] = compat_ebuild
@@ -27,13 +28,13 @@ def add_ebuild(hub, json_dict=None, compat_ebuild=False, **pkginfo):
 	if "distutils-r1" not in local_pkginfo["inherit"]:
 		local_pkginfo["inherit"].append("distutils-r1")
 
-	hub.pkgtools.pyhelper.expand_pydeps(local_pkginfo, compat_mode=True, compat_ebuild=compat_ebuild)
+	pkgtools.pyhelper.expand_pydeps(local_pkginfo, compat_mode=True, compat_ebuild=compat_ebuild)
 
 	if compat_ebuild:
 		local_pkginfo["python_compat"] = "python2_7"
 		local_pkginfo["version"] = local_pkginfo["compat"]
 		local_pkginfo["name"] = local_pkginfo["name"] + "-compat"
-		artifact_url = hub.pkgtools.pyhelper.sdist_artifact_url(json_dict["releases"], local_pkginfo["version"])
+		artifact_url = pkgtools.pyhelper.sdist_artifact_url(json_dict["releases"], local_pkginfo["version"])
 	else:
 		if "version" in local_pkginfo and local_pkginfo["version"] != "latest":
 			version_specified = True
@@ -42,14 +43,14 @@ def add_ebuild(hub, json_dict=None, compat_ebuild=False, **pkginfo):
 			# get latest version
 			local_pkginfo["version"] = json_dict["info"]["version"]
 
-		artifact_url = hub.pkgtools.pyhelper.pypi_get_artifact_url(local_pkginfo, json_dict, strict=version_specified)
+		artifact_url = pkgtools.pyhelper.pypi_get_artifact_url(local_pkginfo, json_dict, strict=version_specified)
 
 	assert (
 		artifact_url is not None
 	), f"Artifact URL could not be found in {pkginfo['name']} {local_pkginfo['version']}. This can indicate a PyPi package without a 'source' distribution."
 	local_pkginfo["template_path"] = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../templates"))
-	ebuild = hub.pkgtools.ebuild.BreezyBuild(
-		**local_pkginfo, artifacts=[hub.pkgtools.ebuild.Artifact(url=artifact_url)], template="pypi-compat-1.tmpl"
+	ebuild = pkgtools.ebuild.BreezyBuild(
+		**local_pkginfo, artifacts=[pkgtools.ebuild.Artifact(url=artifact_url)], template="pypi-compat-1.tmpl"
 	)
 	ebuild.push()
 
@@ -60,14 +61,14 @@ async def generate(hub, **pkginfo):
 	else:
 		pypi_name = pkginfo["name"]
 		pkginfo["pypi_name"] = pypi_name
-	json_data = await hub.pkgtools.fetch.get_page(
+	json_data = await pkgtools.fetch.get_page(
 		f"https://pypi.org/pypi/{pypi_name}/json", refresh_interval=pkginfo["refresh_interval"]
 	)
 	json_dict = json.loads(json_data, object_pairs_hook=OrderedDict)
-	add_ebuild(hub, json_dict, compat_ebuild=False, **pkginfo)
+	add_ebuild(json_dict, compat_ebuild=False, **pkginfo)
 	if "compat" in pkginfo and pkginfo["compat"]:
 		print("pushing for " + pkginfo["compat"])
-		add_ebuild(hub, json_dict, compat_ebuild=True, **pkginfo)
+		add_ebuild(json_dict, compat_ebuild=True, **pkginfo)
 
 
 # vim: ts=4 sw=4 noet

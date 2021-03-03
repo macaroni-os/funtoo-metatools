@@ -8,7 +8,8 @@ import jinja2
 import logging
 from collections import defaultdict
 
-hub = None
+import dyne.org.funtoo.metatools.merge as merge
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
 class DigestFailure(Exception):
@@ -25,10 +26,6 @@ class DigestFailure(Exception):
 		out += f"Expected: {self.expected}\n"
 		out += f"  Actual: {self.actual}"
 		return out
-
-
-def __init__():
-	hub.MANIFEST_LINES = defaultdict(set)
 
 
 class BreezyError(Exception):
@@ -51,19 +48,26 @@ class Artifact(Fetchable):
 		self.expect = expect
 
 	@property
+	def catpkgs(self):
+		outstr = ""
+		for bzb in self.breezybuilds:
+			outstr = f"{outstr} {bzb.catpkg}"
+		return outstr.strip()
+
+	@property
 	def temp_path(self):
-		return os.path.join(hub.MERGE_CONFIG.fetch_download_path, f"{self.final_name}.__download__")
+		return os.path.join(merge.model.MERGE_CONFIG.fetch_download_path, f"{self.final_name}.__download__")
 
 	@property
 	def extract_path(self):
-		return hub.pkgtools.download.extract_path(self)
+		return pkgtools.download.extract_path(self)
 
 	@property
 	def final_path(self):
 		if self._final_path:
 			return self._final_path
 		else:
-			return os.path.join(hub.MERGE_CONFIG.fetch_download_path, self.final_name)
+			return os.path.join(merge.model.MERGE_CONFIG.fetch_download_path, self.final_name)
 
 	@property
 	def final_name(self):
@@ -97,10 +101,10 @@ class Artifact(Fetchable):
 			return self.url + " -> " + self._final_name
 
 	def extract(self):
-		return hub.pkgtools.download.extract(self)
+		return pkgtools.download.extract(self)
 
 	def cleanup(self):
-		return hub.pkgtools.download.cleanup(self)
+		return pkgtools.download.cleanup(self)
 
 	def exists(self):
 		return self.is_fetched()
@@ -128,7 +132,7 @@ class Artifact(Fetchable):
 	@property
 	def fastpull_path(self):
 		sh = self._final_data["hashes"]["sha512"]
-		return hub.merge.fastpull.get_disk_path(sh)
+		return merge.fastpull.get_disk_path(sh)
 
 	async def ensure_completed(self) -> bool:
 		"""
@@ -147,7 +151,7 @@ class Artifact(Fetchable):
 			# Since we are using this outside of the context of an autogen, and there is no associated BreezyBuild,
 			# using the distfile integrity database doesn't make sense. So just ensure the file is fetched:
 			return await self.ensure_fetched()
-		integrity_item = hub.merge.deepdive.get_distfile_integrity(self.breezybuilds[0].catpkg, distfile=self.final_name)
+		integrity_item = merge.deepdive.get_distfile_integrity(self.breezybuilds[0].catpkg, distfile=self.final_name)
 		if integrity_item is not None:
 			self._final_data = integrity_item["final_data"]
 			# Will throw an exception if our new final data doesn't match any expected values.
@@ -156,7 +160,13 @@ class Artifact(Fetchable):
 		else:
 			return await self.ensure_fetched()
 
-	async def ensure_fetched(self) -> bool:
+	async def try_fetch(self):
+		"""
+		This is like ensure_fetched, but will return an exception if the download fails.
+		"""
+		await self.ensure_fetched(throw=True)
+
+	async def ensure_fetched(self, throw=False) -> bool:
 		"""
 		This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
 		calculate its hashes or extract it.
@@ -171,21 +181,19 @@ class Artifact(Fetchable):
 				# This condition handles a situation where the distfile integrity database has been wiped. We need to
 				# re-populate the data. We already have the file.
 				if len(self.breezybuilds):
-					self._final_data = hub.merge.deepdive.get_distfile_integrity(
-						self.breezybuilds[0].catpkg, distfile=self.final_name
-					)
+					self._final_data = merge.deepdive.get_distfile_integrity(self.breezybuilds[0].catpkg, distfile=self.final_name)
 					if self._final_data is None:
-						self._final_data = hub.pkgtools.download.calc_hashes(self.final_path)
+						self._final_data = pkgtools.download.calc_hashes(self.final_path)
 						# Will throw an exception if our new final data doesn't match any expected values.
 						self.validate_digests()
-						hub.merge.deepdive.store_distfile_integrity(self.breezybuilds[0].catpkg, self.final_name, self._final_data)
+						merge.deepdive.store_distfile_integrity(self.breezybuilds[0].catpkg, self.final_name, self._final_data)
 				else:
-					self._final_data = hub.pkgtools.download.calc_hashes(self.final_path)
+					self._final_data = pkgtools.download.calc_hashes(self.final_path)
 					# Will throw an exception if our new final data doesn't match any expected values.
 					self.validate_digests()
 				return True
 		else:
-			active_dl = hub.pkgtools.download.get_download(self.final_name)
+			active_dl = pkgtools.download.get_download(self.final_name)
 			if active_dl is not None:
 				# Active download -- wait for it to finish:
 				logging.info(f"Waiting for {self.final_name} download to finish")
@@ -194,8 +202,8 @@ class Artifact(Fetchable):
 					self._final_data = active_dl.final_data
 			else:
 				# No active download for this file -- start one:
-				dl_file = hub.pkgtools.download.Download(self)
-				success = await dl_file.download()
+				dl_file = pkgtools.download.Download(self)
+				success = await dl_file.download(throw=throw)
 			if success:
 				# Will throw an exception if our new final data doesn't match any expected values.
 				self.validate_digests()
@@ -283,7 +291,6 @@ class BreezyBuild:
 		      are not just calculated -- the distfile integrity entry should be created as well.
 
 		"""
-		assert id(asyncio.get_running_loop()) == id(hub.THREAD_CTX.loop)
 
 		fetch_tasks_dict = {}
 
@@ -304,7 +311,7 @@ class BreezyBuild:
 			fetch_tasks_dict[artifact] = asyncio.Task(lil_coroutine(artifact))
 
 		# Wait for any artifacts that are still fetching:
-		results, exceptions = await hub.pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values())
+		results, exceptions = await pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values())
 		completion_list = aggregate(results)
 		for artifact, status in completion_list:
 			if status is False:
@@ -389,7 +396,7 @@ class BreezyBuild:
 			success = await artifact.ensure_completed()
 			if not success:
 				raise BreezyError(f"Something prevented us from storing Manifest data for {key}.")
-			hub.MANIFEST_LINES[key].add(
+			pkgtools.model.MANIFEST_LINES[key].add(
 				"DIST %s %s BLAKE2B %s SHA512 %s\n"
 				% (artifact.final_name, artifact.size, artifact.hash("blake2b"), artifact.hash("sha512"))
 			)
