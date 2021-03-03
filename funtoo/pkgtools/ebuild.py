@@ -160,7 +160,13 @@ class Artifact(Fetchable):
 		else:
 			return await self.ensure_fetched()
 
-	async def ensure_fetched(self) -> bool:
+	async def try_fetch(self):
+		"""
+		This is like ensure_fetched, but will return an exception if the download fails.
+		"""
+		await self.ensure_fetched(throw=True)
+
+	async def ensure_fetched(self, throw=False) -> bool:
 		"""
 		This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
 		calculate its hashes or extract it.
@@ -197,7 +203,7 @@ class Artifact(Fetchable):
 			else:
 				# No active download for this file -- start one:
 				dl_file = pkgtools.download.Download(self)
-				success = await dl_file.download()
+				success = await dl_file.download(throw=throw)
 			if success:
 				# Will throw an exception if our new final data doesn't match any expected values.
 				self.validate_digests()

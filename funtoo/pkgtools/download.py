@@ -116,7 +116,7 @@ class Download:
 		self.futures.append(fut)
 		return fut
 
-	async def download(self) -> bool:
+	async def download(self, throw=False) -> bool:
 		"""
 		This method attempts to start a download. It hooks into ``download_slot`` which is used to limit the number
 		of simultaneous downloads.
@@ -134,10 +134,13 @@ class Download:
 			async with start_download(self):
 				success = True
 				try:
-					self.final_data = await _download(self.artifacts[0])
+					self.final_data = await _download(self.artifacts[0], retry=not throw)
 				except pkgtools.fetch.FetchError as fe:
 					logging.error(fe)
-					success = False
+					if throw:
+						raise fe
+					else:
+						success = False
 
 				if success:
 					integrity_keys = {}
@@ -162,7 +165,7 @@ def extract_path(artifact):
 	return os.path.join(merge.model.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name)
 
 
-async def _download(artifact):
+async def _download(artifact, retry=True):
 	"""
 
 	This function is used to download tarballs and other artifacts. Because files can be large,
@@ -200,7 +203,7 @@ async def _download(artifact):
 			sys.stdout.write(".")
 			sys.stdout.flush()
 
-		await pkgtools.http.http_fetch_stream(artifact.url, on_chunk)
+		await pkgtools.http.http_fetch_stream(artifact.url, on_chunk, retry=retry)
 
 		sys.stdout.write("x")
 		sys.stdout.flush()

@@ -67,7 +67,7 @@ def get_auth_kwargs(hostname, url):
 	return kwargs
 
 
-async def http_fetch_stream(url, on_chunk):
+async def http_fetch_stream(url, on_chunk, retry=True):
 	"""
 	This is a streaming HTTP fetcher that will call on_chunk(bytes) for each chunk.
 	On_chunk is called with literal bytes from the response body so no decoding is
@@ -78,9 +78,13 @@ async def http_fetch_stream(url, on_chunk):
 	semi = await acquire_host_semaphore(hostname)
 	rec_bytes = 0
 	attempts = 0
+	if retry:
+		max_attempts = 20
+	else:
+		max_attempts = 1
 	completed = False
 	async with semi:
-		while not completed and attempts < 200:
+		while not completed and attempts < max_attempts:
 			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ssl=False)
 			try:
 				async with aiohttp.ClientSession(connector=connector) as http_session:
@@ -104,7 +108,7 @@ async def http_fetch_stream(url, on_chunk):
 								on_chunk(chunk)
 			except Exception as e:
 				logging.error(f"Encountered {e} during fetch")
-				if attempts + 1 < 20:
+				if attempts + 1 < max_attempts:
 					attempts += 1
 					continue
 				else:
