@@ -21,7 +21,7 @@ def __init__(model, prod=None, push=False, release=None, **kwargs):
 	logging.warning(f"PROD {getattr(model, 'PROD', 'NOT DEFINED')}")
 	model.RELEASE = release
 	# Passing "fastpull" kwarg to Configuration:
-	model.MERGE_CONFIG = Configuration(**kwargs)
+	model.MERGE_CONFIG = Configuration(prod=prod, **kwargs)
 
 	mc = MongoClient()
 	dd = model.DEEPDIVE = mc.metatools.deepdive
