@@ -40,7 +40,8 @@ def add_ebuild(hub, json_dict=None, compat_ebuild=False, **pkginfo):
 		else:
 			version_specified = False
 			# get latest version
-			local_pkginfo["version"] = json_dict["info"]["version"]
+			local_pkginfo["version"] = json_dict["info"]["version"].replace(".post","_p")
+			local_pkginfo["s_version"] = json_dict["info"]["version"]
 
 		artifact_url = hub.pkgtools.pyhelper.pypi_get_artifact_url(local_pkginfo, json_dict, strict=version_specified)
 
