@@ -18,7 +18,7 @@ def pypi_get_artifact_url(pkginfo, json_dict, strict=True):
 	pkginfo. If ``strict`` is True, will insist on the ``version`` defined in ``pkginfo``, otherwise, will be flexible
 	and fall back to most recent sdist.
 	"""
-	artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo["s_version"])
+	artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo["version"])
 	if artifact_url is None:
 		if not strict:
 			# dang, the latest official release doesn't have a source tarball. Let's scan for the most recent release with a source tarball:
@@ -28,9 +28,9 @@ def pypi_get_artifact_url(pkginfo, json_dict, strict=True):
 					pkginfo["version"] = version
 					break
 		else:
-			raise AssertionError(f"Could not find a source distribution for {pkginfo['name']} version {pkginfo['s_version']}")
+			raise AssertionError(f"Could not find a source distribution for {pkginfo['name']} version {pkginfo['version']}")
 	else:
-		artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo["s_version"])
+		artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo["version"])
 	return artifact_url
 
 
