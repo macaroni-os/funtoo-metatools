@@ -30,6 +30,9 @@ def add_ebuild(json_dict=None, **pkginfo):
 	), f"Artifact URL could not be found in {pkginfo['name']} {local_pkginfo['version']}. This can indicate a PyPi package without a 'source' distribution."
 
 	local_pkginfo["template_path"] = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../templates"))
+
+	pkgtools.pyhelper.pypi_normalize_version(local_pkginfo)
+
 	ebuild = pkgtools.ebuild.BreezyBuild(
 		**local_pkginfo, artifacts=[pkgtools.ebuild.Artifact(url=artifact_url)], template="pypi-simple-1.tmpl"
 	)
@@ -37,11 +40,7 @@ def add_ebuild(json_dict=None, **pkginfo):
 
 
 async def generate(hub, **pkginfo):
-	if "pypi_name" in pkginfo:
-		pypi_name = pkginfo["pypi_name"]
-	else:
-		pypi_name = pkginfo["name"]
-		pkginfo["pypi_name"] = pypi_name
+	pypi_name = pkgtools.pyhelper.pypi_normalize_name(pkginfo)
 	json_data = await pkgtools.fetch.get_page(
 		f"https://pypi.org/pypi/{pypi_name}/json", refresh_interval=pkginfo["refresh_interval"]
 	)

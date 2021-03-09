@@ -20,5 +20,3 @@ if __name__ == "__main__":
 	for sha512 in merge.fastpull.parse_mcafee_logs(log_file):
 		db_ent = merge.model.FASTPULL.find_one({"sha512": sha512})
 		print(db_ent)
-
-

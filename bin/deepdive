@@ -10,6 +10,7 @@ import logging
 from dict_tools.data import NamespaceDict
 from funtoo.merge.tree import GitTree
 
+
 async def insert_kit(ctx):
 	ctx, items_to_insert = await merge.kit.get_deepdive_kit_items(ctx)
 	if not len(items_to_insert):

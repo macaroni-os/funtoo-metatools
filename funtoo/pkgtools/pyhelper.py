@@ -10,6 +10,22 @@ def sdist_artifact_url(releases, version):
 	return None
 
 
+def pypi_normalize_name(pkginfo):
+	if "pypi_name" not in pkginfo:
+		pkginfo["pypi_name"] = pkginfo["name"]
+	return pkginfo["pypi_name"]
+
+
+def pypi_normalize_version(pkginfo):
+	version_parts = pkginfo["version"].split(".")
+	if version_parts[-1].startswith("post"):
+		ebuild_version = ".".join(version_parts[:-1]) + "_p" + version_parts[-1][4:]
+	else:
+		ebuild_version = pkginfo["version"]
+	pkginfo["pypi_version"] = pkginfo["version"]
+	pkginfo["version"] = ebuild_version
+
+
 def pypi_get_artifact_url(pkginfo, json_dict, strict=True):
 	"""
 	A more robust version of ``sdist_artifact_url``.

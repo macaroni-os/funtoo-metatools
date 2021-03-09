@@ -119,4 +119,3 @@ def parse_mcafee_logs(logf, path_prefix="/opt"):
 					out_digests.append(part_strip.split("/")[-1])
 
 	return out_digests
-
