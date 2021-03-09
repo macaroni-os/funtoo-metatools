@@ -18,10 +18,11 @@ async def generate(hub, **pkginfo):
 
 	if "version" not in pkginfo or pkginfo["version"] == "latest":
 		# This will grab the latest version:
-		pkginfo["version"] = json_dict["info"]["version"]
+		pkginfo["version"] = json_dict["info"]["version"].replace(".post","_p")
+		pkginfo["s_version"] = json_dict["info"]["version"]
 
 	artifact_url = None
-	for artifact in json_dict["releases"][pkginfo["version"]]:
+	for artifact in json_dict["releases"][pkginfo["s_version"]]:
 		if artifact["packagetype"] == "sdist":
 			artifact_url = artifact["url"]
 			break
