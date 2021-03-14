@@ -143,12 +143,14 @@ def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=Non
 	   autogen.yaml are supplied. (`defaults`, below.)
 
 	3. Next, `cat` and `name` settings calculated based on the path of the `autogen.py`, or the settings that
-	   come from the package-specific part of the `autogen.yaml` are added on top. (`base_pkginfo`, below.)
+	   come from the package-specific part of the `autogen.yaml` are added on top. (`base_pkginfo`, below.),
+	   plus any non-'version' sections from the package-specific section.
 	"""
 	glob_defs = getattr(hub.THREAD_CTX.sub, "GLOBAL_DEFAULTS", {})
 	pkginfo = glob_defs.copy()
 	if defaults is not None:
 		pkginfo.update(defaults)
+	print(base_pkginfo)
 	pkginfo.update(base_pkginfo)
 	if template_path:
 		pkginfo["template_path"] = template_path
@@ -231,6 +233,7 @@ async def execute_generator(
 def parse_yaml_rule(package_section=None):
 
 	pkginfo_list = []
+	defaults = {}
 
 	if type(package_section) == str:
 
@@ -256,9 +259,11 @@ def parse_yaml_rule(package_section=None):
 		pkg_section["name"] = package_name
 
 		# This is even a more complex format, where we have sub-sections based on versions of the package,
-		# each with their own settings:
+		# each with their own settings. And we can also have other values which set defaults for this package:
 		#
 		# - foobar:
+		#     another_setting:
+		#       blah: morf
 		#     versions:
 		#       1.2.4:
 		#         val1: blah
@@ -267,6 +272,11 @@ def parse_yaml_rule(package_section=None):
 
 		if type(pkg_section) == dict and "versions" in pkg_section:
 			versions_section = pkg_section["versions"]
+
+			# Grab any other values as defaults:
+			defaults = pkg_section.copy()
+			del defaults["versions"]
+
 			for version, v_pkg_section in versions_section.items():
 				v_pkginfo = {"name": package_name}
 				v_pkginfo.update(v_pkg_section)
@@ -275,7 +285,7 @@ def parse_yaml_rule(package_section=None):
 		else:
 			pkginfo_list.append(pkg_section)
 
-	return pkginfo_list
+	return defaults, pkginfo_list
 
 
 def queue_all_yaml_autogens():
@@ -298,7 +308,7 @@ def queue_all_yaml_autogens():
 			for rule_name, rule in safe_load(myf.read()).items():
 
 				if "defaults" in rule:
-					defaults = rule["defaults"]
+					defaults = rule["defaults"].copy()
 				else:
 					defaults = {}
 
@@ -320,7 +330,12 @@ def queue_all_yaml_autogens():
 
 				pkginfo_list = []
 				for package in rule["packages"]:
-					pkginfo_list += parse_yaml_rule(package_section=package)
+
+					package_defaults, parsed_pkg = parse_yaml_rule(package_section=package)
+
+					pkginfo_list += parsed_pkg
+					defaults.update(package_defaults)
+
 				PENDING_QUE.append(
 					{
 						"gen_path": yaml_base_path,
