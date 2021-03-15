@@ -150,7 +150,6 @@ def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=Non
 	pkginfo = glob_defs.copy()
 	if defaults is not None:
 		pkginfo.update(defaults)
-	print(base_pkginfo)
 	pkginfo.update(base_pkginfo)
 	if template_path:
 		pkginfo["template_path"] = template_path
@@ -195,19 +194,33 @@ async def execute_generator(
 	# The generate_wrapper wraps the call to `generate()` (in autogen.py or the generator) and performs setup
 	# and post-tasks:
 
-	async def generator_thread_task():
+	async def generator_thread_task(pkginfo_list):
 		print(f"********************** Executing generator {generator_sub_name}")
 
 		hub.THREAD_CTX.sub = generator_sub
 		hub.THREAD_CTX.running_autogens = []
 		hub.THREAD_CTX.running_breezybuilds = []
 
-		# Generate some output to let the user know what we're doing:
+		# Do our own internal processing to get pkginfo_list ready for generate().
 
+		new_pkginfo_list = []
 		for base_pkginfo in pkginfo_list:
-			pkginfo = init_pkginfo_for_package(
-				defaults=defaults, base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
+			new_pkginfo_list.append(
+				init_pkginfo_for_package(
+					defaults=defaults, base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
+				)
 			)
+		pkginfo_list = new_pkginfo_list
+
+		# The generator now has the ability to make arbitrary modifications to our pkginfo_list (YAML).
+		# Packages can be dropped or added, or their pkginfo arbitrarily modified using Python code.
+		# See if ``preprocess_packages()`` exists in the generator -- and if it does, run it.
+
+		preprocess_func = getattr(hub.THREAD_CTX.sub, "preprocess_packages", None)
+		if preprocess_func is not None:
+			pkginfo_list = [i async for i in preprocess_func(hub, pkginfo_list)]
+
+		for pkginfo in pkginfo_list:
 			if "version" in pkginfo and pkginfo["version"] != "latest":
 				print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
 			else:
@@ -227,7 +240,7 @@ async def execute_generator(
 		await gather_pending_tasks(hub.THREAD_CTX.running_autogens)
 		await gather_pending_tasks(hub.THREAD_CTX.running_breezybuilds)
 
-	return generator_thread_task
+	return generator_thread_task, pkginfo_list
 
 
 def parse_yaml_rule(package_section=None):
@@ -355,8 +368,8 @@ async def execute_all_queued_generators():
 	with ThreadPoolExecutor(max_workers=8) as executor:
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
-			async_func = await execute_generator(**task_args)
-			future = loop.run_in_executor(executor, pkgtools.thread.run_async_adapter, async_func)
+			async_func, pkginfo_list = await execute_generator(**task_args)
+			future = loop.run_in_executor(executor, pkgtools.thread.run_async_adapter, async_func, pkginfo_list)
 			futures.append(future)
 
 		results, exceptions = await gather_pending_tasks(futures)

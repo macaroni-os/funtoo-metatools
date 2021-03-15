@@ -280,6 +280,33 @@ call its ``ensure_fetched()`` or ``fetch()`` async method. You can then unpack i
 See our `xorg-proto Autogen`_ for an example of this. It downloads ``xorg-proto`` and introspects inside
 it to generate a bunch of stub ebuilds for each protocol supported by ``xorg-proto``.
 
+Pre-processing the List of Packages
+-----------------------------------
+
+If you use an ``autogen.yaml`` to specify a list of packages to generate, it is now possible to use a
+``preprocess_packages()`` function to arbitrarily modify the list of ``pkginfo`` dictionaries that get
+fed into ``generate()`` in your generator. This allows you to prune the list of packages you want to
+generate, add common metadata to the pkginfo, or do other things. It is perfectly fine to do things like
+HTTP calls from ``preprocess_packages()``. An example might look like this:
+
+.. code-block:: python
+
+  import os
+  import glob
+
+  skip_versions = [ '1.2.3' ]
+
+  async def preprocess_packages(hub, pkginfo_list):
+    for pkginfo in pkginfo_list:
+        pkginfo['foo'] = 'bar'
+        if pkginfo['version'] in skip_versions:
+            continue
+        yield pkginfo
+
+As you can see, the ``preprocess_packages()`` method is an async python generator, and uses the ``yield``
+operator. Anything you yield will be generated using ``generate()``, while anything you don't yield will
+not be generated. This gives you ultimate control over what gets fed to your ``generate()`` function --
+``preprocess_packages()`` runs right before any ``generate()`` starts for your currently-running generator.
 
 .. _Virtualbox-bin Autogen: https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse/core-kit/curated/app-emulation/virtualbox-bin/autogen.py
 .. _xorg-proto Autogen: https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse/core-gl-kit/2.0-release/x11-base/xorg-proto/autogen.py
