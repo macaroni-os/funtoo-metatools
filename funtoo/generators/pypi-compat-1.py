@@ -19,7 +19,7 @@ import dyne.org.funtoo.metatools.pkgtools as pkgtools
 GLOBAL_DEFAULTS = {"cat": "dev-python", "refresh_interval": None, "python_compat": "python3+"}
 
 
-def add_ebuild(json_dict=None, compat_ebuild=False, **pkginfo):
+async def add_ebuild(json_dict=None, compat_ebuild=False, **pkginfo):
 	local_pkginfo = pkginfo.copy()
 	assert "python_compat" in local_pkginfo, f"python_compat is not defined in {local_pkginfo}"
 	local_pkginfo["compat_ebuild"] = compat_ebuild
@@ -52,8 +52,14 @@ def add_ebuild(json_dict=None, compat_ebuild=False, **pkginfo):
 
 	pkgtools.pyhelper.pypi_normalize_version(local_pkginfo)
 
+	artifacts = [pkgtools.ebuild.Artifact(url=artifact_url)]
+	if "cargo" in local_pkginfo["inherit"] and not compat_ebuild:
+		cargo_artifacts = await pkgtools.rust.generate_crates_from_artifact(artifacts[0],"*/src/rust")
+		local_pkginfo["crates"]  = cargo_artifacts["crates"]
+		artifacts = [ *artifacts, *cargo_artifacts["crates_artifacts"] ]
+
 	ebuild = pkgtools.ebuild.BreezyBuild(
-		**local_pkginfo, artifacts=[pkgtools.ebuild.Artifact(url=artifact_url)], template="pypi-compat-1.tmpl"
+		**local_pkginfo, artifacts=artifacts, template="pypi-compat-1.tmpl"
 	)
 	ebuild.push()
 
@@ -64,10 +70,10 @@ async def generate(hub, **pkginfo):
 		f"https://pypi.org/pypi/{pypi_name}/json", refresh_interval=pkginfo["refresh_interval"]
 	)
 	json_dict = json.loads(json_data, object_pairs_hook=OrderedDict)
-	add_ebuild(json_dict, compat_ebuild=False, **pkginfo)
+	await add_ebuild(json_dict, compat_ebuild=False, **pkginfo)
 	if "compat" in pkginfo and pkginfo["compat"]:
 		print("pushing for " + pkginfo["compat"])
-		add_ebuild(json_dict, compat_ebuild=True, **pkginfo)
+		await add_ebuild(json_dict, compat_ebuild=True, **pkginfo)
 
 
 # vim: ts=4 sw=4 noet

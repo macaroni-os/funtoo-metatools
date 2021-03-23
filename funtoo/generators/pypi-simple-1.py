@@ -12,8 +12,12 @@ import dyne.org.funtoo.metatools.pkgtools as pkgtools
 GLOBAL_DEFAULTS = {"cat": "dev-python", "refresh_interval": None, "python_compat": "python3+"}
 
 
-def add_ebuild(json_dict=None, **pkginfo):
+async def add_ebuild(json_dict=None, **pkginfo):
 	local_pkginfo = pkginfo.copy()
+	if "inherit" not in local_pkginfo:
+		local_pkginfo["inherit"] = []
+	if "distutils-r1" not in local_pkginfo["inherit"]:
+		local_pkginfo["inherit"].append("distutils-r1")
 	pkgtools.pyhelper.expand_pydeps(local_pkginfo)
 
 	if "version" in local_pkginfo and local_pkginfo["version"] != "latest":
@@ -33,8 +37,14 @@ def add_ebuild(json_dict=None, **pkginfo):
 
 	pkgtools.pyhelper.pypi_normalize_version(local_pkginfo)
 
+	artifacts = [pkgtools.ebuild.Artifact(url=artifact_url)]
+	if "cargo" in local_pkginfo["inherit"] and not compat_ebuild:
+		cargo_artifacts = await pkgtools.rust.generate_crates_from_artifact(artifacts[0],"*/src/rust")
+		local_pkginfo["crates"]  = cargo_artifacts["crates"]
+		artifacts = [ *artifacts, *cargo_artifacts["crates_artifacts"] ]
+
 	ebuild = pkgtools.ebuild.BreezyBuild(
-		**local_pkginfo, artifacts=[pkgtools.ebuild.Artifact(url=artifact_url)], template="pypi-simple-1.tmpl"
+		**local_pkginfo, artifacts=artifacts, template="pypi-simple-1.tmpl"
 	)
 	ebuild.push()
 
@@ -45,7 +55,7 @@ async def generate(hub, **pkginfo):
 		f"https://pypi.org/pypi/{pypi_name}/json", refresh_interval=pkginfo["refresh_interval"]
 	)
 	json_dict = json.loads(json_data, object_pairs_hook=OrderedDict)
-	add_ebuild(json_dict, **pkginfo)
+	await add_ebuild(json_dict, **pkginfo)
 
 
 # vim: ts=4 sw=4 noet
