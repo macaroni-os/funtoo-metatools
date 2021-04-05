@@ -63,24 +63,6 @@ def get_disk_path(sh):
 	return os.path.join(merge.model.MERGE_CONFIG.fastpull_path, sh[:2], sh[2:4], sh[4:6], sh)
 
 
-def record_fastpull_db_entry(artifact):
-	refs = []
-	for bzb in artifact.breezybuilds:
-		refs.append({"catpkg": bzb.catpkg})
-	db_ent = merge.model.FASTPULL.find_one({"filename": artifact.final_name, "sha512": artifact.get_hash("sha512")})
-	if db_ent:
-		merge.model.FASTPULL.update(
-			{"filename": artifact.final_name, "sha512": artifact.get_hash("sha512")}, {"$addToSet": {"refs": {"$each": {refs}}}}
-		)
-	else:
-		db_entry = {}
-		db_entry["hashes"] = artifact.final_data
-		db_entry["filename"] = artifact.final_name
-		db_entry["refs"] = refs
-		db_entry["fetched_on"] = datetime.utcnow()
-		merge.model.FASTPULL.insert_one(db_entry)
-
-
 async def inject_into_fastpull(artifact):
 	"""
 	For a given artifact, make sure it's fetched locally and then add it to the fastpull archive.
