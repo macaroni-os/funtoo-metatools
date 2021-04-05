@@ -6,7 +6,6 @@ import sys
 from asyncio import Task
 import jinja2
 import logging
-from collections import defaultdict
 
 import dyne.org.funtoo.metatools.merge as merge
 import dyne.org.funtoo.metatools.pkgtools as pkgtools

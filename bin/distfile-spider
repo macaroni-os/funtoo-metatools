@@ -22,21 +22,6 @@ import dyne.org.funtoo.metatools.merge as merge
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
-def expand_uris(src_uri_list):
-	real_uri = []
-	for src_uri in src_uri_list:
-		if src_uri.startswith("mirror://"):
-			real_uri.append(merge.metadata.expand_thirdpartymirror(tp_mirrors, src_uri))
-		else:
-			slash_split = src_uri.split("/")
-			if len(slash_split) == 0:
-				continue
-			elif slash_split[0] not in ["http:", "https:", "ftp:"]:
-				continue
-			real_uri.append(src_uri)
-	return real_uri
-
-
 async def do_distfile_fetch(distinct_key, distinct_file_list):
 	"""
 	This function takes a "file" which is the JSON structure from a kit-cache JSON that describes a file associated
@@ -57,7 +42,7 @@ async def do_distfile_fetch(distinct_key, distinct_file_list):
 		all_src_uris = all_src_uris | set(file["src_uri"])
 		refs.append({"kit": datums["kit"], "catpkg": datums["catpkg"]})
 
-	src_uris = expand_uris(list(all_src_uris))
+	src_uris = merge.expand_uris(list(all_src_uris))
 	fp_path = merge.fastpull.get_disk_path(sha512)
 
 	if not os.path.exists(fp_path):
@@ -121,15 +106,7 @@ if __name__ == "__main__":
 
 	# We need kit-fixups available so we can grab the thirdpartymirrors file from it.
 
-	merge.FIXUP_REPO = merge.tree.GitTree(
-		"kit-fixups",
-		merge.MERGE_CONFIG.branch("kit-fixups"),
-		url=merge.MERGE_CONFIG.kit_fixups,
-		root=merge.MERGE_CONFIG.source_trees + "/kit-fixups",
-	)
-	merge.FIXUP_REPO.initialize()
 
-	tp_mirrors = merge.metadata.get_thirdpartymirrors(os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit"))
 
 	hub.LOOP.run_until_complete(main_thread())
 

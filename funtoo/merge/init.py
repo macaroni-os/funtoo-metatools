@@ -54,3 +54,5 @@ def __init__(model, prod=None, push=False, release=None, **kwargs):
 	#  kit: kit
 	#  catpkg: catpkg
 	#  Some items may be omitted from the above list.
+
+	model.THIRD_PARTY_MIRRORS = None
