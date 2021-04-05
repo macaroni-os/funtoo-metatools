@@ -12,22 +12,20 @@ import dyne.org.funtoo.metatools.merge as merge
 
 async def main_thread():
 	for fp_entry in merge.model.FASTPULL.find({}):
-		fp_path = merge.fastpull.get_fp_path(fp_entry["sha512"])
+		fp_path = merge.fastpull.get_disk_path(fp_entry["hashes"]["sha512"])
 		if not os.path.exists(fp_path):
 			print(fp_entry)
+		if "sha512" in fp_entry:
+			print("SHA512 IN WRONG PLACE!", fp_entry)
 
 
 if __name__ == "__main__":
 
-	ap = ArgumentParser()
-	ap.add_argument("infile")
-	args = ap.parse_args()
-
 	merge.FIXUP_REPO = merge.tree.GitTree(
 		"kit-fixups",
-		merge.MERGE_CONFIG.branch("kit-fixups"),
-		url=merge.MERGE_CONFIG.kit_fixups,
-		root=merge.MERGE_CONFIG.source_trees + "/kit-fixups",
+		merge.model.MERGE_CONFIG.branch("kit-fixups"),
+		url=merge.model.MERGE_CONFIG.kit_fixups,
+		root=merge.model.MERGE_CONFIG.source_trees + "/kit-fixups",
 	)
 	merge.FIXUP_REPO.initialize()
 
