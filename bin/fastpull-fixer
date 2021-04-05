@@ -8,16 +8,29 @@ from subpop.hub import Hub
 hub = Hub()
 
 import dyne.org.funtoo.metatools.merge as merge
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
 async def main_thread():
 	for fp_entry in merge.model.FASTPULL.find({}):
 		fp_path = merge.fastpull.get_disk_path(fp_entry["hashes"]["sha512"])
-		if not os.path.exists(fp_path):
-			print(fp_entry)
-		if "sha512" in fp_entry:
-			print("SHA512 IN WRONG PLACE!", fp_entry)
-
+		if os.path.exists(fp_path):
+			continue
+		if "genpatches" in fp_entry["filename"]:
+			continue
+		skip = False
+		for ref in fp_entry["refs"]:
+			if "games" in ref["catpkg"]:
+				skip = True
+				break
+		if skip:
+			continue
+		if type(fp_entry["src_uri"]) is str:
+			uri = fp_entry["src_uri"]
+		else:
+			uri = fp_entry["src_uri"][0]
+		a = pkgtools.ebuild.Artifact(url=uri)
+		await a.ensure_fetched()
 
 if __name__ == "__main__":
 
