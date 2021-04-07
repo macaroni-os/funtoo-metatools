@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from collections import defaultdict
 
 
 def sdist_artifact_url(releases, version):
@@ -133,15 +134,24 @@ def create_ebuild_cond_dep(pyspec_str, atoms):
 
 
 def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
-	expanded_pydeps = []
+	expanded_pydeps = defaultdict(list)
 	if "pydeps" in pkginfo:
 		pytype = type(pkginfo["pydeps"])
 		if pytype == list:
 			for dep in pkginfo["pydeps"]:
-				expanded_pydeps.append(expand_pydep(dep))
+				# super-simple pydeps are just considered runtime deps
+				expanded_pydeps["redepend"].append(expand_pydep(dep))
 		elif pytype == dict:
 			for label, deps in pkginfo["pydeps"].items():
 				# 'compat mode' means we are actually generating 2 ebuilds, one for py3+ and one for py2
+				lsplit = label.split(":")
+				if len(lsplit) == 3:
+					# modifiers -- affect how deps are understood
+					mods = lsplit[-1].split(',')
+					# remove mods from label so that create_ebuild_cond_dep doesn't need to understand them.
+					label = ':'.join(lsplit[:2])
+				else:
+					mods = []
 				if compat_mode:
 					# If we are generating a 'compat' ebuild, automatically drop py3 deps
 					if compat_ebuild and label == "py:3":
@@ -149,9 +159,16 @@ def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 					# If we are generating a 'non-compat' ebuild, automatically drop py2 deps
 					elif not compat_ebuild and label == "py:2":
 						continue
-				expanded_pydeps += create_ebuild_cond_dep(label, deps)
-	if "rdepend" not in pkginfo:
-		pkginfo["rdepend"] = "\n".join(expanded_pydeps)
-	else:
-		pkginfo["rdepend"] += "\n" + "\n".join(expanded_pydeps)
+				if "build" in mods:
+					expanded_pydeps["depend"] += create_ebuild_cond_dep(label, deps)
+				else:
+					expanded_pydeps["rdepend"] += create_ebuild_cond_dep(label, deps)
+	for dep_type in [ "depend", "rdepend" ]:
+		deps = expanded_pydeps[dep_type]
+		if not deps:
+			continue
+		if dep_type not in pkginfo:
+			pkginfo[dep_type] = "\n".join(deps)
+		else:
+			pkginfo[dep_type] += "\n" + "\n".join(deps)
 	return None
