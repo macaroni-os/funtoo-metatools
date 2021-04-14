@@ -140,7 +140,7 @@ def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 		if pytype == list:
 			for dep in pkginfo["pydeps"]:
 				# super-simple pydeps are just considered runtime deps
-				expanded_pydeps["redepend"].append(expand_pydep(dep))
+				expanded_pydeps["rdepend"].append(expand_pydep(dep))
 		elif pytype == dict:
 			for label, deps in pkginfo["pydeps"].items():
 				# 'compat mode' means we are actually generating 2 ebuilds, one for py3+ and one for py2
