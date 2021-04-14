@@ -287,11 +287,12 @@ def parse_yaml_rule(package_section=None):
 			versions_section = pkg_section["versions"]
 
 			# Grab any other values as defaults:
-			defaults = pkg_section.copy()
-			del defaults["versions"]
+			v_defaults = pkg_section.copy()
+			del v_defaults["versions"]
 
 			for version, v_pkg_section in versions_section.items():
 				v_pkginfo = {"name": package_name}
+				v_pkginfo.update(v_defaults)
 				v_pkginfo.update(v_pkg_section)
 				v_pkginfo["version"] = version
 				pkginfo_list.append(v_pkginfo)
