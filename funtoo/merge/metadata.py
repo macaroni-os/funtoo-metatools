@@ -451,6 +451,12 @@ def get_ebuild_metadata(repo, ebuild_path, eclass_hashes=None, eclass_paths=None
 	TODO: Currently hard-coded to assume a python3.7 installation. We should fix that at some point.
 	"""
 
+	if eclass_hashes is None:
+		eclass_hashes = {}
+
+	if eclass_paths is None:
+		eclass_paths = []
+
 	basespl = ebuild_path.split("/")
 	atom = basespl[-3] + "/" + basespl[-1][:-7]
 	ebuild_md5 = get_md5(ebuild_path)
@@ -624,7 +630,6 @@ def get_eclass_hashes(eclass_sourcedir):
 	For generating metadata, we need md5 hashes of all eclasses for writing out into the metadata.
 
 	This function grabs all the md5sums for all eclasses.
-
 	"""
 
 	eclass_hashes = EclassHashCollection(eclass_sourcedir)
