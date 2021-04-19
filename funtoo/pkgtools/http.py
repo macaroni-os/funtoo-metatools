@@ -172,4 +172,14 @@ async def get_url_from_redirect(url):
 		raise pkgtools.fetch.FetchError(url, f"Couldn't get_url_from_redirect due to exception {repr(e)}")
 
 
+async def get_response_headers(url):
+	"""
+	This function will take a URL and grab its response headers. This is useful for obtaining
+	information about a URL without fetching its body.
+	"""
+	async with aiohttp.ClientSession() as http_session:
+		async with http_session.get(url) as response:
+			return response.headers
+
+
 # vim: ts=4 sw=4 noet
