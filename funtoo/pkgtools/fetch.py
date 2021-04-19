@@ -128,6 +128,10 @@ async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False
 			)
 
 
+async def get_response_headers(fetchable, max_age=None, refresh_interval=None):
+	return await fetch_harness(pkgtools.http.get_response_headers, fetchable, max_age=max_age, refresh_interval=refresh_interval)
+
+
 async def get_url_from_redirect(fetchable, max_age=None, refresh_interval=None):
 	return await fetch_harness(
 		pkgtools.http.get_url_from_redirect, fetchable, max_age=max_age, refresh_interval=refresh_interval
