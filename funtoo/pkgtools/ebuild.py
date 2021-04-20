@@ -243,9 +243,22 @@ class BreezyBuild:
 		self.output_tree = hub.OUTPUT_CONTEXT
 		self._pkgdir = None
 		self.template_args = kwargs
-		for kwarg in ["cat", "name", "version", "revision", "path"]:
+		for kwarg in ["cat", "name", "version", "path"]:
 			if kwarg in kwargs:
 				setattr(self, kwarg, kwargs[kwarg])
+
+		# Accept a revision= keyword argument, which can be an integer or a dictionary indexed by version.
+		# If a dict by version, we only apply the revision if we find self.version in the dict.
+
+		if "revision" in kwargs:
+			rev_val = kwargs["revision"]
+			rev_type = type(rev_val)
+			if rev_type == int:
+				self.revision = rev_val
+			elif rev_type == dict:
+				if self.version in rev_val:
+					self.revision = rev_val
+
 		self.template = template
 		self.template_text = template_text
 		if template_path is None:

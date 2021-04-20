@@ -243,6 +243,18 @@ async def execute_generator(
 	return generator_thread_task, pkginfo_list
 
 
+def fixup_revision(pkginfo):
+	"""
+	In some cases we allow a revision to be specified that is organized by version. This will remove the singleton
+	dictionary in this case (a YAML thing), so we get revision equal to a dict indexed by version.
+	"""
+	if "revision" not in pkginfo:
+		return
+	if not isinstance(pkginfo["revision"], dict):
+		return
+	pkginfo["revision"] = pkginfo["revision"].values()[0]
+
+
 def parse_yaml_rule(package_section=None):
 
 	pkginfo_list = []
@@ -262,14 +274,16 @@ def parse_yaml_rule(package_section=None):
 		#
 		# - foobar:
 		#     val1: blah
+		#     val2: bleh
 		#
-		# { 'pkgname' : { 'value1' : 'foo', 'value2' : 'bar' } }
+		# { 'foobar' : { 'val1' : 'blah', 'val2' : 'bleh' } }
 
 		# Remove extra singleton outer dictionary (see format above)
 
 		package_name = list(package_section.keys())[0]
 		pkg_section = list(package_section.values())[0]
 		pkg_section["name"] = package_name
+		fixup_revision(pkg_section)
 
 		# This is even a more complex format, where we have sub-sections based on versions of the package,
 		# each with their own settings. And we can also have other values which set defaults for this package:
@@ -295,6 +309,7 @@ def parse_yaml_rule(package_section=None):
 				v_pkginfo.update(v_defaults)
 				v_pkginfo.update(v_pkg_section)
 				v_pkginfo["version"] = version
+				fixup_revision(v_pkginfo)
 				pkginfo_list.append(v_pkginfo)
 		else:
 			pkginfo_list.append(pkg_section)
