@@ -135,7 +135,8 @@ async def get_response_headers(fetchable, max_age=None, refresh_interval=None):
 
 async def get_filename(fetchable, max_age=None, refresh_interval=None):
 	headers = await get_response_headers(fetchable, max_age=max_age, refresh_interval=refresh_interval)
-	return re.search(r"filename=\"?(\S+)\"?", headers["Content-Disposition"]).group(1)
+	res = re.search(r"filename=\"?(\S+)\"?", headers.get("Content-Disposition", ""))
+	return None if not res else res.group(1)
 
 
 async def get_url_from_redirect(fetchable, max_age=None, refresh_interval=None):
