@@ -233,7 +233,7 @@ class BreezyBuild:
 
 	def __init__(
 		self,
-		artifacts: list = None,
+		artifacts = None,
 		template: str = None,
 		template_text: str = None,
 		template_path: str = None,
@@ -269,6 +269,16 @@ class BreezyBuild:
 			self.artifacts = artifacts
 		self.template_args["artifacts"] = artifacts
 
+	def iter_artifacts(self):
+		if type(self.artifacts) == list:
+			for artifact in self.artifacts:
+				yield artifact
+		elif type(self.artifacts) == dict:
+			for key, artifact in self.artifacts:
+				yield artifact
+		else:
+			raise TypeError("Invalid type for artifacts passed to BreezyBuild -- should be list or dict.")
+
 	async def setup(self):
 		"""
 		This method performs some special setup steps. We tend to treat Artifacts as stand-alone objects -- and they
@@ -293,7 +303,7 @@ class BreezyBuild:
 
 		fetch_tasks_dict = {}
 
-		for artifact in self.artifacts:
+		for artifact in self.iter_artifacts():
 			if type(artifact) != Artifact:
 				artifact = Artifact(**artifact)
 
