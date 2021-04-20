@@ -134,6 +134,12 @@ async def get_response_headers(fetchable, max_age=None, refresh_interval=None):
 
 
 async def get_response_filename(fetchable, max_age=None, refresh_interval=None):
+	"""
+	This method gets the response's filename without fetching its body.
+	This is achieved by looking at the `Content-Disposition` header.
+	If the `Content-Disposition` header is not set or if it doesn't contain the filename,
+	then it will return `None`.
+	"""
 	headers = await get_response_headers(fetchable, max_age=max_age, refresh_interval=refresh_interval)
 	res = re.search(r"filename=\"?(\S+)\"?", headers.get("Content-Disposition", ""))
 	return None if not res else res.group(1)
