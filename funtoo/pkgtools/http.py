@@ -95,7 +95,13 @@ async def http_fetch_stream(url, on_chunk, retry=True):
 					async with http_session.get(url, headers=headers, timeout=None, **get_auth_kwargs(hostname, url)) as response:
 						if response.status not in [200, 206]:
 							reason = (await response.text()).strip()
-							raise pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}")
+							if response.status in [404]:
+								# These are legitimate responses that indicate that the file does not exist. Therefore, we
+								# should not retry, as we should expect to get the same result.
+								retry = False
+							else:
+								retry = True
+							raise pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}", retry=retry)
 						while not completed:
 							chunk = await response.content.read(chunk_size)
 							rec_bytes += len(chunk)
@@ -131,7 +137,12 @@ async def http_fetch(url):
 			) as response:
 				if response.status != 200:
 					reason = (await response.text()).strip()
-					raise pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason}")
+					if response.status in [404]:
+						# No need to retry as the server has just told us that the resource does not exist.
+						retry = False
+					else:
+						retry = True
+					raise pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason}", retry=retry)
 				return await response.text()
 		return None
 
