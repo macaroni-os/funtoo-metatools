@@ -288,7 +288,7 @@ class BreezyBuild:
 			for artifact in self.artifacts:
 				yield artifact
 		elif type(self.artifacts) == dict:
-			for key, artifact in self.artifacts:
+			for key, artifact in self.artifacts.items():
 				yield artifact
 		else:
 			raise TypeError("Invalid type for artifacts passed to BreezyBuild -- should be list or dict.")
@@ -415,7 +415,7 @@ class BreezyBuild:
 
 		key = self.output_pkgdir + "/Manifest"
 
-		for artifact in self.artifacts:
+		for artifact in self.iter_artifacts():
 			success = await artifact.ensure_completed()
 			if not success:
 				raise BreezyError(f"Something prevented us from storing Manifest data for {key}.")
