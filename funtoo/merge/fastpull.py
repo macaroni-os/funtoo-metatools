@@ -11,7 +11,8 @@ import dyne.org.funtoo.metatools.merge as merge
 def get_third_party_mirrors():
 	if not merge.model.THIRD_PARTY_MIRRORS:
 		merge.model.THIRD_PARTY_MIRRORS = merge.metadata.get_thirdpartymirrors(
-			os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit"))
+			os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit")
+		)
 	return merge.model.THIRD_PARTY_MIRRORS
 
 

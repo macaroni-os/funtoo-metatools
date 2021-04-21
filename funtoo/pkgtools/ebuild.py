@@ -233,7 +233,7 @@ class BreezyBuild:
 
 	def __init__(
 		self,
-		artifacts = None,
+		artifacts=None,
 		template: str = None,
 		template_text: str = None,
 		template_path: str = None,

@@ -106,8 +106,6 @@ if __name__ == "__main__":
 
 	# We need kit-fixups available so we can grab the thirdpartymirrors file from it.
 
-
-
 	hub.LOOP.run_until_complete(main_thread())
 
 # vim: ts=4 sw=4 noet

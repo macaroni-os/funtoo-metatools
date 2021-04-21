@@ -39,13 +39,11 @@ async def add_ebuild(json_dict=None, **pkginfo):
 
 	artifacts = [pkgtools.ebuild.Artifact(url=artifact_url)]
 	if "cargo" in local_pkginfo["inherit"] and not compat_ebuild:
-		cargo_artifacts = await pkgtools.rust.generate_crates_from_artifact(artifacts[0],"*/src/rust")
-		local_pkginfo["crates"]  = cargo_artifacts["crates"]
-		artifacts = [ *artifacts, *cargo_artifacts["crates_artifacts"] ]
+		cargo_artifacts = await pkgtools.rust.generate_crates_from_artifact(artifacts[0], "*/src/rust")
+		local_pkginfo["crates"] = cargo_artifacts["crates"]
+		artifacts = [*artifacts, *cargo_artifacts["crates_artifacts"]]
 
-	ebuild = pkgtools.ebuild.BreezyBuild(
-		**local_pkginfo, artifacts=artifacts, template="pypi-simple-1.tmpl"
-	)
+	ebuild = pkgtools.ebuild.BreezyBuild(**local_pkginfo, artifacts=artifacts, template="pypi-simple-1.tmpl")
 	ebuild.push()
 
 

@@ -32,6 +32,7 @@ async def main_thread():
 		a = pkgtools.ebuild.Artifact(url=uri)
 		await a.ensure_fetched()
 
+
 if __name__ == "__main__":
 
 	merge.FIXUP_REPO = merge.tree.GitTree(

@@ -29,4 +29,3 @@ def __init__(model):
 	model.MANIFEST_LINES = defaultdict(set)
 	# This is used to limit simultaneous connections to a particular hostname to a reasonable value.
 	model.FETCH_ATTEMPTS = 3
-
