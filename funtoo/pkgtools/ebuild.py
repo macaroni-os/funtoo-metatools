@@ -252,12 +252,13 @@ class BreezyBuild:
 
 		if "revision" in kwargs:
 			rev_val = kwargs["revision"]
-			rev_type = type(rev_val)
-			if rev_type == int:
+			if isinstance(rev_val, int):
 				self.revision = rev_val
-			elif rev_type == dict:
+			elif isinstance(rev_val, dict):
 				if self.version in rev_val:
-					self.revision = rev_val
+					self.revision = rev_val[self.version]
+			else:
+				raise TypeError(f"Unrecognized type for revision= argument for {kwargs}")
 
 		self.template = template
 		self.template_text = template_text

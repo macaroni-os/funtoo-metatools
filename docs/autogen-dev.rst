@@ -18,8 +18,8 @@ which is a "core" system package, we would:
 The Generator
 -------------
 
-The ``autogen.py`` script is, as you might guess, a python file. And it is actually treated as a *plugin* (see
-:ref:`POP Framework`) which gives it a special structure. The auto-generation function that gets called to do all
+The ``autogen.py`` script is, as you might guess, a python file. And it is actually treated as a *plugin*
+which gives it a special structure. The auto-generation function that gets called to do all
 the things is called ``generate()`` and should be defined as:
 
 .. code-block:: python
@@ -118,11 +118,31 @@ still something useful when doing stand-alone auto-generation. The ``doit`` comm
   ``${FILESDIR}/my-pkg.path``. Behind the scenes, ``gen_path`` uses ``${FILESDIR}`` and some path
   magic to reference the correct path to find the files you want in the ``kit-fixups`` repo.
 
+
 While this "pkginfo" construct doesn't seem to be the most useful thing right now, it will soon once you start to take
 advantage of advanced autogen features. For now, it at least helps
 us to avoid having to explicitly passing ``name``, ``cat`` and ``template_path`` to our ``BreezyBuild`` --
 these are arguments that our ``BreezyBuild`` expects and we can simply "pass along" what was auto-detected
 for us rather than specifying them manually.
+
+BreezyBuild Basics
+------------------
+
+There are also several values that you typically pass in to the ``BreezyBuild`` constructor as keyword
+arguments to augment what is automatically set for you via ``pkginfo``. These arguments are:
+
+``version``
+  The version of the ebuild you are generating (not including revision). Auto-generated BreezyBuilds will
+  often perform some HTTP calls to figure out the latest available version of a package, and generate that
+  version. The version is passed into the BreezyBuild constructor this way.
+``revision``
+  The ebuild revision, specified as an integer. This defaults to 0.
+``artifacts``
+  This is a list or dictionary of ``Artifact`` objects that represent downloadable files that the ebuild
+  uses -- things that would typically go in ``SRC_URI`` in the ebuild. Artifacts are 'special' as the
+  ``BreezyBuild`` will ensure that all artifacts are fetched and will also take care of auto-generating
+  Portage Manifest files using the results of the fetch.
+
 
 Querying APIs
 -------------

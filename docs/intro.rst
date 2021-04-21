@@ -35,23 +35,22 @@ several technology components, including:
 .. _PyPi: https://pypi.org/
 .. _xorg-proto: https://code.funtoo.org/bitbucket/projects/CORE/repos/kit-fixups/browse/core-gl-kit/2.0-release/x11-base/xorg-proto/autogen.py
 
-POP Framework
-~~~~~~~~~~~~~
+subpop framework
+~~~~~~~~~~~~~~~~
 
-Funtoo-metatools uses Thomas Hatch's POP_ (Plugin-Oriented Programming)
-framework as its foundational paradigm for code organization. POP (think 'OOP'
-but with a 'P') is a next-generation framework that encourages code
+Funtoo-metatools uses subpop_ (Plugin-Oriented Programming)
+framework as its foundational paradigm for code organization. Subpop is an
+experimental framework that encourages code
 maintainability and extensibility, and successfully solves code bloat problems
 inherent in application of OOP paradigms at scale. Here are some resources
-related to pop:
+related to subpop:
 
-* `Introduction to Plugin Oriented Programming`_
-* POP_ (PyPi page)
+* subpop_ (PyPi page)
 
-POP and Portage
-~~~~~~~~~~~~~~~
+Subpop and Portage
+~~~~~~~~~~~~~~~~~~
 
-I am really excited about POP because it helps to solve quite a few problems
+I am really excited about subpop because it helps to solve quite a few problems
 that the current Portage (Gentoo package manager) code base suffers from.
 
 Portage is not unique in this regard -- it's been around for a while, and has
@@ -76,7 +75,7 @@ features and capabilities have been added.
 
 You would think that all this new code has resulted in a powerful API that other
 people can use to do amazing things. But one of the failings of OOP (Object
-Oriented Programming) at scale is that it creates complex heirarchies of
+Oriented Programming) at scale is that it creates complex hierarchies of
 inter-dependent classes that don't really function in a stand-alone fashion. So
 while the Portage code base enables ``emerge`` and ``ebuild`` to function, it is
 not being leveraged by other tools. It was not really designed to do this.
@@ -98,9 +97,9 @@ Portage was a tool that solved problems. It created new paradigms. It has
 evolved into something that while still cool, also enforces a paradigm that is
 hard to change and adapt to new problems.
 
-Due to our use of POP, much of metatools functionality is extensible via
+Due to our use of subpop, much of metatools functionality is extensible via
 plugins. Plugins can be used to enhance the core functionality of the tool in a
-modular 'plug-n-play' way, reducing code bloat. POP also encourages a simple,
+modular 'plug-n-play' way, reducing code bloat. Subpop also encourages a simple,
 microservices-style archictecture within the code itself. All this is very good
 for a complex problem like the automation of updates of packages for the world's
 source code.
@@ -112,5 +111,4 @@ funtoo-metatools within your own applications. It also provides a really clean
 paradigm for adding functionality to funtoo-metatools over time, avoiding
 complex internal interdependencies that make code harder to maintain and adapt.
 
-.. _Introduction to Plugin Oriented Programming: https://pop-book.readthedocs.io/en/latest/
-.. _POP: https://pypi.org/project/pop/
+.. _subpop: https://pypi.org/project/subpop/
