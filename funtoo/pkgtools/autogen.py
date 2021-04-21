@@ -284,7 +284,7 @@ def parse_yaml_rule(package_section=None):
 		package_name = list(package_section.keys())[0]
 		pkg_section = list(package_section.values())[0]
 		pkg_section["name"] = package_name
-		#fixup_revision(pkg_section)
+		# fixup_revision(pkg_section)
 
 		# This is even a more complex format, where we have sub-sections based on versions of the package,
 		# each with their own settings. And we can also have other values which set defaults for this package:
@@ -310,7 +310,7 @@ def parse_yaml_rule(package_section=None):
 				v_pkginfo.update(v_defaults)
 				v_pkginfo.update(v_pkg_section)
 				v_pkginfo["version"] = version
-				#fixup_revision(v_pkginfo)
+				# fixup_revision(v_pkginfo)
 				pkginfo_list.append(v_pkginfo)
 		else:
 			pkginfo_list.append(pkg_section)

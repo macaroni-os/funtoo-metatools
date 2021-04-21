@@ -2,7 +2,6 @@
 
 import logging
 import os
-from datetime import datetime
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 import dyne.org.funtoo.metatools.merge as merge
@@ -70,7 +69,6 @@ async def inject_into_fastpull(artifact):
 	"""
 	success = await artifact.ensure_fetched()
 	if not success:
-		print(f"Unable to ensure artifact is fetched! {artifact.final_name}")
 		return
 	fastpull_path = artifact.fastpull_path
 	if os.path.islink(fastpull_path):

@@ -25,7 +25,7 @@ async def get_resolver():
 	resolver = getattr(hub.THREAD_CTX, "http_resolver", None)
 	if resolver is None:
 		resolver = hub.THREAD_CTX.http_resolver = aiohttp.AsyncResolver(
-			nameservers=["1.1.1.1", "1.0.0.1"], timeout=5, tries=3
+			nameservers=["1.1.1.1", "1.0.0.1"], timeout=3, tries=2
 		)
 	return resolver
 
@@ -37,7 +37,6 @@ async def acquire_host_semaphore(hostname):
 	return semaphores[hostname]
 
 
-http_data_timeout = 60
 chunk_size = 262144
 
 
@@ -76,32 +75,35 @@ async def http_fetch_stream(url, on_chunk, retry=True):
 	"""
 	hostname = get_hostname(url)
 	semi = await acquire_host_semaphore(hostname)
+	prev_rec_bytes = 0
 	rec_bytes = 0
 	attempts = 0
 	if retry:
-		max_attempts = 20
+		max_attempts = 3
 	else:
 		max_attempts = 1
 	completed = False
 	async with semi:
 		while not completed and attempts < max_attempts:
-			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ssl=False)
+			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ttl_dns_cache=300, ssl=False)
 			try:
-				async with aiohttp.ClientSession(connector=connector) as http_session:
+				async with aiohttp.ClientSession(
+					connector=connector, timeout=aiohttp.ClientTimeout(connect=5.0, sock_connect=5.0, total=None)
+				) as http_session:
 					headers = get_fetch_headers()
 					if rec_bytes:
 						headers["Range"] = f"bytes={rec_bytes}-"
 						logging.warning(f"Resuming at {rec_bytes}")
-					async with http_session.get(url, headers=headers, timeout=None, **get_auth_kwargs(hostname, url)) as response:
+					async with http_session.get(url, headers=headers, **get_auth_kwargs(hostname, url)) as response:
 						if response.status not in [200, 206]:
 							reason = (await response.text()).strip()
-							if response.status in [404]:
+							if response.status in [400, 404, 410]:
 								# These are legitimate responses that indicate that the file does not exist. Therefore, we
 								# should not retry, as we should expect to get the same result.
 								retry = False
 							else:
 								retry = True
-							raise pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason}", retry=retry)
+							raise pkgtools.fetch.FetchError(url, f"HTTP fetch_stream Error {response.status}: {reason[:40]}", retry=retry)
 						while not completed:
 							chunk = await response.content.read(chunk_size)
 							rec_bytes += len(chunk)
@@ -113,9 +115,17 @@ async def http_fetch_stream(url, on_chunk, retry=True):
 								sys.stdout.flush()
 								on_chunk(chunk)
 			except Exception as e:
-				logging.error(f"Encountered {e} during fetch")
+				# If we are "making progress on the download", then continue indefinitely --
+				if prev_rec_bytes < rec_bytes:
+					prev_rec_bytes = rec_bytes
+					print("Attempting to resume download...")
+					continue
+				if isinstance(e, pkgtools.fetch.FetchError):
+					if e.retry is False:
+						raise e
 				if attempts + 1 < max_attempts:
 					attempts += 1
+					print(f"Retrying after download failure... {e}")
 					continue
 				else:
 					raise pkgtools.fetch.FetchError(url, f"{e.__class__.__name__}: {str(e)}")
@@ -137,12 +147,12 @@ async def http_fetch(url):
 			) as response:
 				if response.status != 200:
 					reason = (await response.text()).strip()
-					if response.status in [404]:
+					if response.status in [400, 404, 410]:
 						# No need to retry as the server has just told us that the resource does not exist.
 						retry = False
 					else:
 						retry = True
-					raise pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason}", retry=retry)
+					raise pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason[:40]}", retry=retry)
 				return await response.text()
 		return None
 

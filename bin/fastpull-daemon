@@ -50,7 +50,7 @@ class RedirectHandler(tornado.web.RequestHandler):
 """
 			)
 			return
-		fp_ent = merge.FASTPULL.find_one({"filename": fn})
+		fp_ent = merge.model.FASTPULL.find_one({"filename": fn})
 		if fp_ent:
 			sh = fp_ent["hashes"]["sha512"]
 			basepath = f"{sh[:2]}/{sh[2:4]}/{sh[4:6]}/{sh}"

@@ -128,7 +128,6 @@ class Download:
 		file, they will get True on success and False on failure (self.futures holds futures for others waiting
 		on this file, and we will future.set_result() with the boolean return code as well.)
 		"""
-		print("starting download")
 		slot = await acquire_download_slot()
 		async with slot:
 			async with start_download(self):
