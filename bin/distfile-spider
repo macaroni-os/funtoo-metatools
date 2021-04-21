@@ -56,7 +56,7 @@ async def do_distfile_fetch(distinct_key, distinct_file_list):
 		except pkgtools.ebuild.DigestFailure as af:
 			logging.error(af)
 			return
-	existing = merge.FASTPULL.find_one({"filename": name, "hashes.sha512": sha512})
+	existing = merge.model.FASTPULL.find_one({"filename": name, "hashes.sha512": sha512})
 	if existing:
 		pass
 	else:
