@@ -56,14 +56,15 @@ async def do_distfile_fetch(distinct_key, distinct_file_list):
 		# TODO: the file could still be locally fetched. So we may still be able to inject? Likely just a weird corner case:
 		if not len(src_uris):
 			keep_going = False
-		try:
-			print(src_uris[0])
-			a = pkgtools.ebuild.Artifact(url=src_uris[0], final_name=name, expect={"sha512": sha512, "size": size})
-			await merge.fastpull.inject_into_fastpull(a)
-			print("done", src_uris[0])
-		except pkgtools.ebuild.DigestFailure as af:
-			logging.error(af)
-			keep_going = False
+		else:
+			try:
+				print(src_uris[0])
+				a = pkgtools.ebuild.Artifact(url=src_uris[0], final_name=name, expect={"sha512": sha512, "size": size})
+				await merge.fastpull.inject_into_fastpull(a)
+				print("done", src_uris[0])
+			except pkgtools.ebuild.DigestFailure as af:
+				logging.error(af)
+				keep_going = False
 
 	with master_lock:
 		running_set.remove(distinct_key)

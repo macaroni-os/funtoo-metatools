@@ -88,7 +88,7 @@ async def http_fetch_stream(url, on_chunk, retry=True):
 			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ttl_dns_cache=300, ssl=False)
 			try:
 				async with aiohttp.ClientSession(
-					connector=connector, timeout=aiohttp.ClientTimeout(connect=5.0, sock_connect=5.0, total=None)
+					connector=connector, timeout=aiohttp.ClientTimeout(connect=5.0, sock_connect=5.0, total=None, sock_read=3.0)
 				) as http_session:
 					headers = get_fetch_headers()
 					if rec_bytes:
@@ -120,9 +120,11 @@ async def http_fetch_stream(url, on_chunk, retry=True):
 					prev_rec_bytes = rec_bytes
 					print("Attempting to resume download...")
 					continue
+
 				if isinstance(e, pkgtools.fetch.FetchError):
 					if e.retry is False:
 						raise e
+
 				if attempts + 1 < max_attempts:
 					attempts += 1
 					print(f"Retrying after download failure... {e}")
