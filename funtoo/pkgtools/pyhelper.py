@@ -147,9 +147,9 @@ def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 				lsplit = label.split(":")
 				if len(lsplit) == 3:
 					# modifiers -- affect how deps are understood
-					mods = lsplit[-1].split(',')
+					mods = lsplit[-1].split(",")
 					# remove mods from label so that create_ebuild_cond_dep doesn't need to understand them.
-					label = ':'.join(lsplit[:2])
+					label = ":".join(lsplit[:2])
 				else:
 					mods = []
 				if compat_mode:
@@ -163,7 +163,7 @@ def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 					expanded_pydeps["depend"] += create_ebuild_cond_dep(label, deps)
 				else:
 					expanded_pydeps["rdepend"] += create_ebuild_cond_dep(label, deps)
-	for dep_type in [ "depend", "rdepend" ]:
+	for dep_type in ["depend", "rdepend"]:
 		deps = expanded_pydeps[dep_type]
 		if not deps:
 			continue

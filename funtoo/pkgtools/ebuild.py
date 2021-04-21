@@ -233,7 +233,7 @@ class BreezyBuild:
 
 	def __init__(
 		self,
-		artifacts: list = None,
+		artifacts=None,
 		template: str = None,
 		template_text: str = None,
 		template_path: str = None,
@@ -243,9 +243,23 @@ class BreezyBuild:
 		self.output_tree = hub.OUTPUT_CONTEXT
 		self._pkgdir = None
 		self.template_args = kwargs
-		for kwarg in ["cat", "name", "version", "revision", "path"]:
+		for kwarg in ["cat", "name", "version", "path"]:
 			if kwarg in kwargs:
 				setattr(self, kwarg, kwargs[kwarg])
+
+		# Accept a revision= keyword argument, which can be an integer or a dictionary indexed by version.
+		# If a dict by version, we only apply the revision if we find self.version in the dict.
+
+		if "revision" in kwargs:
+			rev_val = kwargs["revision"]
+			if isinstance(rev_val, int):
+				self.revision = rev_val
+			elif isinstance(rev_val, dict):
+				if self.version in rev_val:
+					self.revision = rev_val[self.version]
+			else:
+				raise TypeError(f"Unrecognized type for revision= argument for {kwargs}")
+
 		self.template = template
 		self.template_text = template_text
 		if template_path is None:
@@ -268,6 +282,16 @@ class BreezyBuild:
 		else:
 			self.artifacts = artifacts
 		self.template_args["artifacts"] = artifacts
+
+	def iter_artifacts(self):
+		if type(self.artifacts) == list:
+			for artifact in self.artifacts:
+				yield artifact
+		elif type(self.artifacts) == dict:
+			for key, artifact in self.artifacts.items():
+				yield artifact
+		else:
+			raise TypeError("Invalid type for artifacts passed to BreezyBuild -- should be list or dict.")
 
 	async def setup(self):
 		"""
@@ -293,7 +317,7 @@ class BreezyBuild:
 
 		fetch_tasks_dict = {}
 
-		for artifact in self.artifacts:
+		for artifact in self.iter_artifacts():
 			if type(artifact) != Artifact:
 				artifact = Artifact(**artifact)
 
@@ -391,7 +415,7 @@ class BreezyBuild:
 
 		key = self.output_pkgdir + "/Manifest"
 
-		for artifact in self.artifacts:
+		for artifact in self.iter_artifacts():
 			success = await artifact.ensure_completed()
 			if not success:
 				raise BreezyError(f"Something prevented us from storing Manifest data for {key}.")

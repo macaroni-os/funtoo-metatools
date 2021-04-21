@@ -2,7 +2,6 @@
 
 import logging
 import os
-from datetime import datetime
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 import dyne.org.funtoo.metatools.merge as merge
@@ -11,7 +10,8 @@ import dyne.org.funtoo.metatools.merge as merge
 def get_third_party_mirrors():
 	if not merge.model.THIRD_PARTY_MIRRORS:
 		merge.model.THIRD_PARTY_MIRRORS = merge.metadata.get_thirdpartymirrors(
-			os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit"))
+			os.path.expanduser("~/repo_tmp/dest-trees/meta-repo/kits/core-kit")
+		)
 	return merge.model.THIRD_PARTY_MIRRORS
 
 
@@ -69,7 +69,6 @@ async def inject_into_fastpull(artifact):
 	"""
 	success = await artifact.ensure_fetched()
 	if not success:
-		print(f"Unable to ensure artifact is fetched! {artifact.final_name}")
 		return
 	fastpull_path = artifact.fastpull_path
 	if os.path.islink(fastpull_path):

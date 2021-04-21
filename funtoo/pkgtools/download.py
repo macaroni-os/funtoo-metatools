@@ -128,7 +128,6 @@ class Download:
 		file, they will get True on success and False on failure (self.futures holds futures for others waiting
 		on this file, and we will future.set_result() with the boolean return code as well.)
 		"""
-		print("starting download")
 		slot = await acquire_download_slot()
 		async with slot:
 			async with start_download(self):
@@ -208,8 +207,11 @@ async def _download(artifact, retry=True):
 		sys.stdout.write("x")
 		sys.stdout.flush()
 		fd.close()
-		os.link(temp_path, final_path)
-
+		try:
+			os.link(temp_path, final_path)
+		except FileExistsError:
+			# FL-8301: address possible race condition
+			pass
 		final_data = {"size": filesize, "hashes": {}, "path": final_path}
 
 		for h in HASHES:
@@ -218,7 +220,11 @@ async def _download(artifact, retry=True):
 	# TODO: this is likely a good place for GPG verification. Implement.
 	finally:
 		if os.path.exists(temp_path):
-			os.unlink(temp_path)
+			try:
+				os.unlink(temp_path)
+			except FileNotFoundError:
+				# FL-8301: address possible race condition
+				pass
 
 	return final_data
 

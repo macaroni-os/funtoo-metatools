@@ -12,26 +12,27 @@ advanced Gentoo-based Linux distribution.
 
 Funtoo Linux uses ``metatools`` extensively to perform all its automated
 functionality, including auto-creation of ebuilds, auto-creation of "kits" and
-"meta-repo" from upstream repositories or locally-forked packages, CDN mirroring of distfiles (source code artifacts) and advanced
-analytics. Basically, it does 'all the things' related to creating and
-maintaining Funtoo Linux.
+"meta-repo" from upstream repositories or locally-forked packages, CDN
+mirroring of distfiles (source code artifacts) and advanced analytics.
+Basically, it does 'all the things' related to creating and maintaining Funtoo
+Linux.
 
 You can use ``metatools`` as part of your own distribution infrastructure, or
 leverage it as you contribute to Funtoo Linux.
 
 See :ref:`What is Metatools?` for more
 details on what is and what it can do for you. Learn more about the pluggable
-technology upon which ``metatools`` is based by reading :ref:`POP Framework`.
+technology upon which ``metatools`` is based by reading :ref:`subpop framework`.
 
 Why is this Free?
 =================
 
-This technology, which contains essentially all the technology that
-comprises Funtoo Linux, is being released under an Open Source license (`Apache Software License, version 2`) along with
-easy-to-understand documentation, based on the belief that software should be
-free to use and modify, and easy to understand, use and extend. I want this technology
-to not just be 'Open Source' but be 'open' in the sense that it can be used, understood
-and enjoyed by others.
+This technology, which contains essentially all the technology that comprises
+Funtoo Linux, is being released under an Open Source license (`Apache Software
+License, version 2`) along with easy-to-understand documentation, based on the
+belief that software should be free to use and modify, and easy to understand,
+use and extend. I want this technology to not just be 'Open Source' but be
+'open' in the sense that it can be used, understood and enjoyed by others.
 
 Beyond the License
 ==================
@@ -54,17 +55,17 @@ and to have fun by working together towards common interests. I ask that you
 consider your own ethical commitment not just to the license, but to the
 projects that you choose to use, participate in and support.
 
-I will defend your right to fork, or simply take this code and do your own thing
-without giving anything in return,
-because the source code license allows you to
-do that. But choosing to spurn collaboration with upstream projects can be a frivolous
-exercise which negatively impacts the collaborative ecosystem that sustains
-Open Source and free software. We should all be trying our best not just to
-use free software, nor merely benefit personally from it, but to work
-together in the spirit of Open Source, as much as we are able.
+I will defend your right to fork, or simply take this code and do your own
+thing without giving anything in return, because the source code license allows
+you to do that. But choosing to spurn collaboration with upstream projects can
+be a frivolous exercise which negatively impacts the collaborative ecosystem
+that sustains Open Source and free software. We should all be trying our best
+not just to use free software, nor merely benefit personally from it, but to
+work together in the spirit of Open Source, as much as we are able.
 
-At its heart, Open Source is more than a license or source code. It is a shared code *of ethics* which governs our
-behavior and guides our actions towards one another:
+At its heart, Open Source is more than a license or source code. It is a shared
+code *of ethics* which governs our behavior and guides our actions towards one
+another:
 
   |  **NOW this is the Law of the Jungle — as old and as true as the sky;**
   |  **And the Wolf that shall keep it may prosper, but the Wolf that shall break it must die.**

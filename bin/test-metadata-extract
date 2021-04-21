@@ -1,0 +1,51 @@
+#!/usr/bin/env python3
+import json
+import sys
+
+from dict_tools.data import NamespaceDict
+from subpop.hub import Hub
+
+# This test script will check out the gentoo GitHub repo and will print out the metadata from ebuild paths you supply.
+# It is used to test the proper functioning of the metadata extraction in funtoo-metatools.
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.merge as merge
+
+
+async def main_thread(kit_dict, eb_paths):
+	ctx = NamespaceDict()
+	ctx["kit"] = NamespaceDict(kit_dict)
+	ctx["kit"].KIT_CACHE = {}
+	ctx["kit"].KIT_CACHE_RETRIEVED_ATOMS = set()
+	ctx["kit"].KIT_CACHE_MISSES = set()
+	ctx["kit"].KIT_CACHE_WRITES = set()
+	ctx["kit"].METADATA_ERRORS = {}
+	out_tree = await merge.kit.checkout_kit(ctx)
+
+	print(out_tree.root)
+	merge.model.ECLASS_ROOT = out_tree.root
+	merge.model.ECLASS_HASHES = merge.metadata.get_eclass_hashes(merge.model.ECLASS_ROOT)
+
+	eclass_hashes = merge.model.ECLASS_HASHES.hashes.copy()
+	eclass_paths = [merge.model.ECLASS_HASHES.path]
+
+	print(merge.model.ECLASS_HASHES)
+	merge.metadata.fetch_kit(out_tree)
+	for eb_path in eb_paths:
+		print(eb_path)
+		out = merge.metadata.get_ebuild_metadata(ctx.kit, eb_path, eclass_hashes=eclass_hashes, eclass_paths=eclass_paths)
+		json.dumps(out, indent=4)
+	print(ctx["kit"].METADATA_ERRORS)
+
+
+if __name__ == "__main__":
+	merge.metadata.cleanup_error_logs()
+	kit_dict = {
+		"name": "gentoo",
+		"url": "https://github.com/gentoo/gentoo.git",
+		"branch": "master",  # Set to actual branch name
+		"kind": "independent",
+		"commit_sha1": None,  # You should be able to set commit SHA1 here.
+	}
+	hub.LOOP.run_until_complete(main_thread(kit_dict, sys.argv[1:]))
