@@ -42,7 +42,7 @@ async def do_distfile_fetch(distinct_key, distinct_file_list):
 		all_src_uris = all_src_uris | set(file["src_uri"])
 		refs.append({"kit": datums["kit"], "catpkg": datums["catpkg"]})
 
-	src_uris = merge.expand_uris(list(all_src_uris))
+	src_uris = merge.fastpull.expand_uris(list(all_src_uris))
 	fp_path = merge.fastpull.get_disk_path(sha512)
 
 	if not os.path.exists(fp_path):
