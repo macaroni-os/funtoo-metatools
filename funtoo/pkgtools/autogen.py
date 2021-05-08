@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+import inspect
 import logging
 import os
 import subprocess
@@ -232,7 +233,16 @@ async def execute_generator(
 
 			async def gen_wrapper(pkginfo):
 				# For now, all generate() methods in autogens are expecting the hub.
-				await hub.THREAD_CTX.sub.generate(hub, **pkginfo)
+				generate = getattr(hub.THREAD_CTX.sub, "generate", None)
+				if generate is None:
+					raise AttributeError(f"generate() not found in {generator_sub}")
+				try:
+					await generate(hub, **pkginfo)
+				except TypeError as te:
+					if not inspect.iscoroutinefunction(generate):
+						raise TypeError(f"generate() in {generator_sub} must be async")
+					else:
+						raise te
 				return pkginfo
 
 			hub.THREAD_CTX.running_autogens.append(Task(gen_wrapper(pkginfo)))
