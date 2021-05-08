@@ -88,7 +88,7 @@ async def http_fetch_stream(url, on_chunk, retry=True):
 			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ttl_dns_cache=300, ssl=False)
 			try:
 				async with aiohttp.ClientSession(
-					connector=connector, timeout=aiohttp.ClientTimeout(connect=5.0, sock_connect=5.0, total=None, sock_read=3.0)
+					connector=connector, timeout=aiohttp.ClientTimeout(connect=5.0, sock_connect=12.0, total=None, sock_read=3.0)
 				) as http_session:
 					headers = get_fetch_headers()
 					if rec_bytes:

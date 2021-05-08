@@ -239,6 +239,7 @@ class BreezyBuild:
 		template_path: str = None,
 		**kwargs,
 	):
+		print("ARTIFACTS", artifacts)
 		self.source_tree = hub.CONTEXT
 		self.output_tree = hub.OUTPUT_CONTEXT
 		self._pkgdir = None
@@ -331,7 +332,9 @@ class BreezyBuild:
 				status = await a.ensure_completed()
 				return a, status
 
-			fetch_tasks_dict[artifact] = asyncio.Task(lil_coroutine(artifact))
+			fetch_task = asyncio.Task(lil_coroutine(artifact))
+			fetch_task.add_done_callback(pkgtools.autogen._handle_task_result)
+			fetch_tasks_dict[artifact] = fetch_task
 
 		# Wait for any artifacts that are still fetching:
 		results, exceptions = await pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values())
@@ -353,6 +356,7 @@ class BreezyBuild:
 		# local context so we can grab the result later. The return value will be the BreezyBuild object itself,
 		# thanks to the wrapper.
 		bzb_task = Task(wrapper(self))
+		bzb_task.add_done_callback(pkgtools.autogen._handle_task_result)
 		hub.THREAD_CTX.running_breezybuilds.append(bzb_task)
 
 	@property
@@ -429,7 +433,12 @@ class BreezyBuild:
 			template_file = os.path.join(self.template_path, self.template)
 			try:
 				with open(template_file, "r") as tempf:
-					template = jinja2.Template(tempf.read())
+					try:
+						template = jinja2.Template(tempf.read())
+					except jinja2.exceptions.TemplateError as te:
+						raise BreezyError(f"Template error in {template_file}: {repr(te)}")
+					except Exception as te:
+						raise BreezyError(f"Unknown error processing {template_file}: {repr(te)}")
 			except FileNotFoundError as e:
 				logging.error(f"Could not find template: {template_file}")
 				raise BreezyError(f"Template file not found: {template_file}")
@@ -437,7 +446,10 @@ class BreezyBuild:
 			template = jinja2.Template(self.template_text)
 
 		with open(self.output_ebuild_path, "wb") as myf:
-			myf.write(template.render(**self.template_args).encode("utf-8"))
+			try:
+				myf.write(template.render(**self.template_args).encode("utf-8"))
+			except Exception as te:
+				raise BreezyError(f"Error rendering template: {template_file}: {repr(te)}")
 		logging.info("Created: " + os.path.relpath(self.output_ebuild_path))
 
 	async def generate(self):

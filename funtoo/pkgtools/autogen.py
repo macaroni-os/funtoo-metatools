@@ -164,6 +164,14 @@ def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=Non
 	pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
 	return pkginfo
 
+def _handle_task_result(task: Task):
+	try:
+		task.result()
+	except asyncio.CancelledError:
+		pass
+	except Exception as e:
+		raise e
+
 
 async def execute_generator(
 	generator_sub_path=None,
@@ -222,10 +230,14 @@ async def execute_generator(
 			pkginfo_list = [i async for i in preprocess_func(hub, pkginfo_list)]
 
 		for pkginfo in pkginfo_list:
-			if "version" in pkginfo and pkginfo["version"] != "latest":
-				print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
-			else:
-				print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+			try:
+				if "version" in pkginfo and pkginfo["version"] != "latest":
+					print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
+				else:
+					print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+			except KeyError as ke:
+				raise pkgtools.ebuild.BreezyError(f"{generator_sub_name} encountered a key error: missing value. pkginfo is {pkginfo}. Missing in pkginfo: {ke}")
+
 			logging.debug(f"Using the following pkginfo for auto-generation: {pkginfo}")
 
 			# Any .push() calls on BreezyBuilds will cause new tasks for those to be appended to
@@ -245,7 +257,10 @@ async def execute_generator(
 						raise te
 				return pkginfo
 
-			hub.THREAD_CTX.running_autogens.append(Task(gen_wrapper(pkginfo)))
+
+			task = Task(gen_wrapper(pkginfo))
+			task.add_done_callback(_handle_task_result)
+			hub.THREAD_CTX.running_autogens.append(task)
 
 		await gather_pending_tasks(hub.THREAD_CTX.running_autogens)
 		await gather_pending_tasks(hub.THREAD_CTX.running_breezybuilds)
