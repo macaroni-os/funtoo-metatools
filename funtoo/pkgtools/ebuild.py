@@ -239,7 +239,6 @@ class BreezyBuild:
 		template_path: str = None,
 		**kwargs,
 	):
-		print("ARTIFACTS", artifacts)
 		self.source_tree = hub.CONTEXT
 		self.output_tree = hub.OUTPUT_CONTEXT
 		self._pkgdir = None
