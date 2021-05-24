@@ -21,7 +21,7 @@ setuptools.setup(
 	python_requires=">=3.7",
 	install_requires=[
 		"subpop >= 0.4.2",
-		"Jinja2",
+		"Jinja2 >= 3",
 		"xmltodict",
 		"aiodns",
 		"aiofiles",

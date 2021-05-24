@@ -447,7 +447,9 @@ class BreezyBuild:
 		with open(self.output_ebuild_path, "wb") as myf:
 			try:
 				myf.write(template.render(**self.template_args).encode("utf-8"))
+				print("RENDER OK!!!")
 			except Exception as te:
+				print("ERROROROROROROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOR")
 				raise BreezyError(f"Error rendering template: {template_file}: {repr(te)}")
 		logging.info("Created: " + os.path.relpath(self.output_ebuild_path))
 
