@@ -88,7 +88,7 @@ async def http_fetch_stream(url, on_chunk, retry=True):
 			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ttl_dns_cache=300, ssl=False)
 			try:
 				async with aiohttp.ClientSession(
-					connector=connector, timeout=aiohttp.ClientTimeout(connect=5.0, sock_connect=12.0, total=None, sock_read=3.0)
+					connector=connector, timeout=aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)
 				) as http_session:
 					headers = get_fetch_headers()
 					if rec_bytes:
@@ -143,7 +143,7 @@ async def http_fetch(url):
 	semi = await acquire_host_semaphore(hostname)
 	async with semi:
 		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ssl=False)
-		async with aiohttp.ClientSession(connector=connector) as http_session:
+		async with aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)) as http_session:
 			async with http_session.get(
 				url, headers=get_fetch_headers(), timeout=None, **get_auth_kwargs(hostname, url)
 			) as response:
@@ -167,7 +167,9 @@ async def get_page(url):
 	"""
 	logging.info(f"Fetching page {url}...")
 	try:
-		return await http_fetch(url)
+		result = await http_fetch(url)
+		logging.info(f">>> Page fetched: {url}")
+		return result
 	except Exception as e:
 		if isinstance(e, pkgtools.fetch.FetchError):
 			raise e
