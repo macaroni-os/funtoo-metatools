@@ -428,8 +428,8 @@ class BreezyBuild:
 			)
 
 	def create_ebuild(self):
+		template_file = os.path.join(self.template_path, self.template)
 		if not self.template_text:
-			template_file = os.path.join(self.template_path, self.template)
 			try:
 				with open(template_file, "r") as tempf:
 					try:
