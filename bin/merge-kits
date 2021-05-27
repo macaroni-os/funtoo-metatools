@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import logging
 import sys
 from collections import defaultdict, OrderedDict
 from concurrent.futures import as_completed
@@ -73,6 +74,12 @@ async def main_thread():
 	merge.kit.generate_metarepo_metadata(merge.model.KIT_SHA1S)
 	merge.model.META_REPO.gitCommit(message="kit updates", skip=["kits"], push=merge.model.PUSH)
 
+	if not merge.model.PROD:
+		# check out preferred kit branches, because there's a good chance we'll be using it locally.
+		for name, ctx in merge.sources.get_kit_preferred_branches().items():
+			logging.warning(f"Checking out {name} {ctx.kit.branch}...")
+			await merge.kit.checkout_kit(ctx, pull=False)
+
 	if not merge.model.MIRROR:
 		merge.metadata.display_error_summary()
 		return
@@ -80,7 +87,6 @@ async def main_thread():
 	# Mirroring to GitHub happens here:
 
 	merge.kit.mirror_all_repositories()
-
 	merge.metadata.display_error_summary()
 
 

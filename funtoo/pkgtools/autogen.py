@@ -117,8 +117,15 @@ async def gather_pending_tasks(task_list, throw=True):
 		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
 		for done_item in done_list:
 			if throw:
-				result = done_item.result()
-				results.append(result)
+				try:
+					result = done_item.result()
+					results.append(result)
+				except Exception as e:
+					bzb = getattr(done_item, "bzb", None)
+					if bzb is not None:
+						raise pkgtools.ebuild.BreezyError(f"Exception generating {bzb.catpkg}: {str(e)}")
+					else:
+						raise e
 			else:
 				try:
 					result = done_item.result()
@@ -163,6 +170,7 @@ def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=Non
 	path_from_root = gen_path[len(common_prefix) :].lstrip("/")
 	pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
 	return pkginfo
+
 
 def _handle_task_result(task: Task):
 	try:
@@ -236,7 +244,9 @@ async def execute_generator(
 				else:
 					print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
 			except KeyError as ke:
-				raise pkgtools.ebuild.BreezyError(f"{generator_sub_name} encountered a key error: missing value. pkginfo is {pkginfo}. Missing in pkginfo: {ke}")
+				raise pkgtools.ebuild.BreezyError(
+					f"{generator_sub_name} encountered a key error: missing value. pkginfo is {pkginfo}. Missing in pkginfo: {ke}"
+				)
 
 			logging.debug(f"Using the following pkginfo for auto-generation: {pkginfo}")
 
@@ -256,7 +266,6 @@ async def execute_generator(
 					else:
 						raise te
 				return pkginfo
-
 
 			task = Task(gen_wrapper(pkginfo))
 			task.add_done_callback(_handle_task_result)

@@ -355,6 +355,7 @@ class BreezyBuild:
 		# local context so we can grab the result later. The return value will be the BreezyBuild object itself,
 		# thanks to the wrapper.
 		bzb_task = Task(wrapper(self))
+		bzb_task.bzb = self
 		bzb_task.add_done_callback(pkgtools.autogen._handle_task_result)
 		hub.THREAD_CTX.running_breezybuilds.append(bzb_task)
 
@@ -428,8 +429,8 @@ class BreezyBuild:
 			)
 
 	def create_ebuild(self):
-		template_file = os.path.join(self.template_path, self.template)
 		if not self.template_text:
+			template_file = os.path.join(self.template_path, self.template)
 			try:
 				with open(template_file, "r") as tempf:
 					try:
@@ -448,7 +449,7 @@ class BreezyBuild:
 			try:
 				myf.write(template.render(**self.template_args).encode("utf-8"))
 			except Exception as te:
-				raise BreezyError(f"Error rendering template: {template_file}: {repr(te)}")
+				raise BreezyError(f"Error rendering template: {repr(te)}")
 		logging.info("Created: " + os.path.relpath(self.output_ebuild_path))
 
 	async def generate(self):
@@ -464,7 +465,10 @@ class BreezyBuild:
 		if self.name is None:
 			raise BreezyError("Please set 'name' to the package name of this ebuild.")
 		await self.setup()
-		self.create_ebuild()
+		try:
+			self.create_ebuild()
+		except Exception as e:
+			raise BreezyError(f"Error creating ebuild {self.catpkg}: {str(e)}")
 		await self.record_manifest_lines()
 		return self
 

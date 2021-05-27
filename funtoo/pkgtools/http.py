@@ -143,7 +143,9 @@ async def http_fetch(url):
 	semi = await acquire_host_semaphore(hostname)
 	async with semi:
 		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ssl=False)
-		async with aiohttp.ClientSession(connector=connector, timeout=aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)) as http_session:
+		async with aiohttp.ClientSession(
+			connector=connector, timeout=aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)
+		) as http_session:
 			async with http_session.get(
 				url, headers=get_fetch_headers(), timeout=None, **get_auth_kwargs(hostname, url)
 			) as response:
