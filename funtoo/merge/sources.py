@@ -6,6 +6,7 @@ from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 
 import dyne.org.funtoo.metatools.merge as merge
+from dict_tools.data import NamespaceDict
 
 
 def initialize_repo(repo_dict):
@@ -48,6 +49,29 @@ async def initialize_sources(source):
 	for repo_fut in as_completed(repo_futures):
 		continue
 	merge.model.CURRENT_SOURCE_DEF = source
+
+
+def get_kit_preferred_branches():
+	"""
+	When we generate a meta-repo, and we're not in "prod" mode, then it's likely that we will be using
+	our meta-repo locally. In this case, it's handy to have the proper kits checked out after this is
+	done. So for example, we would want gnome-kit 3.36-prime checked out not 3.34-prime, since 3.36-prime
+	is the preferred branch in the metadata. This function will return a dict of kit names with the
+	values being a NamespaceDict with the info specific to the kit.
+	"""
+	out = {}
+
+	for kit_dict in merge.model.KIT_GROUPS:
+		name = kit_dict["name"]
+		stability = kit_dict["stability"]
+		if stability != "prime":
+			continue
+		if name in out:
+			# record first instance of kit from the YAML, ignore others (primary kit is the first one listed)
+			continue
+		out[name] = NamespaceDict()
+		out[name].kit = NamespaceDict(kit_dict)
+	return out
 
 
 def get_kits_in_correct_processing_order():

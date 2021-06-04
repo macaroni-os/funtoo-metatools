@@ -5,7 +5,7 @@ with open("README.rst", "r") as fh:
 
 setuptools.setup(
 	name="funtoo-metatools",
-	version="0.9.3",
+	version="0.9.5",
 	author="Daniel Robbins",
 	author_email="drobbins@funtoo.org",
 	description="Funtoo framework for auto-creation of ebuilds.",
@@ -21,7 +21,7 @@ setuptools.setup(
 	python_requires=">=3.7",
 	install_requires=[
 		"subpop >= 0.4.2",
-		"Jinja2",
+		"Jinja2 >= 3",
 		"xmltodict",
 		"aiodns",
 		"aiofiles",

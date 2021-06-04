@@ -117,8 +117,15 @@ async def gather_pending_tasks(task_list, throw=True):
 		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
 		for done_item in done_list:
 			if throw:
-				result = done_item.result()
-				results.append(result)
+				try:
+					result = done_item.result()
+					results.append(result)
+				except Exception as e:
+					bzb = getattr(done_item, "bzb", None)
+					if bzb is not None:
+						raise pkgtools.ebuild.BreezyError(f"Exception generating {bzb.catpkg}: {str(e)}")
+					else:
+						raise e
 			else:
 				try:
 					result = done_item.result()
