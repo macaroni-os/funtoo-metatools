@@ -164,6 +164,7 @@ def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=Non
 	pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
 	return pkginfo
 
+
 def _handle_task_result(task: Task):
 	try:
 		task.result()
@@ -236,7 +237,9 @@ async def execute_generator(
 				else:
 					print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
 			except KeyError as ke:
-				raise pkgtools.ebuild.BreezyError(f"{generator_sub_name} encountered a key error: missing value. pkginfo is {pkginfo}. Missing in pkginfo: {ke}")
+				raise pkgtools.ebuild.BreezyError(
+					f"{generator_sub_name} encountered a key error: missing value. pkginfo is {pkginfo}. Missing in pkginfo: {ke}"
+				)
 
 			logging.debug(f"Using the following pkginfo for auto-generation: {pkginfo}")
 
@@ -256,7 +259,6 @@ async def execute_generator(
 					else:
 						raise te
 				return pkginfo
-
 
 			task = Task(gen_wrapper(pkginfo))
 			task.add_done_callback(_handle_task_result)
