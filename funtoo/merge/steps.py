@@ -135,6 +135,17 @@ cache-formats = md5-dict
 		a.close()
 
 
+class RemoveIfExists(MergeStep):
+	def __init__(self, files):
+		self.files = files
+
+	async def run(self, tree):
+		for file in self.files:
+			path = os.path.join(tree.root, file)
+			if os.path.exists(file):
+				os.unlink(path)
+
+
 class FindAndRemove(MergeStep):
 	def __init__(self, globs=None):
 		if globs is None:
