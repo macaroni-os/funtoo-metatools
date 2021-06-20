@@ -16,12 +16,15 @@ of the downloaded artifact -- its message digests and size at the time the downl
 """
 
 
-async def fetch_cache_write(method_name, fetchable, body=None, metadata_only=False):
+async def fetch_cache_write(method_name, fetchable, content_kwargs=None, body=None, metadata_only=False):
 	"""
 	This method is called when we have successfully fetched something. In the case of a network resource such as
 	a Web page, we will record the result of our fetching in the 'result' field so it is cached for later. In the
 	case that we're recording that we successfully downloaded an Artifact (tarball), we don't store the tarball
 	in MongoDB but we do store its metadata (hashes and filesize.)
+
+	Note that ``content_kwargs`` is a new feature, where we will cache specific keyword arguments, such as encoding,
+	used for the fetch. These keyword arguments can potentially alter the results of the cached value.
 
 	If metadata_only is True, we are simply updating metadata rather than the content in the fetch cache.
 
@@ -34,16 +37,16 @@ async def fetch_cache_write(method_name, fetchable, body=None, metadata_only=Fal
 		url = fetchable.url
 		metadata = fetchable.as_metadata()
 	now = datetime.utcnow()
+	selector = {"method_name": method_name, "url": url, "content_kwargs": None}
 	if not metadata_only:
-
 		pkgtools.model.MONGO_FC.update_one(
-			{"method_name": method_name, "url": url},
+			selector,
 			{"$set": {"last_attempt": now, "fetched_on": now, "metadata": metadata, "body": body}},
 			upsert=True,
 		)
 	else:
 		pkgtools.model.MONGO_FC.update_one(
-			{"method_name": method_name, "url": url},
+			selector,
 			{
 				"$set": {
 					"last_attempt": now,
@@ -55,7 +58,7 @@ async def fetch_cache_write(method_name, fetchable, body=None, metadata_only=Fal
 		)
 
 
-async def fetch_cache_read(method_name, fetchable, max_age=None, refresh_interval=None):
+async def fetch_cache_read(method_name, fetchable, content_kwargs=None, max_age=None, refresh_interval=None):
 	"""
 	Attempt to see if the network resource or Artifact is in our fetch cache. We will return the entire MongoDB
 	document. In the case of a network resource, this includes the cached value in the 'result' field. In the
@@ -71,7 +74,7 @@ async def fetch_cache_read(method_name, fetchable, max_age=None, refresh_interva
 		url = fetchable
 	else:
 		url = fetchable.url
-	result = pkgtools.model.MONGO_FC.find_one({"method_name": method_name, "url": url})
+	result = pkgtools.model.MONGO_FC.find_one({"method_name": method_name, "url": url, "content_kwargs": content_kwargs})
 	if result is None or "fetched_on" not in result:
 		raise pkgtools.fetch.CacheMiss()
 	elif refresh_interval is not None:
@@ -85,7 +88,7 @@ async def fetch_cache_read(method_name, fetchable, max_age=None, refresh_interva
 		return result
 
 
-async def record_fetch_failure(method_name, fetchable, failure_reason):
+async def record_fetch_failure(method_name, fetchable, content_kwargs, failure_reason):
 	"""
 	It is important to document when fetches fail, and that is what this method is for.
 	"""
@@ -96,7 +99,7 @@ async def record_fetch_failure(method_name, fetchable, failure_reason):
 		url = fetchable.url
 	now = datetime.utcnow()
 	pkgtools.model.MONGO_FC.update_one(
-		{"method_name": method_name, "url": url},
+		{"method_name": method_name, "url": url, "content_kwargs" : content_kwargs},
 		{
 			"$set": {"last_attempt": now, "last_failure_on": now},
 			"$push": {"failures": {"attempted_on": now, "failure_reason": failure_reason}},

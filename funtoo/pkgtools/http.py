@@ -134,10 +134,13 @@ async def http_fetch_stream(url, on_chunk, retry=True):
 		return None
 
 
-async def http_fetch(url):
+async def http_fetch(url, encoding=None):
 	"""
 	This is a non-streaming HTTP fetcher that will properly convert the request to a Python
 	string and return the entire content as a string.
+
+	Use ``encoding`` if the HTTP resource does not have proper encoding and you have to set
+	a specific encoding. Normally, the encoding will be auto-detected and decoded for you.
 	"""
 	hostname = get_hostname(url)
 	semi = await acquire_host_semaphore(hostname)
@@ -150,33 +153,36 @@ async def http_fetch(url):
 				url, headers=get_fetch_headers(), timeout=None, **get_auth_kwargs(hostname, url)
 			) as response:
 				if response.status != 200:
-					reason = (await response.text()).strip()
+					reason = (await response.reason()).strip()
 					if response.status in [400, 404, 410]:
 						# No need to retry as the server has just told us that the resource does not exist.
 						retry = False
 					else:
 						retry = True
-					raise pkgtools.fetch.FetchError(url, f"HTTP fetch Error {response.status}: {reason[:40]}", retry=retry)
-				return await response.text()
+					raise pkgtools.fetch.FetchError(url, f"HTTP fetch Error: {url}: {response.status}: {reason[:40]}", retry=retry)
+				return await response.text(encoding=encoding)
 		return None
 
 
-async def get_page(url):
+async def get_page(url, encoding=None):
 	"""
 	This function performs a simple HTTP fetch of a resource. The response is cached in memory,
 	and a decoded Python string is returned with the result. FetchError is thrown for an error
 	of any kind.
+
+	Use ``encoding`` if the HTTP resource does not have proper encoding and you have to set
+	a specific encoding. Normally, the encoding will be auto-detected and decoded for you.
 	"""
 	logging.info(f"Fetching page {url}...")
 	try:
-		result = await http_fetch(url)
+		result = await http_fetch(url, encoding=encoding)
 		logging.info(f">>> Page fetched: {url}")
 		return result
 	except Exception as e:
 		if isinstance(e, pkgtools.fetch.FetchError):
 			raise e
 		else:
-			msg = f"Couldn't get_page due to exception {repr(e)}"
+			msg = f"Couldn't get_page due to exception {e.__class__.__name__}"
 			logging.error(url + ": " + msg)
 			raise pkgtools.fetch.FetchError(url, msg)
 
