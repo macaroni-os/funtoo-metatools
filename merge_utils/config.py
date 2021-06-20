@@ -119,7 +119,9 @@ class Configuration:
 		object to create unique sub-paths here.
 		This is TODO item!
 		"""
-		if "HOME" in os.environ:
+		if "METATOOLS_WORKSPACE" in os.environ:
+			return os.path.join(os.environ["METATOOLS_WORKSPACE"], "repo_tmp/tmp")
+		elif "HOME" in os.environ:
 			return os.path.join(os.environ["HOME"], "repo_tmp/tmp")
 		else:
 			return "/var/tmp/repo_tmp/tmp"
