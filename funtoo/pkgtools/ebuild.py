@@ -38,13 +38,14 @@ class Fetchable:
 
 
 class Artifact(Fetchable):
-	def __init__(self, url=None, final_name=None, final_path=None, expect=None, **kwargs):
+	def __init__(self, url=None, final_name=None, final_path=None, expect=None, extra_http_headers=None, **kwargs):
 		super().__init__(url=url, **kwargs)
 		self._final_name = final_name
 		self._final_data = None
 		self._final_path = final_path
 		self.breezybuilds = []
 		self.expect = expect
+		self.extra_http_headers = extra_http_headers
 
 	@property
 	def catpkgs(self):

@@ -66,7 +66,7 @@ def get_auth_kwargs(hostname, url):
 	return kwargs
 
 
-async def http_fetch_stream(url, on_chunk, retry=True):
+async def http_fetch_stream(url, on_chunk, retry=True, extra_headers=None):
 	"""
 	This is a streaming HTTP fetcher that will call on_chunk(bytes) for each chunk.
 	On_chunk is called with literal bytes from the response body so no decoding is
@@ -91,6 +91,8 @@ async def http_fetch_stream(url, on_chunk, retry=True):
 					connector=connector, timeout=aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)
 				) as http_session:
 					headers = get_fetch_headers()
+					if extra_headers:
+						headers.update(extra_headers)
 					if rec_bytes:
 						headers["Range"] = f"bytes={rec_bytes}-"
 						logging.warning(f"Resuming at {rec_bytes}")

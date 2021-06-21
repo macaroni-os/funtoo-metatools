@@ -202,7 +202,7 @@ async def _download(artifact, retry=True):
 			sys.stdout.write(".")
 			sys.stdout.flush()
 
-		await pkgtools.http.http_fetch_stream(artifact.url, on_chunk, retry=retry)
+		await pkgtools.http.http_fetch_stream(artifact.url, on_chunk, retry=retry, extra_headers=artifact.extra_http_headers)
 
 		sys.stdout.write("x")
 		sys.stdout.flush()
