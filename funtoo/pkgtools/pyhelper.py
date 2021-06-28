@@ -89,7 +89,7 @@ def create_ebuild_cond_dep(pydeplabel, atoms):
 	if pydeplabel.dep_type == "py":
 		pyspec = pydeplabel.gen_cond_dep()
 	elif pydeplabel.dep_type == "use":
-		usespec = pydeplabel.specifiers
+		usespec = list(pydeplabel.specifiers)[0]
 
 	for atom in atoms:
 		out_atoms.append(expand_pydep(atom))
@@ -125,9 +125,9 @@ class ParsedPyDepLabel:
 		self.dep_type = None
 		self.mods = set()
 		self._ver_set = set()
-		self.parse()
 		self.has_2x_version = False
 		self.has_3x_version = False
+		self.parse()
 
 	def parse(self):
 		parts = self.pydep_label.split(":")
@@ -138,7 +138,10 @@ class ParsedPyDepLabel:
 		self.dep_type = parts[0]
 		if len(parts) == 3:
 			self.mods = set(parts[-1].split(","))
-		self._ver_set = set(parts[1])
+		if self.dep_type == "py":
+			self._ver_set = set(parts[1].split(","))
+		else:
+			self._ver_set = {parts[1]}
 		self._validate_ver_set()
 
 	def _validate_ver_set(self):
