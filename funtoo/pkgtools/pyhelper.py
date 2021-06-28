@@ -89,7 +89,7 @@ def create_ebuild_cond_dep(pydeplabel, atoms):
 	if pydeplabel.dep_type == "py":
 		pyspec = pydeplabel.gen_cond_dep()
 	elif pydeplabel.dep_type == "use":
-		usespec = pydeplabel.specifiers()
+		usespec = pydeplabel.specifiers
 
 	for atom in atoms:
 		out_atoms.append(expand_pydep(atom))
@@ -111,7 +111,7 @@ class InvalidPyDepLabel(Exception):
 		self.label = label
 		self.errmsg = errmsg
 
-	def __repr__(self):
+	def __str__(self):
 		out = f"{self.label.pydep_label}"
 		if self.errmsg:
 			out += " " + self.errmsg
@@ -138,24 +138,24 @@ class ParsedPyDepLabel:
 		self.dep_type = parts[0]
 		if len(parts) == 3:
 			self.mods = set(parts[-1].split(","))
-		self._ver_set.update(set(parts[1]))
+		self._ver_set = set(parts[1])
 		self._validate_ver_set()
 
 	def _validate_ver_set(self):
 		if self.dep_type != "py":
 			return True
-		if self._ver_set & { "3", "all" }:
+		if self._ver_set & {"3", "all"}:
 			self.has_3x_version = True
 		if self._ver_set & {"2", "all"}:
 			self.has_2x_version = True
 		remaining = self._ver_set - {"3", "2", "all", "pypy", "pypy3"}
-		for ver_spec in remaining:
+		for ver_spec in list(remaining):
 			if ver_spec.startswith("2."):
 				self.has_2x_version = True
-				continue
 			elif ver_spec.startswith("3."):
 				self.has_3x_version = True
-				continue
+			remaining.remove(ver_spec)
+		if len(remaining):
 			raise InvalidPyDepLabel(self)
 
 	@property
