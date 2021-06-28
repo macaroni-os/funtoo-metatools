@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 from collections import defaultdict
 
 
@@ -51,35 +52,6 @@ def pypi_get_artifact_url(pkginfo, json_dict, strict=True):
 	return artifact_url
 
 
-def pyspec_to_cond_dep_args(pg):
-	"""
-	This method takes something like "py:all" or "py:2,3_7,3_8" and converts it to a list of arguments that should
-	be passed to python_gen_cond_dep (eclass function.) Protect ourselves from the weird syntax in this eclass.
-
-	  py:all -> [] (meaning "no restriction", i.e. apply to all versions)
-	  py:2,3.7,3.8 -> [ "-2", "python3_7", "python3_8"]
-
-	"""
-	pg = pg.strip()
-	if pg == "py:all":
-		return []
-	if not pg.startswith("py:"):
-		raise ValueError(f"Python specifier {pg} does not begin with py:")
-	# remove leading "py:"
-	pg = pg[3:]
-	out = []
-	for pg_item in pg.split(","):
-		if pg_item in ["2", "3"]:
-			out += [f"-{pg_item}"]  # -2, etc.
-		elif "." in pg_item:
-			# 2.7 -> python2_7, etc.
-			out += [f"python{pg_item.replace('.','_')}"]
-		else:
-			# pass thru pypy, pypy3, etc.
-			out.append(pg_item)
-	return out
-
-
 def expand_pydep(pyatom):
 	"""
 	Takes something from our pydeps YAML that might be "foo", or "sys-apps/foo", or "foo >= 1.2" and convert to
@@ -105,7 +77,7 @@ def expand_pydep(pyatom):
 		raise ValueError(f"What the hell is this: {pyatom}")
 
 
-def create_ebuild_cond_dep(pyspec_str, atoms):
+def create_ebuild_cond_dep(pydeplabel, atoms):
 	"""
 	This function takes a specifier like "py:all" and a list of simplified pythony package atoms and creates a
 	conditional dependency for inclusion in an ebuild. It returns a list of lines (without newline termination,
@@ -114,10 +86,10 @@ def create_ebuild_cond_dep(pyspec_str, atoms):
 	out_atoms = []
 	pyspec = None
 	usespec = None
-	if pyspec_str.startswith("py:"):
-		pyspec = pyspec_to_cond_dep_args(pyspec_str)
-	elif pyspec_str.startswith("use:"):
-		usespec = pyspec_str[4:]
+	if pydeplabel.dep_type == "py":
+		pyspec = pydeplabel.gen_cond_dep()
+	elif pydeplabel.dep_type == "use":
+		usespec = list(pydeplabel.specifiers)[0]
 
 	for atom in atoms:
 		out_atoms.append(expand_pydep(atom))
@@ -133,6 +105,116 @@ def create_ebuild_cond_dep(pyspec_str, atoms):
 	return out
 
 
+class InvalidPyDepLabel(Exception):
+
+	def __init__(self, label, errmsg=None):
+		self.label = label
+		self.errmsg = errmsg
+
+	def __str__(self):
+		out = f"{self.label.pydep_label}"
+		if self.errmsg:
+			out += " " + self.errmsg
+		return out
+
+
+class ParsedPyDepLabel:
+
+	def __init__(self, pydep_label):
+		self.pydep_label = pydep_label
+		self.dep_type = None
+		self.mods = set()
+		self._ver_set = set()
+		self.has_2x_version = False
+		self.has_3x_version = False
+		self.parse()
+
+	def parse(self):
+		parts = self.pydep_label.split(":")
+		if not len(parts):
+			raise InvalidPyDepLabel(self)
+		if parts[0] not in ["use", "py"]:
+			raise InvalidPyDepLabel(self)
+		self.dep_type = parts[0]
+		if len(parts) == 3:
+			self.mods = set(parts[-1].split(","))
+		if self.dep_type == "py":
+			self._ver_set = set(parts[1].split(","))
+		else:
+			self._ver_set = {parts[1]}
+		self._validate_ver_set()
+
+	def _validate_ver_set(self):
+		if self.dep_type != "py":
+			return True
+		if self._ver_set & {"3", "all"}:
+			self.has_3x_version = True
+		if self._ver_set & {"2", "all"}:
+			self.has_2x_version = True
+		remaining = self._ver_set - {"3", "2", "all", "pypy", "pypy3"}
+		for ver_spec in list(remaining):
+			if ver_spec.startswith("2."):
+				self.has_2x_version = True
+			elif ver_spec.startswith("3."):
+				self.has_3x_version = True
+			remaining.remove(ver_spec)
+		if len(remaining):
+			raise InvalidPyDepLabel(self)
+
+	@property
+	def specifiers(self):
+		return sorted(list(self._ver_set))
+
+	def has_specifier(self, ver):
+		return ver in self._ver_set
+
+	@property
+	def build_dep(self):
+		return "build" in self.mods
+
+	@property
+	def py2_enabled(self):
+		"""
+		Tell us if this dependency should be enabled on compat ebuilds.
+		"""
+		if self.dep_type == "py" and not self.has_2x_version:
+			return False
+		return True
+
+	@property
+	def py3_enabled(self):
+		"""
+		Tell us if this dependency should be enabled on py3-only ebuilds.
+		"""
+		if self.dep_type == "py" and not self.has_3x_version:
+			return False
+		return True
+
+	def gen_cond_dep(self):
+		"""
+		This method takes a parsed pydep label and converts it to a list of arguments that should
+		be passed to python_gen_cond_dep (eclass function.) Protect ourselves from the weird syntax in this eclass.
+
+		 py:all -> [] (meaning "no restriction", i.e. apply to all versions)
+		 py:2,3.7,3.8 -> [ "-2", "python3_7", "python3_8"]
+
+		"""
+		assert self.dep_type == "py"
+		if "all" in self._ver_set:
+			return []
+		out = []
+		for pg_item in self._ver_set:
+			if pg_item in ["2", "3"]:
+				out += [f"-{pg_item}"]  # -2, etc.
+			elif "." in pg_item:
+				# 2.7 -> python2_7, etc.
+				out += [f"python{pg_item.replace('.', '_')}"]
+			else:
+				# pass thru pypy, pypy3, etc.
+				out.append(pg_item)
+		return out
+
+
 def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 	expanded_pydeps = defaultdict(list)
 	if "pydeps" in pkginfo:
@@ -142,24 +224,14 @@ def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 				# super-simple pydeps are just considered runtime deps
 				expanded_pydeps["rdepend"].append(expand_pydep(dep))
 		elif pytype == dict:
-			for label, deps in pkginfo["pydeps"].items():
-				# 'compat mode' means we are actually generating 2 ebuilds, one for py3+ and one for py2
-				lsplit = label.split(":")
-				if len(lsplit) == 3:
-					# modifiers -- affect how deps are understood
-					mods = lsplit[-1].split(",")
-					# remove mods from label so that create_ebuild_cond_dep doesn't need to understand them.
-					label = ":".join(lsplit[:2])
-				else:
-					mods = []
+			for label_str, deps in pkginfo["pydeps"].items():
+				label = ParsedPyDepLabel(label_str)
 				if compat_mode:
-					# If we are generating a 'compat' ebuild, automatically drop py3 deps
-					if compat_ebuild and "3" in label:
+					if compat_ebuild and not label.py2_enabled:
 						continue
-					# If we are generating a 'non-compat' ebuild, automatically drop py2 deps
-					elif not compat_ebuild and "3" not in label and "all" not in label:
+					elif not compat_ebuild and label.py3_enabled:
 						continue
-				if "build" in mods:
+				if label.build_dep:
 					expanded_pydeps["depend"] += create_ebuild_cond_dep(label, deps)
 				else:
 					expanded_pydeps["rdepend"] += create_ebuild_cond_dep(label, deps)
