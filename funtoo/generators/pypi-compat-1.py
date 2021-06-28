@@ -27,6 +27,12 @@ async def add_ebuild(json_dict=None, compat_ebuild=False, **pkginfo):
 		local_pkginfo["inherit"] = []
 	if "distutils-r1" not in local_pkginfo["inherit"]:
 		local_pkginfo["inherit"].append("distutils-r1")
+	if "desc" not in local_pkginfo:
+		local_pkginfo["desc"] = json_dict["info"]["summary"]
+	if "homepage" not in local_pkginfo:
+		local_pkginfo["homepage"] = json_dict["info"]["home_page"]+" "+json_dict["info"]["project_url"]
+	if "license" not in local_pkginfo:
+		local_pkginfo["license"] = json_dict["info"]["license"]
 
 	pkgtools.pyhelper.expand_pydeps(local_pkginfo, compat_mode=True, compat_ebuild=compat_ebuild)
 

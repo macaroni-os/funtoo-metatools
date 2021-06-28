@@ -88,3 +88,11 @@ S="${WORKDIR}/{{pypi_name}}-{{pypi_version}}"
 {%- if body is defined %}
 {{indented(body,allow_empty=True)}}
 {%- endif %}
+{%- if body is not defined or 'post_src_install' not in body %}
+  {%- if compat_ebuild %}
+
+post_src_install() {
+	rm -rf ${D}/usr/bin
+}
+  {%- endif %}
+{%- endif %}

@@ -154,10 +154,10 @@ def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 					mods = []
 				if compat_mode:
 					# If we are generating a 'compat' ebuild, automatically drop py3 deps
-					if compat_ebuild and label == "py:3":
+					if compat_ebuild and "3" in label:
 						continue
 					# If we are generating a 'non-compat' ebuild, automatically drop py2 deps
-					elif not compat_ebuild and label == "py:2":
+					elif not compat_ebuild and "3" not in label:
 						continue
 				if "build" in mods:
 					expanded_pydeps["depend"] += create_ebuild_cond_dep(label, deps)
