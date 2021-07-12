@@ -227,9 +227,9 @@ def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 			for label_str, deps in pkginfo["pydeps"].items():
 				label = ParsedPyDepLabel(label_str)
 				if compat_mode:
-					if compat_ebuild and not label.py3_enabled:
+					if compat_ebuild and not label.py2_enabled:
 						continue
-					elif not compat_ebuild and label.py2_enabled:
+					elif not compat_ebuild and not label.py3_enabled:
 						continue
 				if label.build_dep:
 					expanded_pydeps["depend"] += create_ebuild_cond_dep(label, deps)
