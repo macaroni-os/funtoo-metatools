@@ -259,7 +259,7 @@ class BreezyBuild:
 				if self.version in rev_val:
 					self.revision = rev_val[self.version]
 			else:
-				raise TypeError(f"Unrecognized type for revision= argument for {kwargs}")
+				raise TypeError(f"Unrecognized type for revision= argument for {kwargs}: {repr(type(rev_val))} {isinstance(rev_val, int)} {isinstance(rev_val, dict)} {rev_val is dict}")
 
 		self.template = template
 		self.template_text = template_text
