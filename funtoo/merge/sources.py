@@ -134,7 +134,14 @@ def get_kits_in_correct_processing_order():
 			return pipeline_key
 		return None
 
+	process_indy_kits = False
+	if "features" in merge.model.RELEASE_INFO:
+		if "independent-kits" in merge.model.RELEASE_INFO["features"]:
+			process_indy_kits = True
+
 	for kit_dict in merge.model.KIT_GROUPS:
+		if kit_dict["kind"] == "independent" and not process_indy_kits:
+			continue
 		if kit_dict["name"] == "core-kit":
 			if len(kit_pipeline_slots["core-kit"]):
 				raise ValueError("You must only define one core-kit in your kit groups.")

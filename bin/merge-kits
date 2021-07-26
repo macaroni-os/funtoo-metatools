@@ -30,6 +30,7 @@ async def main_thread():
 	merge.metadata.cleanup_error_logs()
 
 	merge.model.KIT_GROUPS = list(merge.foundations.kit_groups())
+	merge.model.RELEASE_INFO = merge.foundations.release_info()
 
 	if not merge.foundations.release_exists(merge.model.RELEASE):
 		print(f"Release not found: {merge.model.RELEASE}.")
