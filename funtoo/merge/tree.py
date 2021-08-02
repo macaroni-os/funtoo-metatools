@@ -286,8 +286,8 @@ class GitTree(Tree):
 		self.checkout_all_branches = checkout_all_branches
 
 	def _create_branches(self):
-		result = run_shell(
-			f"git checkout master; git checkout -b {self.branch} && git push --set-upstream origin {self.branch}", chdir=self.root)
+		run_shell(f"git checkout master; git checkout -b {self.branch}", chdir=self.root)
+		run_shell(f"git push --set-upstream origin {self.branch}", chdir=self.root)
 
 	# if we don't specify root destination tree, assume we are source only:
 
