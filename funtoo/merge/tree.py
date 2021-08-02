@@ -287,7 +287,7 @@ class GitTree(Tree):
 
 	def _create_branches(self):
 		result = run_shell(
-			f"git checkout master && git checkout -b {self.branch} --track origin/{self.branch})", chdir=self.root)
+			f"git checkout master && git checkout -b {self.branch} --track origin/{self.branch}", chdir=self.root)
 		if result.returncode != 0:
 			raise ShellError(f"Could not automatically create branch: {self.branch}.")
 
