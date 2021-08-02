@@ -330,8 +330,7 @@ class GitTree(Tree):
 						result = run(f"(cd {self.root} && git checkout master && git checkout -b {self.branch} --track origin/{self.branch})")
 						if result.returncode != 0:
 							raise ShellError(f"Could not automatically create branch: {self.branch}.")
-					# TODO: add facility for creating new branches
-					raise ShellError(f"Could not find remote branch: {self.branch}.")
+					raise ShellError(f"Could not find remote branch: {self.branch} in git tree {self.root}.")
 				# Put the branch we want at the end, so we end up with it active/
 				init_branches.remove(self.branch)
 				init_branches += [self.branch]
