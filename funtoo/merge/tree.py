@@ -285,6 +285,12 @@ class GitTree(Tree):
 		self.commit_sha1 = commit_sha1
 		self.checkout_all_branches = checkout_all_branches
 
+	def _create_branches(self):
+		result = run_shell(
+			f"git checkout master && git checkout -b {self.branch} --track origin/{self.branch})", chdir=self.root)
+		if result.returncode != 0:
+			raise ShellError(f"Could not automatically create branch: {self.branch}.")
+
 	# if we don't specify root destination tree, assume we are source only:
 
 	def _initialize_tree(self):
@@ -327,9 +333,7 @@ class GitTree(Tree):
 					init_branches.append("/".join(branch.split("/")[1:]))
 				if self.branch not in init_branches:
 					if self.create_branches:
-						result = run(f"(cd {self.root} && git checkout master && git checkout -b {self.branch} --track origin/{self.branch})")
-						if result.returncode != 0:
-							raise ShellError(f"Could not automatically create branch: {self.branch}.")
+						self._create_branches()
 					raise ShellError(f"Could not find remote branch: {self.branch} in git tree {self.root}.")
 				# Put the branch we want at the end, so we end up with it active/
 				init_branches.remove(self.branch)
