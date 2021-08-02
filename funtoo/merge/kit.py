@@ -145,7 +145,7 @@ async def checkout_kit(ctx, pull=None):
 		# For auto-generated kits, if we are in 'dev mode' then simply create a Tree from scratch.
 		git_class = getattr(merge.model, "GIT_CLASS", merge.tree.GitTree)
 		kwargs["url"] = merge.model.MERGE_CONFIG.url(ctx.kit.name, kind="auto")
-
+		kwargs["create_branches"] = merge.model.CREATE_BRANCHES
 	# Allow overriding of pull behavior.
 	if pull is not None:
 		kwargs["pull"] = pull
@@ -155,6 +155,7 @@ async def checkout_kit(ctx, pull=None):
 			kwargs["mirror"] = merge.model.MERGE_CONFIG.mirror.rstrip("/") + "/" + ctx.kit.name
 	except AttributeError:
 		pass
+
 
 	root = get_kit_root(ctx.kit.name)
 

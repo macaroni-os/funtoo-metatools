@@ -96,6 +96,7 @@ CLI_CONFIG = {
 	"nopush": {"action": "store_true", "default": False},
 	"prod": {"action": "store_true", "default": False},
 	"db": {"action": "store_true", "default": False},
+	"create_branches": {"action": "store_true", "default": False},
 	"release": {"positional": True},
 }
 
@@ -150,6 +151,9 @@ if __name__ == "__main__":
 		kwargs = {}
 		if merge.model.MIRROR:
 			kwargs["mirror"] = merge.model.MERGE_CONFIG.mirror.rstrip("/") + "/meta-repo"
+		merge.model.CREATE_BRANCHES = hub.OPT.create_branches
+		kwargs["create_branches"] = True if hub.OPT.create_branches else False
+
 		merge.model.META_REPO = meta_repo = merge.tree.GitTree(
 			"meta-repo",
 			branch=merge.model.RELEASE,

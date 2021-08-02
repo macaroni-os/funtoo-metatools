@@ -257,14 +257,13 @@ class GitTree(Tree):
 		mirror: str = None,
 		forcepush: bool = False,
 		origin_check: bool = False,
+		create_branches: bool = False,
 		destfix: bool = False,
 		reclone: bool = False,
 		pull: bool = True,
 		checkout_all_branches: bool = True,
 	):
 
-		# note that if create=True, we are in a special 'local create' mode which is good for testing. We create the repo locally from
-		# scratch if it doesn't exist, as well as any branches. And we don't push.
 		super().__init__(root=root)
 
 		self.name = name
@@ -278,6 +277,7 @@ class GitTree(Tree):
 		self.initialized = False
 		self.mirror = mirror
 		self.origin_check = origin_check
+		self.create_branches = create_branches
 		self.destfix = destfix
 		self.reclone = reclone
 		self.forcepush = "--force" if forcepush else "--no-force"
@@ -296,7 +296,6 @@ class GitTree(Tree):
 			run_shell("rm -rf %s" % self.root)
 
 		if not os.path.isdir("%s/.git" % self.root):
-			# repo does not exist? - needs to be cloned or created
 			if os.path.exists(self.root):
 				raise GitTreeError("%s exists but does not appear to be a valid git repository." % self.root)
 
@@ -326,8 +325,12 @@ class GitTree(Tree):
 			else:
 				for branch in result.stdout.split():
 					init_branches.append("/".join(branch.split("/")[1:]))
-
 				if self.branch not in init_branches:
+					if self.create_branches:
+						result = run(f"(cd {self.root} && git checkout master && git checkout -b {self.branch} --track origin/{self.branch})")
+						if result.returncode != 0:
+							raise ShellError(f"Could not automatically create branch: {self.branch}.")
+					# TODO: add facility for creating new branches
 					raise ShellError(f"Could not find remote branch: {self.branch}.")
 				# Put the branch we want at the end, so we end up with it active/
 				init_branches.remove(self.branch)
