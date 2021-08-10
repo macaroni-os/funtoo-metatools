@@ -1,0 +1,6 @@
+name: "gentoo"
+url: "https://github.com/gentoo/gentoo.git"
+# Set to actual branch name
+branch: "master"
+kind: "independent"
+#commit_sha1": None,  # You should be able to set commit SHA1 here.
