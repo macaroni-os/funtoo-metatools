@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-
 from datetime import datetime
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
@@ -74,7 +73,11 @@ async def fetch_cache_read(method_name, fetchable, content_kwargs=None, max_age=
 		url = fetchable
 	else:
 		url = fetchable.url
-	result = pkgtools.model.MONGO_FC.find_one({"method_name": method_name, "url": url, "content_kwargs": content_kwargs})
+
+	# content_kwargs is stored at None if there are none, not an empty dict:
+	looking_for = {"method_name": method_name, "url": url, "content_kwargs": content_kwargs if content_kwargs else None}
+
+	result = pkgtools.model.MONGO_FC.find_one(looking_for)
 	if result is None or "fetched_on" not in result:
 		raise pkgtools.fetch.CacheMiss()
 	elif refresh_interval is not None:
