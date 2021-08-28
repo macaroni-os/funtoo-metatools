@@ -2,6 +2,46 @@
 
 from collections import defaultdict
 
+LICENSE_CLASSIFIER_MAP = {
+	"License :: OSI Approved :: Apache Software License": "Apache-2.0",
+	"License :: OSI Approved :: BSD License": "BSD",
+	"License :: OSI Approved :: MIT License": "MIT",
+}
+
+
+def pypi_license_to_gentoo(classifiers):
+	"""
+	This function will use our (currently very minimal) mapping of pypi license classifiers to Gentoo
+	license names. Note that "||" syntax is not used since the classifiers do not support this.
+
+	Empty string is returned if no license info is found, or if no licenses match.
+	"""
+	global LICENSE_CLASSIFIER_MAP
+	license_set = set()
+	for classifier in classifiers:
+		if not classifier.startswith("License :: "):
+			continue
+		if classifier in LICENSE_CLASSIFIER_MAP:
+			license_set.add(LICENSE_CLASSIFIER_MAP[classifier])
+	return " ".join(sorted(list(license_set)))
+
+
+def pypi_metadata_init(local_pkginfo, json_dict):
+	"""
+	This function initializes metadata for the package based on pypi (and also sets defaults for things like
+	inherit.)
+	"""
+	if "inherit" not in local_pkginfo:
+		local_pkginfo["inherit"] = []
+	if "distutils-r1" not in local_pkginfo["inherit"]:
+		local_pkginfo["inherit"].append("distutils-r1")
+	if "desc" not in local_pkginfo:
+		local_pkginfo["desc"] = json_dict["info"]["summary"]
+	if "homepage" not in local_pkginfo:
+		local_pkginfo["homepage"] = json_dict["info"]["home_page"]+" "+json_dict["info"]["project_url"]
+	if "license" not in local_pkginfo:
+		local_pkginfo["license"] = pypi_license_to_gentoo(json_dict["info"]["classifiers"])
+
 
 def sdist_artifact_url(releases, version):
 	# Sometimes a version does not have a source tarball. This function lets us know if our version is legit.

@@ -23,18 +23,10 @@ async def add_ebuild(json_dict=None, compat_ebuild=False, **pkginfo):
 	local_pkginfo = pkginfo.copy()
 	assert "python_compat" in local_pkginfo, f"python_compat is not defined in {local_pkginfo}"
 	local_pkginfo["compat_ebuild"] = compat_ebuild
-	if "inherit" not in local_pkginfo:
-		local_pkginfo["inherit"] = []
-	if "distutils-r1" not in local_pkginfo["inherit"]:
-		local_pkginfo["inherit"].append("distutils-r1")
-	if "desc" not in local_pkginfo:
-		local_pkginfo["desc"] = json_dict["info"]["summary"]
-	if "homepage" not in local_pkginfo:
-		local_pkginfo["homepage"] = json_dict["info"]["home_page"]+" "+json_dict["info"]["project_url"]
-	if "license" not in local_pkginfo:
-		local_pkginfo["license"] = json_dict["info"]["license"]
-
+	pkgtools.pyhelper.pypi_metadata_init(local_pkginfo, json_dict)
 	pkgtools.pyhelper.expand_pydeps(local_pkginfo, compat_mode=True, compat_ebuild=compat_ebuild)
+
+
 
 	if compat_ebuild:
 		local_pkginfo["python_compat"] = "python2_7"

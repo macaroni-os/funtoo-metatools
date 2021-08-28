@@ -167,7 +167,7 @@ def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=Non
 
 	# This is the path where the autogen lives. Either the autogen.py or the autogen.yaml:
 	common_prefix = os.path.commonprefix([hub.CONTEXT.root, gen_path])
-	path_from_root = gen_path[len(common_prefix) :].lstrip("/")
+	path_from_root = gen_path[len(common_prefix):].lstrip("/")
 	pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
 	return pkginfo
 

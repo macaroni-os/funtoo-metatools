@@ -18,7 +18,7 @@ import dyne.org.funtoo.metatools.merge as merge
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
 # version, we'll consider the kit cache stale and regenerate it.
 
-CACHE_DATA_VERSION = "1.0.5"
+CACHE_DATA_VERSION = "1.0.6"
 
 
 def cleanup_error_logs():
