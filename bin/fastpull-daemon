@@ -66,11 +66,17 @@ class DistfileHashHandler(tornado.web.RequestHandler):
 			print("problems", hp1, hp2, hp3, full_hash)
 			self.set_status(503)
 			return
-
-		basepath = f"{hp1}/{hp2}/{hp3}/{full_hash}"
-		url = redirect_url + basepath
-		self.redirect(url, permanent=False)
-
+		fp_ent = merge.model.FASTPULL.find_one({"hashes.sha512" : full_hash})
+		if fp_ent:
+			print("FOUND")
+			# file exists! redirect to CDN for fastest download:
+			basepath = f"{hp1}/{hp2}/{hp3}/{full_hash}"
+			url = redirect_url + basepath
+			self.redirect(url, permanent=False)
+		else:
+			print("NOTFOUND")
+			# file does not exist. Return 404 to avoid redirect loop.
+			self.set_status(404)
 
 DISTFILE_HASHES = False
 
