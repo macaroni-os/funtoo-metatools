@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
 from collections import defaultdict
+from datetime import datetime
+
 import yaml
 import os
 
@@ -33,7 +35,6 @@ def get_kit_pre_post_steps(ctx):
 				merge.steps.SyncFiles(
 					merge.model.FIXUP_REPO.root,
 					{
-						"COPYRIGHT.txt": "COPYRIGHT.txt",
 						"LICENSE.txt": "LICENSE.txt",
 					},
 				),
@@ -70,6 +71,15 @@ def get_kit_pre_post_steps(ctx):
 			out_post_steps += kit_steps["all-kits"]["post"]
 
 	return out_pre_steps, out_post_steps
+
+
+def get_copyright_rst(active_repo_names):
+	cur_year = str(datetime.now().year)
+	out = merge.model.FDATA["copyright"]["default"].replace("{{cur_year}}", cur_year)
+	for overlay in sorted(active_repo_names):
+		if overlay in merge.model.FDATA["copyright"]:
+			out += merge.model.FDATA["copyright"][overlay].replace("{{cur_year}}", cur_year)
+	return out
 
 
 def grab_fdata():

@@ -149,7 +149,7 @@ Querying APIs
 
 It is not required that you query APIs to determine the latest version of a package to build, but this is
 often what is done in an ``autogen.py`` file. To this end, the official method to grab data from a remote
-API is ``hub.pkgtools.fetch.get_page()``. Since this is an ``async`` function, it must be ``await``ed.
+API is ``hub.pkgtools.fetch.get_page()``. Since this is an ``async`` function, it must be ``await``\ ed.
 If what you are retrieving is JSON, then you should pass ``is_json=True`` as a keyword argument, and you
 will get decoded JSON as a return value. Otherwise, you will get a string and will be able to perform
 additional processing. For HTML data, typically people will use the ``re`` (regular expression) module

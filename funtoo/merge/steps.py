@@ -8,6 +8,7 @@ import dyne.org.funtoo.metatools.merge as merge
 
 # TODO: add checks for duplicate catpkgs
 # TODO: add checks for missing catpkgs
+import jinja2
 
 
 class MergeStep:
@@ -17,6 +18,19 @@ class MergeStep:
 
 	async def run(self, tree):
 		pass
+
+
+class GenerateLicensingFile(MergeStep):
+	def __init__(self, active_repo_names):
+		self.active_repo_names = active_repo_names
+
+	async def run(self, kit):
+		with open(os.path.join(merge.model.FIXUP_REPO.root, "COPYRIGHT.rst.tmpl"), "r") as lic_temp:
+			template = jinja2.Template(lic_temp.read())
+		with open(os.path.join(kit.root, "COPYRIGHT.rst"), "wb") as lic_out:
+			lic_out.write(
+				template.render(kit=kit, copyright=merge.foundations.get_copyright_rst(self.active_repo_names)).encode("utf-8")
+			)
 
 
 class ThirdPartyMirrors(MergeStep):
@@ -119,6 +133,17 @@ cache-formats = md5-dict
 		a = open(rn_path + "/repo_name", "w")
 		a.write(self.name + "\n")
 		a.close()
+
+
+class RemoveIfExists(MergeStep):
+	def __init__(self, files):
+		self.files = files
+
+	async def run(self, tree):
+		for file in self.files:
+			path = os.path.join(tree.root, file)
+			if os.path.exists(file):
+				os.unlink(path)
 
 
 class FindAndRemove(MergeStep):

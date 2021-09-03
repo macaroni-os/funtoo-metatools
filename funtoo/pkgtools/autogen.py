@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import asyncio
+import inspect
 import logging
 import os
 import subprocess
@@ -116,8 +117,15 @@ async def gather_pending_tasks(task_list, throw=True):
 		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
 		for done_item in done_list:
 			if throw:
-				result = done_item.result()
-				results.append(result)
+				try:
+					result = done_item.result()
+					results.append(result)
+				except Exception as e:
+					bzb = getattr(done_item, "bzb", None)
+					if bzb is not None:
+						raise pkgtools.ebuild.BreezyError(f"Exception generating {bzb.catpkg}: {str(e)}")
+					else:
+						raise e
 			else:
 				try:
 					result = done_item.result()
@@ -159,9 +167,18 @@ def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=Non
 
 	# This is the path where the autogen lives. Either the autogen.py or the autogen.yaml:
 	common_prefix = os.path.commonprefix([hub.CONTEXT.root, gen_path])
-	path_from_root = gen_path[len(common_prefix) :].lstrip("/")
+	path_from_root = gen_path[len(common_prefix):].lstrip("/")
 	pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
 	return pkginfo
+
+
+def _handle_task_result(task: Task):
+	try:
+		task.result()
+	except asyncio.CancelledError:
+		pass
+	except Exception as e:
+		raise e
 
 
 async def execute_generator(
@@ -221,10 +238,16 @@ async def execute_generator(
 			pkginfo_list = [i async for i in preprocess_func(hub, pkginfo_list)]
 
 		for pkginfo in pkginfo_list:
-			if "version" in pkginfo and pkginfo["version"] != "latest":
-				print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
-			else:
-				print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+			try:
+				if "version" in pkginfo and pkginfo["version"] != "latest":
+					print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
+				else:
+					print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+			except KeyError as ke:
+				raise pkgtools.ebuild.BreezyError(
+					f"{generator_sub_name} encountered a key error: missing value. pkginfo is {pkginfo}. Missing in pkginfo: {ke}"
+				)
+
 			logging.debug(f"Using the following pkginfo for auto-generation: {pkginfo}")
 
 			# Any .push() calls on BreezyBuilds will cause new tasks for those to be appended to
@@ -232,10 +255,21 @@ async def execute_generator(
 
 			async def gen_wrapper(pkginfo):
 				# For now, all generate() methods in autogens are expecting the hub.
-				await hub.THREAD_CTX.sub.generate(hub, **pkginfo)
+				generate = getattr(hub.THREAD_CTX.sub, "generate", None)
+				if generate is None:
+					raise AttributeError(f"generate() not found in {generator_sub}")
+				try:
+					await generate(hub, **pkginfo)
+				except TypeError as te:
+					if not inspect.iscoroutinefunction(generate):
+						raise TypeError(f"generate() in {generator_sub} must be async")
+					else:
+						raise te
 				return pkginfo
 
-			hub.THREAD_CTX.running_autogens.append(Task(gen_wrapper(pkginfo)))
+			task = Task(gen_wrapper(pkginfo))
+			task.add_done_callback(_handle_task_result)
+			hub.THREAD_CTX.running_autogens.append(task)
 
 		await gather_pending_tasks(hub.THREAD_CTX.running_autogens)
 		await gather_pending_tasks(hub.THREAD_CTX.running_breezybuilds)
@@ -252,8 +286,7 @@ def fixup_revision(pkginfo):
 		return
 	if not isinstance(pkginfo["revision"], dict):
 		return
-	print(type(pkginfo), pkginfo)
-	pkginfo["revision"] = pkginfo["revision"].values()[0]
+	pkginfo["revision"] = list(pkginfo["revision"].values())[0]
 
 
 def parse_yaml_rule(package_section=None):
@@ -284,7 +317,7 @@ def parse_yaml_rule(package_section=None):
 		package_name = list(package_section.keys())[0]
 		pkg_section = list(package_section.values())[0]
 		pkg_section["name"] = package_name
-		# fixup_revision(pkg_section)
+		fixup_revision(pkg_section)
 
 		# This is even a more complex format, where we have sub-sections based on versions of the package,
 		# each with their own settings. And we can also have other values which set defaults for this package:
@@ -310,7 +343,7 @@ def parse_yaml_rule(package_section=None):
 				v_pkginfo.update(v_defaults)
 				v_pkginfo.update(v_pkg_section)
 				v_pkginfo["version"] = version
-				# fixup_revision(v_pkginfo)
+				fixup_revision(v_pkginfo)
 				pkginfo_list.append(v_pkginfo)
 		else:
 			pkginfo_list.append(pkg_section)

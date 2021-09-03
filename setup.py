@@ -5,7 +5,7 @@ with open("README.rst", "r") as fh:
 
 setuptools.setup(
 	name="funtoo-metatools",
-	version="0.9.3",
+	version="0.9.5",
 	author="Daniel Robbins",
 	author_email="drobbins@funtoo.org",
 	description="Funtoo framework for auto-creation of ebuilds.",
@@ -21,17 +21,18 @@ setuptools.setup(
 	python_requires=">=3.7",
 	install_requires=[
 		"subpop >= 0.4.2",
-		"Jinja2",
-		"xmltodict",
 		"aiodns",
 		"aiofiles",
 		"aiohttp",
-		"packaging",
-		"pymongo",
-		"tornado",
-		"toml",
 		"beautifulsoup4",
 		"dict_toolbox",
+		"Jinja2 >= 3",
+		"packaging",
+		"pymongo",
+		"PyYAML",
+		"tornado",
+		"toml",
+		"xmltodict",
 	],
 	#   320  sudo emerge -av dict-toolbox
 	#   322  sudo emerge -av aiofiles

@@ -5,7 +5,7 @@ import hashlib
 import logging
 import os
 import sys
-from asyncio import Semaphore, Lock
+from threading import Semaphore, Lock
 from subprocess import getstatusoutput
 from contextlib import asynccontextmanager
 
@@ -20,6 +20,12 @@ hashes on the resultant downloads and ensuring they match what we expect.
 
 The implementation is based around a class called `Download`.
 
+Why do we have a class called 'Download'? Imagine we have an autogen, and it has two Artifacts
+referencing the same file (this can and does happen.) Do we want to download the same file twice?
+No -- it would be far better if we downloaded the file once, and then provided the results to
+each Artifact, saying in effect 'here is the file you wanted to download.' This is why the
+Download class exists.
+
 Because autogen uses asyncio, it's possible for two autogens to try downloading the same file
 at the same time. If they create a `Download` object, this special class will do the magic of looking
 for any active downloads of the same file, and if one exists, it will not fire
@@ -27,52 +33,81 @@ off a new download but instead wait for the existing download to complete. So th
 (code trying to download the file) can remain ignorant of the fact that the download was already
 started previously.
 
-This allows asyncio downloads of potentially identical files to work without complication in
-the autogen.py files or generators so that this complexity does not have to be dealt with by those
-who are simply writing autogens.
+Locking Code
+============
+
+The locking code below deserves some explanation. DL_ACTIVE tracks all the active downloads for
+*all* threads that are running. DL_ACTIVE_LOCK is a lock we use to access this dictionary, when
+we want to read or modify it.
+
+DOWNLOAD_SLOT is the mechanism we used to ensure we only have a certain number (specified by the
+value= parameter) of downloads active at once. Each active download will acquire a slot. When all
+slots are exhausted, any pending downloads will wait for an active slot before they can begin.
 """
 
 DL_ACTIVE_LOCK = Lock()
 DL_ACTIVE = dict()
-DOWNLOAD_SLOT = {}
+DOWNLOAD_SLOT = Semaphore(value=200)
 
 
-async def acquire_download_slot():
+@asynccontextmanager
+async def acquire_download_slot(download):
 	"""
-	This should ensure that the Semaphore is created INSIDE the ioloop, which appears to be necessary:
+	This code originally tried to do this, but it would deadlock::
 
-	https://stackoverflow.com/a/53724990
+	  with DOWNLOAD_SLOT:
+        yield
 
-	Did all this shit get inherited from Java?
+	This code ^^ will deadlock as hit the max semaphore value. The reason? When we hit the max value, it will block
+	for a download slot in the current thread will FREEZE our thread's ioloop, which will prevent another asyncio
+	task from executing which needs to *release* the download slot -- thus the deadlock.
+
+	So instead of using this approach, we will attempt to acquire a download slot in a non-blocking fashion. If we
+	succeed -- great. If not, we will asyncio loop to repeatedly attempt to acquire the slot with a slight delay
+	between each attempt. This ensures that the ioloop can continue to function and release any download slots while
+	we wait.
 	"""
 	global DOWNLOAD_SLOT
-	loop = asyncio.get_running_loop()
-	if id(loop) not in DOWNLOAD_SLOT:
-		DOWNLOAD_SLOT[id(loop)] = Semaphore(value=24)
-	return DOWNLOAD_SLOT[id(loop)]
+	try:
+		while True:
+			success = DOWNLOAD_SLOT.acquire(blocking=False)
+			if not success:
+				await asyncio.sleep(0.1)
+				continue
+			yield
+			break
+	finally:
+			DOWNLOAD_SLOT.release()
+
 
 
 @asynccontextmanager
 async def start_download(download):
 	"""
 	Automatically record the download as being active, and remove from our list when complete.
+
+	While waiting for DL_ACTIVE_LOCK will FREEZE the current thread's ioloop, this is OK because we immediately release
+	the lock after inspecting/modifying the protected resource (DL_ACTIVE in this case.)
 	"""
 	try:
-		async with DL_ACTIVE_LOCK:
+		with DL_ACTIVE_LOCK:
 			DL_ACTIVE[download.final_name] = download
 		yield
 	finally:
-		async with DL_ACTIVE_LOCK:
-			del DL_ACTIVE[download.final_name]
+		with DL_ACTIVE_LOCK:
+			if download.final_name in DL_ACTIVE:
+				del DL_ACTIVE[download.final_name]
 
 
 def get_download(final_name):
 	"""
 	Get a download object for the file we're interested in if one is already being downloaded.
 	"""
-	if final_name in DL_ACTIVE:
-		return DL_ACTIVE[final_name]
-	return None
+	with DL_ACTIVE_LOCK:
+		if final_name in DL_ACTIVE:
+			return DL_ACTIVE[final_name]
+		else:
+			return None
 
 
 HASHES = ["sha256", "sha512", "blake2b"]
@@ -128,8 +163,7 @@ class Download:
 		file, they will get True on success and False on failure (self.futures holds futures for others waiting
 		on this file, and we will future.set_result() with the boolean return code as well.)
 		"""
-		slot = await acquire_download_slot()
-		async with slot:
+		async with acquire_download_slot(self):
 			async with start_download(self):
 				success = True
 				try:
@@ -202,14 +236,14 @@ async def _download(artifact, retry=True):
 			sys.stdout.write(".")
 			sys.stdout.flush()
 
-		await pkgtools.http.http_fetch_stream(artifact.url, on_chunk, retry=retry)
+		await pkgtools.http.http_fetch_stream(artifact.url, on_chunk, retry=retry, extra_headers=artifact.extra_http_headers)
 
 		sys.stdout.write("x")
 		sys.stdout.flush()
 		fd.close()
 		try:
 			os.link(temp_path, final_path)
-		except FileExistsError:
+		except (FileExistsError, FileNotFoundError):
 			# FL-8301: address possible race condition
 			pass
 		final_data = {"size": filesize, "hashes": {}, "path": final_path}

@@ -33,7 +33,7 @@ class CacheMiss(Exception):
 	pass
 
 
-async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=None):
+async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=None, **content_kwargs):
 
 	"""
 	This method is used to execute any fetch-related method, and will handle all the logic of reading from and
@@ -68,15 +68,14 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 				# it is not yet 'stale'.
 				try:
 					result = await pkgtools.fetch_cache.fetch_cache_read(
-						fetch_method.__name__, fetchable, refresh_interval=refresh_interval
+						fetch_method.__name__, fetchable, content_kwargs, refresh_interval=refresh_interval
 					)
-					logging.info(f"Retrieved cached result for {url}")
 					return result["body"]
 				except CacheMiss:
 					# We'll continue and attempt a live fetch of the resource...
 					pass
-			result = await fetch_method(fetchable)
-			await pkgtools.fetch_cache.fetch_cache_write(fetch_method.__name__, fetchable, body=result)
+			result = await fetch_method(fetchable, **content_kwargs)
+			await pkgtools.fetch_cache.fetch_cache_write(fetch_method.__name__, fetchable, content_kwargs, body=result)
 			return result
 		except FetchError as e:
 			if e.retry and attempts + 1 < pkgtools.model.FETCH_ATTEMPTS:
@@ -86,7 +85,7 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 			logging.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
 			# TODO: these should be logged persistently so they can be investigated.
 			try:
-				got = await pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable)
+				got = await pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable, content_kwargs)
 				return got["body"]
 			except CacheMiss as ce:
 				# raise original exception
@@ -96,18 +95,18 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 
 	# If we've gotten here, we've performed all of our attempts to do live fetching.
 	try:
-		result = await pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable, max_age=max_age)
+		result = await pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable, content_kwargs, max_age=max_age)
 		return result["body"]
 	except CacheMiss:
-		await pkgtools.fetch_cache.record_fetch_failure(fetch_method.__name__, fetchable, fail_reason=fail_reason)
+		await pkgtools.fetch_cache.record_fetch_failure(fetch_method.__name__, fetchable, content_kwargs, fail_reason=fail_reason)
 		raise FetchError(
 			fetchable,
 			f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.",
 		)
 
 
-async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False):
-	result = await fetch_harness(pkgtools.http.get_page, fetchable, max_age=max_age, refresh_interval=refresh_interval)
+async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False, **content_kwargs):
+	result = await fetch_harness(pkgtools.http.get_page, fetchable, max_age=max_age, refresh_interval=refresh_interval, **content_kwargs)
 	if not is_json:
 		return result
 	try:

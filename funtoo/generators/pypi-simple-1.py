@@ -14,10 +14,7 @@ GLOBAL_DEFAULTS = {"cat": "dev-python", "refresh_interval": None, "python_compat
 
 async def add_ebuild(json_dict=None, **pkginfo):
 	local_pkginfo = pkginfo.copy()
-	if "inherit" not in local_pkginfo:
-		local_pkginfo["inherit"] = []
-	if "distutils-r1" not in local_pkginfo["inherit"]:
-		local_pkginfo["inherit"].append("distutils-r1")
+	pkgtools.pyhelper.pypi_metadata_init(local_pkginfo, json_dict)
 	pkgtools.pyhelper.expand_pydeps(local_pkginfo)
 
 	if "version" in local_pkginfo and local_pkginfo["version"] != "latest":

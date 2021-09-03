@@ -38,13 +38,14 @@ class Fetchable:
 
 
 class Artifact(Fetchable):
-	def __init__(self, url=None, final_name=None, final_path=None, expect=None, **kwargs):
+	def __init__(self, url=None, final_name=None, final_path=None, expect=None, extra_http_headers=None, **kwargs):
 		super().__init__(url=url, **kwargs)
 		self._final_name = final_name
 		self._final_data = None
 		self._final_path = final_path
 		self.breezybuilds = []
 		self.expect = expect
+		self.extra_http_headers = extra_http_headers
 
 	@property
 	def catpkgs(self):
@@ -258,7 +259,7 @@ class BreezyBuild:
 				if self.version in rev_val:
 					self.revision = rev_val[self.version]
 			else:
-				raise TypeError(f"Unrecognized type for revision= argument for {kwargs}")
+				raise TypeError(f"Unrecognized type for revision= argument for {kwargs}: {repr(type(rev_val))} {isinstance(rev_val, int)} {isinstance(rev_val, dict)} {rev_val is dict}")
 
 		self.template = template
 		self.template_text = template_text
@@ -331,7 +332,9 @@ class BreezyBuild:
 				status = await a.ensure_completed()
 				return a, status
 
-			fetch_tasks_dict[artifact] = asyncio.Task(lil_coroutine(artifact))
+			fetch_task = asyncio.Task(lil_coroutine(artifact))
+			fetch_task.add_done_callback(pkgtools.autogen._handle_task_result)
+			fetch_tasks_dict[artifact] = fetch_task
 
 		# Wait for any artifacts that are still fetching:
 		results, exceptions = await pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values())
@@ -353,6 +356,8 @@ class BreezyBuild:
 		# local context so we can grab the result later. The return value will be the BreezyBuild object itself,
 		# thanks to the wrapper.
 		bzb_task = Task(wrapper(self))
+		bzb_task.bzb = self
+		bzb_task.add_done_callback(pkgtools.autogen._handle_task_result)
 		hub.THREAD_CTX.running_breezybuilds.append(bzb_task)
 
 	@property
@@ -365,6 +370,7 @@ class BreezyBuild:
 	@property
 	def output_pkgdir(self):
 		if self._pkgdir is None:
+			logging.info(f"OUTPUT PKGDIR: {self.output_tree.root} {self.cat} {self.name}")
 			self._pkgdir = os.path.join(self.output_tree.root, self.cat, self.name)
 			os.makedirs(self._pkgdir, exist_ok=True)
 		return self._pkgdir
@@ -429,7 +435,12 @@ class BreezyBuild:
 			template_file = os.path.join(self.template_path, self.template)
 			try:
 				with open(template_file, "r") as tempf:
-					template = jinja2.Template(tempf.read())
+					try:
+						template = jinja2.Template(tempf.read())
+					except jinja2.exceptions.TemplateError as te:
+						raise BreezyError(f"Template error in {template_file}: {repr(te)}")
+					except Exception as te:
+						raise BreezyError(f"Unknown error processing {template_file}: {repr(te)}")
 			except FileNotFoundError as e:
 				logging.error(f"Could not find template: {template_file}")
 				raise BreezyError(f"Template file not found: {template_file}")
@@ -437,7 +448,10 @@ class BreezyBuild:
 			template = jinja2.Template(self.template_text)
 
 		with open(self.output_ebuild_path, "wb") as myf:
-			myf.write(template.render(**self.template_args).encode("utf-8"))
+			try:
+				myf.write(template.render(**self.template_args).encode("utf-8"))
+			except Exception as te:
+				raise BreezyError(f"Error rendering template: {repr(te)}")
 		logging.info("Created: " + os.path.relpath(self.output_ebuild_path))
 
 	async def generate(self):
@@ -453,7 +467,10 @@ class BreezyBuild:
 		if self.name is None:
 			raise BreezyError("Please set 'name' to the package name of this ebuild.")
 		await self.setup()
-		self.create_ebuild()
+		try:
+			self.create_ebuild()
+		except Exception as e:
+			raise BreezyError(f"Error creating ebuild {self.catpkg}: {str(e)}")
 		await self.record_manifest_lines()
 		return self
 
