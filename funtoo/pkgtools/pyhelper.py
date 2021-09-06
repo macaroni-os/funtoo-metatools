@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import logging
 from collections import defaultdict
 
 LICENSE_CLASSIFIER_MAP = {
@@ -92,7 +92,7 @@ def pypi_get_artifact_url(pkginfo, json_dict, strict=True):
 	return artifact_url
 
 
-def expand_pydep(pyatom):
+def expand_pydep(pkginfo, pyatom):
 	"""
 	Takes something from our pydeps YAML that might be "foo", or "sys-apps/foo", or "foo >= 1.2" and convert to
 	the proper Gentoo atom format.
@@ -100,24 +100,31 @@ def expand_pydep(pyatom):
 	# TODO: support ranges?
 	# TODO: pass a ctx variable here so we can have useful error messages about what pkg is triggering the error.
 	psp = pyatom.split()
+	if not len(psp):
+		raise ValueError(f"{pkginfo['cat']}/{pkginfo['name']} appears to have invalid pydeps. Make sure each pydep is specified as a YAML list item starting with '-'.")
+	if psp[0] == "not!":
+		block = "!"
+		psp = psp[1:]
+	else:
+		block = ""
 	if len(psp) == 3 and psp[1] in [">", ">=", "<", "<="]:
 		if "/" in psp[0]:
 			# already has a category
-			return f"{psp[1]}{psp[0]}-{psp[2]}[${{PYTHON_USEDEP}}]"
+			return f"{block}{psp[1]}{psp[0]}-{psp[2]}[${{PYTHON_USEDEP}}]"
 		else:
 			# inject dev-python
-			return f"{psp[1]}dev-python/{psp[0]}-{psp[2]}[${{PYTHON_USEDEP}}]"
+			return f"{block}{psp[1]}dev-python/{psp[0]}-{psp[2]}[${{PYTHON_USEDEP}}]"
 	elif len(psp) == 1:
 		if "/" in pyatom:
-			return f"{pyatom}[${{PYTHON_USEDEP}}]"
+			return f"{block}{pyatom}[${{PYTHON_USEDEP}}]"
 		else:
 			# inject dev-python
-			return f"dev-python/{pyatom}[${{PYTHON_USEDEP}}]"
+			return f"{block}dev-python/{pyatom}[${{PYTHON_USEDEP}}]"
 	else:
-		raise ValueError(f"What the hell is this: {pyatom}")
+		raise ValueError(f"{pkginfo['cat']}/{pkginfo['name']} appears to have an invalid pydep '{pyatom}'.")
 
 
-def create_ebuild_cond_dep(pydeplabel, atoms):
+def create_ebuild_cond_dep(pkginfo, pydeplabel, atoms):
 	"""
 	This function takes a specifier like "py:all" and a list of simplified pythony package atoms and creates a
 	conditional dependency for inclusion in an ebuild. It returns a list of lines (without newline termination,
@@ -132,7 +139,8 @@ def create_ebuild_cond_dep(pydeplabel, atoms):
 		usespec = list(pydeplabel.specifiers)[0]
 
 	for atom in atoms:
-		out_atoms.append(expand_pydep(atom))
+		logging.info(f"PROCESSING ATOM {atom}")
+		out_atoms.append(expand_pydep(pkginfo, atom))
 
 	if usespec:
 		out = [f"{usespec}? ( {' '.join(out_atoms)} )"]
@@ -197,6 +205,8 @@ class ParsedPyDepLabel:
 				self.has_2x_version = True
 			elif ver_spec.startswith("3."):
 				self.has_3x_version = True
+			if ver_spec == "pypy3":
+				self.has_3x_version = True
 			remaining.remove(ver_spec)
 		if len(remaining):
 			raise InvalidPyDepLabel(self)
@@ -211,6 +221,18 @@ class ParsedPyDepLabel:
 	@property
 	def build_dep(self):
 		return "build" in self.mods
+
+	@property
+	def post_dep(self):
+		return "post" in self.mods
+
+	@property
+	def runtime_dep(self):
+		return "runtime" in self.mods or len(self.mods) == 0
+
+	@property
+	def tool_dep(self):
+		return "tool" in self.mods
 
 	@property
 	def py2_enabled(self):
@@ -262,7 +284,7 @@ def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 		if pytype == list:
 			for dep in pkginfo["pydeps"]:
 				# super-simple pydeps are just considered runtime deps
-				expanded_pydeps["rdepend"].append(expand_pydep(dep))
+				expanded_pydeps["rdepend"].append(expand_pydep(pkginfo, dep))
 		elif pytype == dict:
 			for label_str, deps in pkginfo["pydeps"].items():
 				label = ParsedPyDepLabel(label_str)
@@ -271,11 +293,17 @@ def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 						continue
 					elif not compat_ebuild and not label.py3_enabled:
 						continue
+				print(f"PROCESSING COND DEP {label_str} {deps}")
+				cond_dep = create_ebuild_cond_dep(pkginfo, label, deps)
 				if label.build_dep:
-					expanded_pydeps["depend"] += create_ebuild_cond_dep(label, deps)
-				else:
-					expanded_pydeps["rdepend"] += create_ebuild_cond_dep(label, deps)
-	for dep_type in ["depend", "rdepend"]:
+					expanded_pydeps["depend"] += cond_dep
+				if label.runtime_dep:
+					expanded_pydeps["rdepend"] += cond_dep
+				if label.post_dep:
+					expanded_pydeps["pdepend"] += cond_dep
+				if label.tool_dep:
+					expanded_pydeps["bdepend"] += cond_dep
+	for dep_type in ["depend", "rdepend", "pdepend", "bdepend"]:
 		deps = expanded_pydeps[dep_type]
 		if not deps:
 			continue
