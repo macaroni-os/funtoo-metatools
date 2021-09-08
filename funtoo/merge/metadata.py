@@ -634,12 +634,13 @@ def get_eclass_hashes(eclass_sourcedir):
 
 	eclass_hashes = EclassHashCollection(eclass_sourcedir)
 	ecrap = os.path.join(eclass_sourcedir, "eclass")
-	for eclass in os.listdir(ecrap):
-		if not eclass.endswith(".eclass"):
-			continue
-		eclass_path = os.path.join(ecrap, eclass)
-		eclass_name = eclass[:-7]
-		eclass_hashes.hashes[eclass_name] = get_md5(eclass_path)
+	if os.path.isdir(ecrap):
+		for eclass in os.listdir(ecrap):
+			if not eclass.endswith(".eclass"):
+				continue
+			eclass_path = os.path.join(ecrap, eclass)
+			eclass_name = eclass[:-7]
+			eclass_hashes.hashes[eclass_name] = get_md5(eclass_path)
 	return eclass_hashes
 
 
