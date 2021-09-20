@@ -62,7 +62,7 @@ def get_build_info_dir(src_dir):
 	:param src_dir: path to source directory
 	:type src_dir: str
 	:returns meson build info directory
-	:rtype: string
+	:rtype: str
 	"""
 	return os.path.join(src_dir, "builddir", "meson-info")
 
@@ -72,7 +72,7 @@ def get_build_options(src_dir):
 	Get available build options of the Meson project in the given source directory.
 
 	:param src_dir: path to source directory
-	:type src_dir: string
+	:type src_dir: str
 	:returns meson build options
 	:rtype: list[MesonBuildOption]
 	"""
