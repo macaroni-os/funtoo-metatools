@@ -74,7 +74,7 @@ def get_build_options(src_dir):
 	:param src_dir: path to source directory
 	:type src_dir: string
 	:returns meson build options
-	:rtype: list
+	:rtype: list[MesonBuildOption]
 	"""
 	init_build_info(src_dir)
 
@@ -94,7 +94,7 @@ async def get_build_options_from_artifact(src_artifact, src_dir_glob="*"):
 	:param src_dir_glob: glob pattern to locate the source dir
 	:type src_dir_glob: str
 	:returns meson build options
-	:rtype list
+	:rtype list[MesonBuildOption]
 	"""
 	await src_artifact.fetch()
 	src_artifact.extract()
