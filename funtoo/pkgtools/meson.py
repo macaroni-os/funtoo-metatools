@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from enum import Enum
 import glob
 import json
@@ -35,7 +33,7 @@ class MesonBuildOption:
 		self.value = kwargs["value"]
 		self.section: str = kwargs["section"]
 		self.machine: str = kwargs["machine"]
-		self.choices: list | None = kwargs.get("choices")
+		self.choices: list = kwargs.get("choices")
 
 
 def init_build_info(src_dir):
