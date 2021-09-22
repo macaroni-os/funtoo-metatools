@@ -293,7 +293,6 @@ def parse_yaml_rule(package_section=None):
 
 	pkginfo_list = []
 	defaults = {}
-
 	if isinstance(package_section, str):
 
 		# A simple '- pkgname' one-line format:
@@ -366,6 +365,12 @@ def queue_all_yaml_autogens():
 		if not len(file):
 			continue
 		yaml_base_path = os.path.dirname(file)
+		# This will be [ "category", "pkgname" ] or [ "category" ] if it's nestled inside a category dir:
+		yaml_base_path_split = yaml_base_path[len(hub.CONTEXT.root)+1:].split("/")
+		if len(yaml_base_path_split):
+			cat = yaml_base_path_split[0]
+		else:
+			cat = None
 
 		with open(file, "r") as myf:
 			for rule_name, rule in safe_load(myf.read()).items():
@@ -393,11 +398,15 @@ def queue_all_yaml_autogens():
 
 				pkginfo_list = []
 				for package in rule["packages"]:
-
 					package_defaults, parsed_pkg = parse_yaml_rule(package_section=package)
-
 					pkginfo_list += parsed_pkg
 					defaults.update(package_defaults)
+
+				if cat is not None:
+					# inject category based on location of autogen.yaml if cat is not actually specified.
+					for pkg_dict in pkginfo_list:
+						if "cat" not in pkg_dict:
+							pkg_dict["cat"] = cat
 
 				PENDING_QUE.append(
 					{
