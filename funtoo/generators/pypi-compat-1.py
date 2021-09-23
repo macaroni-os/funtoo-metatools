@@ -19,14 +19,17 @@ import dyne.org.funtoo.metatools.pkgtools as pkgtools
 GLOBAL_DEFAULTS = {"cat": "dev-python", "refresh_interval": None, "python_compat": "python3+"}
 
 
-async def add_ebuild(json_dict=None, compat_ebuild=False, **pkginfo):
+async def add_ebuild(json_dict=None, compat_ebuild=False, has_compat_ebuild=False, **pkginfo):
+	"""
+	has_compat_ebuild is a boolean that lets us know, when we're creating the non-compat ebuild --
+	will we be creating a compat ebuild also? Because we do special filtering on python_compat
+	in this case.
+	"""
 	local_pkginfo = pkginfo.copy()
 	assert "python_compat" in local_pkginfo, f"python_compat is not defined in {local_pkginfo}"
 	local_pkginfo["compat_ebuild"] = compat_ebuild
 	pkgtools.pyhelper.pypi_metadata_init(local_pkginfo, json_dict)
 	pkgtools.pyhelper.expand_pydeps(local_pkginfo, compat_mode=True, compat_ebuild=compat_ebuild)
-
-
 
 	if compat_ebuild:
 		local_pkginfo["python_compat"] = "python2_7"
@@ -34,6 +37,16 @@ async def add_ebuild(json_dict=None, compat_ebuild=False, **pkginfo):
 		local_pkginfo["name"] = local_pkginfo["name"] + "-compat"
 		artifact_url = pkgtools.pyhelper.sdist_artifact_url(json_dict["releases"], local_pkginfo["version"])
 	else:
+		if has_compat_ebuild:
+			compat_split = local_pkginfo["python_compat"].split()
+			new_compat_split = []
+			for compat_item in compat_split:
+				if compat_item == "python2+":
+					# Since we're making a compat ebuild, we really don't want our main ebuild to advertise py2 compat.
+					new_compat_split.append("python3+")
+				else:
+					new_compat_split.append(compat_item)
+			local_pkginfo["python_compat"] = " ".join(new_compat_split)
 		if "version" in local_pkginfo and local_pkginfo["version"] != "latest":
 			version_specified = True
 		else:
@@ -66,8 +79,9 @@ async def generate(hub, **pkginfo):
 		f"https://pypi.org/pypi/{pypi_name}/json", refresh_interval=pkginfo["refresh_interval"]
 	)
 	json_dict = json.loads(json_data, object_pairs_hook=OrderedDict)
-	await add_ebuild(json_dict, compat_ebuild=False, **pkginfo)
-	if "compat" in pkginfo and pkginfo["compat"]:
+	do_compat_ebuild = "compat" in pkginfo and pkginfo["compat"]
+	await add_ebuild(json_dict, compat_ebuild=False, has_compat_ebuild=do_compat_ebuild, **pkginfo)
+	if do_compat_ebuild:
 		print("pushing for " + pkginfo["compat"])
 		await add_ebuild(json_dict, compat_ebuild=True, **pkginfo)
 
