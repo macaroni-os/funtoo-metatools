@@ -379,7 +379,8 @@ def queue_all_yaml_autogens():
 					defaults = rule["defaults"].copy()
 				else:
 					defaults = {}
-
+				if "cat" not in defaults and cat is not None:
+					defaults["cat"] = cat
 				if "generator" in rule:
 					sub_path = os.path.join(yaml_base_path, "generators")
 					sub_name = rule["generator"]
@@ -401,12 +402,6 @@ def queue_all_yaml_autogens():
 					package_defaults, parsed_pkg = parse_yaml_rule(package_section=package)
 					pkginfo_list += parsed_pkg
 					defaults.update(package_defaults)
-
-				if cat is not None:
-					# inject category based on location of autogen.yaml if cat is not actually specified.
-					for pkg_dict in pkginfo_list:
-						if "cat" not in pkg_dict:
-							pkg_dict["cat"] = cat
 
 				PENDING_QUE.append(
 					{
