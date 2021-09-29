@@ -19,7 +19,7 @@ hub = DoItHub()
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 import dyne.org.funtoo.metatools.merge as merge
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.ERROR)
 
 CLI_CONFIG = {
 	"start_path": {"default": os.getcwd(), "os": "AUTOGEN_START_PATH", "help": "Where to start processing"},
@@ -57,7 +57,7 @@ if __name__ == "__main__":
 			if msg is not None:
 				logging.error(f"Message: {msg}")
 			traceback.print_exception(*exc_info)
-		sys.stderr.write("\n\nErrors encountered.\n")
+		logging.error("\n\nErrors encountered.\n")
 		sys.exit(1)
 # TODO: add after-action report (listing any failures.)
 # TODO: add mass-autogen YAML support.

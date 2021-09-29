@@ -173,6 +173,7 @@ class Download:
 					if throw:
 						raise fe
 					else:
+						logging.error(f"FETCH ERROR: {self.artifacts[0].url}")
 						success = False
 
 				if success:
