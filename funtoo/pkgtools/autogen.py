@@ -212,7 +212,6 @@ async def execute_generator(
 	# and post-tasks:
 
 	async def generator_thread_task(pkginfo_list):
-		print(f"********************** Executing generator {generator_sub_name}")
 
 		hub.THREAD_CTX.sub = generator_sub
 		hub.THREAD_CTX.running_autogens = []
@@ -240,9 +239,9 @@ async def execute_generator(
 		for pkginfo in pkginfo_list:
 			try:
 				if "version" in pkginfo and pkginfo["version"] != "latest":
-					print(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
+					logging.info(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
 				else:
-					print(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+					logging.info(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
 			except KeyError as ke:
 				raise pkgtools.ebuild.BreezyError(
 					f"{generator_sub_name} encountered a key error: missing value. pkginfo is {pkginfo}. Missing in pkginfo: {ke}"
