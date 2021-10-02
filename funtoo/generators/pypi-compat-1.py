@@ -82,7 +82,6 @@ async def generate(hub, **pkginfo):
 	do_compat_ebuild = "compat" in pkginfo and pkginfo["compat"]
 	await add_ebuild(json_dict, compat_ebuild=False, has_compat_ebuild=do_compat_ebuild, **pkginfo)
 	if do_compat_ebuild:
-		print("pushing for " + pkginfo["compat"])
 		await add_ebuild(json_dict, compat_ebuild=True, **pkginfo)
 
 
