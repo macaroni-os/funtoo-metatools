@@ -293,7 +293,6 @@ def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 						continue
 					elif not compat_ebuild and not label.py3_enabled:
 						continue
-				print(f"PROCESSING COND DEP {label_str} {deps}")
 				cond_dep = create_ebuild_cond_dep(pkginfo, label, deps)
 				if label.build_dep:
 					expanded_pydeps["depend"] += cond_dep
