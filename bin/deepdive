@@ -9,7 +9,7 @@ import dyne.org.funtoo.metatools.merge as merge
 import logging
 from dict_tools.data import NamespaceDict
 from funtoo.merge.tree import GitTree
-
+import sys
 
 async def insert_kit(ctx):
 	ctx, items_to_insert = await merge.kit.get_deepdive_kit_items(ctx)
@@ -24,7 +24,7 @@ async def insert_kit(ctx):
 
 if __name__ == "__main__":
 
-	merge.apply_config(release="1.4-release")
+	merge.apply_config(release=sys.argv[1])
 	merge.model.GIT_CLASS = GitTree
 	merge.model.FIXUP_REPO = GitTree(
 		"kit-fixups",
@@ -44,6 +44,7 @@ if __name__ == "__main__":
 	merge.model.META_REPO.initialize()
 	merge.model.FIXUP_REPO.initialize()
 	merge.model.KIT_GROUPS = list(merge.foundations.kit_groups())
+	merge.model.RELEASE_INFO = merge.foundations.release_info()
 	pipeline_keys, pipeline_groups = merge.sources.get_kits_in_correct_processing_order()
 
 	merge.model.DEEPDIVE.delete_many({})
