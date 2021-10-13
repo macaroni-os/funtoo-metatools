@@ -85,10 +85,10 @@ async def http_fetch_stream(url, on_chunk, retry=True, extra_headers=None):
 	completed = False
 	async with semi:
 		while not completed and attempts < max_attempts:
-			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ttl_dns_cache=300, ssl=False)
+			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ttl_dns_cache=300, verify_ssl=False)
 			try:
 				async with aiohttp.ClientSession(
-					connector=connector, timeout=aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)
+					connector=connector, timeout=aiohttp.ClientTimeout(connect=3.0, sock_connect=3.0, total=None, sock_read=8.0)
 				) as http_session:
 					headers = get_fetch_headers()
 					if extra_headers:
@@ -146,24 +146,33 @@ async def http_fetch(url, encoding=None):
 	"""
 	hostname = get_hostname(url)
 	semi = await acquire_host_semaphore(hostname)
-	async with semi:
-		connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ssl=False)
-		async with aiohttp.ClientSession(
-			connector=connector, timeout=aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)
-		) as http_session:
-			async with http_session.get(
-				url, headers=get_fetch_headers(), timeout=None, **get_auth_kwargs(hostname, url)
-			) as response:
-				if response.status != 200:
-					reason = (await response.reason()).strip()
-					if response.status in [400, 404, 410]:
-						# No need to retry as the server has just told us that the resource does not exist.
-						retry = False
-					else:
-						retry = True
-					raise pkgtools.fetch.FetchError(url, f"HTTP fetch Error: {url}: {response.status}: {reason[:40]}", retry=retry)
-				return await response.text(encoding=encoding)
-		return None
+
+	try:
+		async with semi:
+			sys.stdout.write('-')
+			sys.stdout.flush()
+			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), verify_ssl=False)
+			async with aiohttp.ClientSession(
+				connector=connector, timeout=aiohttp.ClientTimeout(connect=3.0, sock_connect=3.0, total=3.0, sock_read=3.0)
+			) as http_session:
+				sys.stdout.write(f'={url}\n')
+				async with http_session.get(
+					url, headers=get_fetch_headers(), timeout=None, **get_auth_kwargs(hostname, url)
+				) as response:
+					if response.status != 200:
+						reason = (await response.text()).strip()
+						if response.status in [400, 404, 410]:
+							# No need to retry as the server has just told us that the resource does not exist.
+							retry = False
+						else:
+							retry = True
+						sys.stdout.write(f"!!!{url} {response.status} {reason[:40]}")
+						raise pkgtools.fetch.FetchError(url, f"HTTP fetch Error: {url}: {response.status}: {reason[:40]}", retry=retry)
+					result = await response.text(encoding=encoding)
+					sys.stdout.write(f'>{url} {len(result)} bytes\n')
+					return result
+	except aiohttp.ClientConnectorError as ce:
+		raise pkgtools.fetch.FetchError(url, f"Could not connect to {url}: {repr(ce)}", retry=False)
 
 
 async def get_page(url, encoding=None):
@@ -186,6 +195,7 @@ async def get_page(url, encoding=None):
 		else:
 			msg = f"Couldn't get_page due to exception {e.__class__.__name__}"
 			logging.error(url + ": " + msg)
+			logging.exception(e)
 			raise pkgtools.fetch.FetchError(url, msg)
 
 
