@@ -10,7 +10,7 @@ from dict_tools.data import NamespaceDict
 
 
 def initialize_repo(repo_dict):
-	print("Going to initialize", repo_dict)
+	logging.warning(f"Going to initialize/git fetch for {repo_dict['name']}")
 	repo_name = repo_dict["name"]
 	repo_url = repo_dict["url"]
 	repo_key = repo_name
@@ -35,19 +35,21 @@ def initialize_repo(repo_dict):
 		)
 		repo_obj.initialize()
 		merge.model.SOURCE_REPOS[repo_key] = repo_obj
-
+	logging.warning(f"Git updates for {repo_dict['name']} complete.")
 
 async def initialize_sources(source):
 	if merge.model.CURRENT_SOURCE_DEF == source:
 		return
 	repos = list(merge.foundations.get_repos(source))
 	repo_futures = []
-	with ThreadPoolExecutor(max_workers=8) as executor:
+	with ThreadPoolExecutor(max_workers=1) as executor:
 		for repo_dict in repos:
 			fut = executor.submit(initialize_repo, repo_dict)
 			repo_futures.append(fut)
-	for repo_fut in as_completed(repo_futures):
-		continue
+		for repo_fut in as_completed(repo_futures):
+			# Getting .result() will also cause any exception to be thrown:
+			repo_dict = repo_fut.result()
+			continue
 	merge.model.CURRENT_SOURCE_DEF = source
 
 
