@@ -1,0 +1,27 @@
+#!/bin/sh
+
+ARGS=()
+
+while [ "$#" -gt 0 ]; do
+	key="$1"
+
+LOGPATH=$HOME/repo_tmp/regen-log/
+install -d $LOGPATH
+
+	case "$key" in
+		--logfile)
+			LOGFILE="$2"
+			shift 2
+			;;
+		*)
+			ARGS+=("$1")
+			shift
+			;;
+	esac
+done
+( cd $HOME/development/funtoo-metatools; git pull )
+if [ $? -ne 0 ]; then
+	echo "Failed to update metatools. Exiting."
+	exit 1
+fi
+merge-kits --prod "${ARGS[@]}" 2>&1 | tee "$LOGPATH/${LOGFILE:-output-$(date +%F_%T).log}"
