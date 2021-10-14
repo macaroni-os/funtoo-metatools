@@ -87,7 +87,7 @@ async def http_fetch_stream(url, on_chunk, retry=True, extra_headers=None):
 	completed = False
 	async with semi:
 		while not completed and attempts < max_attempts:
-			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ttl_dns_cache=300, verify_ssl=False)
+			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ttl_dns_cache=300)
 			try:
 				async with aiohttp.ClientSession(
 					connector=connector, timeout=http_timeout
@@ -153,7 +153,7 @@ async def http_fetch(url, encoding=None):
 		async with semi:
 			sys.stdout.write('-')
 			sys.stdout.flush()
-			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), verify_ssl=False)
+			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver())
 			http_session = aiohttp.ClientSession(connector=connector, timeout=http_timeout)
 			try:
 				# This mess below is me being paranoid about acquiring the session possibly timing out. This could potentially
