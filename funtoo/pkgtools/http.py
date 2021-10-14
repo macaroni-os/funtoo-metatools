@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import asyncio
 from asyncio import Semaphore
 from collections import defaultdict
 from urllib.parse import urlparse
@@ -17,6 +17,7 @@ proper headers and authentication, etc.
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
+http_timeout = aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)
 
 async def get_resolver():
 	"""
@@ -35,6 +36,7 @@ async def acquire_host_semaphore(hostname):
 	if semaphores is None:
 		semaphores = hub.THREAD_CTX.http_semaphores = defaultdict(lambda: Semaphore(value=8))
 	return semaphores[hostname]
+
 
 
 chunk_size = 262144
@@ -88,7 +90,7 @@ async def http_fetch_stream(url, on_chunk, retry=True, extra_headers=None):
 			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), ttl_dns_cache=300, verify_ssl=False)
 			try:
 				async with aiohttp.ClientSession(
-					connector=connector, timeout=aiohttp.ClientTimeout(connect=3.0, sock_connect=3.0, total=None, sock_read=8.0)
+					connector=connector, timeout=http_timeout
 				) as http_session:
 					headers = get_fetch_headers()
 					if extra_headers:
@@ -152,13 +154,19 @@ async def http_fetch(url, encoding=None):
 			sys.stdout.write('-')
 			sys.stdout.flush()
 			connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await get_resolver(), verify_ssl=False)
-			async with aiohttp.ClientSession(
-				connector=connector, timeout=aiohttp.ClientTimeout(connect=3.0, sock_connect=3.0, total=3.0, sock_read=3.0)
-			) as http_session:
+			http_session = aiohttp.ClientSession(connector=connector, timeout=http_timeout)
+			try:
+				# This mess below is me being paranoid about acquiring the session possibly timing out. This could potentially
+				# happen due to low-level SSL problems. But you would typically just use an:
+				#
+				#   async with aiohttp.ClientSession(...) as http_session:
+				#
+				# Instead I, in a paranoid fashion, get the session with a timeout of 3 seconds. This may be extreme paranoia
+				# but I *think* it was locking up here when GitHub had some HTTP issues so I want to keep it looking this nasty.
+				sess_fut = http_session.__aenter__()
+				await asyncio.wait_for(sess_fut, timeout=3.0)
 				sys.stdout.write(f'={url}\n')
-				async with http_session.get(
-					url, headers=get_fetch_headers(), timeout=None, **get_auth_kwargs(hostname, url)
-				) as response:
+				async with http_session.get(url, headers=get_fetch_headers(), **get_auth_kwargs(hostname, url)) as response:
 					if response.status != 200:
 						reason = (await response.text()).strip()
 						if response.status in [400, 404, 410]:
@@ -171,6 +179,11 @@ async def http_fetch(url, encoding=None):
 					result = await response.text(encoding=encoding)
 					sys.stdout.write(f'>{url} {len(result)} bytes\n')
 					return result
+			except asyncio.TimeoutError:
+				raise pkgtools.fetch.FetchError(url, f"aiohttp clientsession timeout: {url}")
+			finally:
+				await http_session.__aexit__(None, None, None)
+
 	except aiohttp.ClientConnectorError as ce:
 		raise pkgtools.fetch.FetchError(url, f"Could not connect to {url}: {repr(ce)}", retry=False)
 
