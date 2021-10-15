@@ -3,6 +3,7 @@ import asyncio
 import json
 import logging
 import re
+import sys
 
 """
 This sub implements high-level fetching logic. Not the lower-level HTTP stuff. Things involving
@@ -58,6 +59,12 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 	url = fetchable if type(fetchable) == str else fetchable.url
 	attempts = 0
 	fail_reason = None
+	if refresh_interval is None:
+		if pkgtools.model.FETCH_CACHE_INTERVAL is not None:
+			# pkgtools.modle.FETCH_CACHE_INTERVAL defaults to 15 minutes and will allow caching of stuff within that window
+			# by default unless overridden by the doit --immediate option, or if there was an explicit refresh interval passed
+			# to this function.
+			refresh_interval = pkgtools.model.FETCH_CACHE_INTERVAL
 	while attempts < pkgtools.model.FETCH_ATTEMPTS:
 		attempts += 1
 		try:
@@ -70,6 +77,7 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 					result = await pkgtools.fetch_cache.fetch_cache_read(
 						fetch_method.__name__, fetchable, content_kwargs, refresh_interval=refresh_interval
 					)
+					sys.stdout.write(f'>{fetchable} (cached)\n')
 					return result["body"]
 				except CacheMiss:
 					# We'll continue and attempt a live fetch of the resource...
