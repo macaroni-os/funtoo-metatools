@@ -116,10 +116,10 @@ def expand_pydep(pkginfo, pyatom):
 			return f"{block}{psp[1]}dev-python/{psp[0]}-{psp[2]}[${{PYTHON_USEDEP}}]"
 	elif len(psp) == 1:
 		if "/" in pyatom:
-			return f"{block}{pyatom}[${{PYTHON_USEDEP}}]"
+			return f"{block}{psp[0]}[${{PYTHON_USEDEP}}]"
 		else:
 			# inject dev-python
-			return f"{block}dev-python/{pyatom}[${{PYTHON_USEDEP}}]"
+			return f"{block}dev-python/{psp[0]}[${{PYTHON_USEDEP}}]"
 	else:
 		raise ValueError(f"{pkginfo['cat']}/{pkginfo['name']} appears to have an invalid pydep '{pyatom}'.")
 
