@@ -34,7 +34,10 @@ class MergeConfig(MinimalConfig):
 	mirror_repos = False
 	nest_kits = True
 	git_class = AutoCreatedGitTree
+
 	source_repos = {}
+	metadata_error_stats = []
+	processing_error_stats = []
 
 	# This is used to grab a reference to the eclasses in core kit during regen:
 	eclass_root = None
@@ -120,7 +123,8 @@ class MergeConfig(MinimalConfig):
 			root=self.dest_trees + "/meta-repo",
 			origin_check=True if self.prod else None,
 			mirror=self.mirror_url.rstrip("/") + "/meta-repo" if self.mirror_repos else False,
-			create_branches=self.create_branches
+			create_branches=self.create_branches,
+			model=self
 		)
 
 		self.start_time = datetime.utcnow()
@@ -131,6 +135,7 @@ class MergeConfig(MinimalConfig):
 			url=self.kit_fixups_url,
 			root=self.source_trees + "/kit-fixups",
 			checkout_all_branches=False,
+			model=self
 		)
 
 		self.meta_repo.initialize()
@@ -276,7 +281,8 @@ class MergeConfig(MinimalConfig):
 			yield repo_dict
 
 	def get_package_data(self, ctx):
-		key = f"{ctx.kit_name}/{ctx.kit_branch}"
+		print(ctx)
+		key = f"{ctx.kit.name}/{ctx.kit.branch}"
 		if key not in self._package_data_dict:
 			# Try to use branch-specific packages.yaml if it exists. Fall back to global kit-specific YAML:
 			fn = f"{self.kit_fixups.root}/{key}/packages.yaml"
@@ -305,7 +311,7 @@ class MergeConfig(MinimalConfig):
 			return section[release][0]
 		return None
 
-	def get_excludes_from_yaml(self, ctx):
+	def get_excludes(self, ctx):
 		"""
 		Grabs the excludes: section from packages.yaml, which is used to remove stuff from the resultant
 		kit that accidentally got copied by merge scripts (due to a directory looking like an ebuild

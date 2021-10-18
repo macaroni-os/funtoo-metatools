@@ -8,6 +8,8 @@ from concurrent.futures.thread import ThreadPoolExecutor
 import dyne.org.funtoo.metatools.merge as merge
 from dict_tools.data import NamespaceDict
 
+from metatools.tree import GitTree
+
 
 def initialize_repo(repo_dict):
 	logging.warning(f"Going to initialize/git fetch for {repo_dict['name']}")
@@ -24,7 +26,7 @@ def initialize_repo(repo_dict):
 			repo_obj.gitCheckout(branch=repo_branch)
 	else:
 		path = repo_name
-		repo_obj = merge.tree.GitTree(
+		repo_obj = GitTree(
 			repo_name,
 			url=repo_url,
 			root="%s/%s" % (merge.model.source_trees, path),
@@ -32,6 +34,7 @@ def initialize_repo(repo_dict):
 			commit_sha1=repo_sha1,
 			origin_check=False,
 			reclone=False,
+			model=merge.model
 		)
 		repo_obj.initialize()
 		merge.model.source_repos[repo_key] = repo_obj
@@ -41,7 +44,7 @@ def initialize_repo(repo_dict):
 async def initialize_sources(source):
 	if merge.model.current_source_def == source:
 		return
-	repos = list(merge.foundations.get_repos(source))
+	repos = list(merge.model.get_repos(source))
 	repo_futures = []
 	with ThreadPoolExecutor(max_workers=1) as executor:
 		for repo_dict in repos:

@@ -56,6 +56,7 @@ class Tree:
 		self.mirror = False
 		self.url = None
 		self.model = model
+		assert model is not None
 
 	def logTree(self, srctree):
 		# record name and SHA of src tree in dest tree, used for git commit message/auditing:
@@ -261,7 +262,7 @@ class GitTree(Tree):
 		reclone: bool = False,
 		pull: bool = True,
 		checkout_all_branches: bool = True,
-		model = None
+		model=None
 	):
 
 		super().__init__(root=root, model=model)

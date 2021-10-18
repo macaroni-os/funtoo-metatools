@@ -8,7 +8,7 @@ from concurrent.futures.thread import ThreadPoolExecutor
 
 from dict_tools.data import NamespaceDict
 
-from metatools.thread import run_async_adapter
+from metatools.config.merge import MergeConfig
 from subpop.hub import Hub
 
 hub = Hub()
@@ -20,9 +20,10 @@ class MergeError(Exception):
 	pass
 
 
-async def main_thread():
+async def main_thread(**kwargs):
 
-	await merge.launch(moons={"regen"})
+	# PASS OPTIONS!
+	await merge.launch(MergeConfig, **kwargs)
 
 	# We want to delete all locally-cloned independent kits before we start processing, so we re-clone them to get
 	# pristine copies with the latest commits (see FL-7935):
@@ -49,7 +50,7 @@ async def main_thread():
 				ctx = NamespaceDict()
 				ctx["kit"] = NamespaceDict(kit_dict)
 				# merge.kit.generate_kit does the real work:
-				future = executor.submit(run_async_adapter, merge.kit.generate_kit, ctx)
+				future = executor.submit(hub.run_async_adapter, merge.kit.generate_kit, ctx)
 				regen_futures.append(future)
 			for future in as_completed(regen_futures):
 				ctx, tree_obj, tree_sha1 = future.result()
@@ -103,8 +104,8 @@ def parse_args():
 if __name__ == "__main__":
 
 	# TODO: do something with OPTIONS!
-	OPTIONS = parse_args()
-	hub.LOOP.run_until_complete(main_thread())
+	args = parse_args()
+	hub.LOOP.run_until_complete(main_thread(release=args.release))
 	sys.exit(0)
 
 # vim: ts=4 sw=4 noet

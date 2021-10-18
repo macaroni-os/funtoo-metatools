@@ -30,8 +30,8 @@ def cleanup_error_logs():
 
 def display_error_summary():
 	for stat_list, name, shortname in [
-		(merge.model.METADATA_ERROR_STATS, "metadata extraction errors", "errors"),
-		(merge.model.PROCESSING_WARNING_STATS, "warnings", "warnings"),
+		(merge.model.metadata_error_stats, "metadata extraction errors", "errors"),
+		(merge.model.processing_warning_stats, "warnings", "warnings"),
 	]:
 		if len(stat_list):
 			for stat_info in stat_list:
@@ -39,7 +39,7 @@ def display_error_summary():
 				logging.warning(f"The following kits had {name}:")
 				branch_info = f"{stat_info.name} branch {stat_info.branch}".ljust(30)
 				logging.warning(f"* {branch_info} -- {stat_info.count} {shortname}.")
-			logging.warning(f"{name} errors logged to {merge.model.MERGE_CONFIG.temp_path}.")
+			logging.warning(f"{name} errors logged to {merge.model.temp_path}.")
 
 
 
@@ -750,8 +750,8 @@ def do_package_use_line(pkg, def_python, bk_python, imps):
 
 
 def get_outpath(repo_obj):
-	os.makedirs(os.path.join(merge.model.MERGE_CONFIG.temp_path, "kit_cache"), exist_ok=True)
-	return os.path.join(merge.model.MERGE_CONFIG.temp_path, "kit_cache", f"{repo_obj.name}-{repo_obj.branch}")
+	os.makedirs(os.path.join(merge.model.temp_path, "kit_cache"), exist_ok=True)
+	return os.path.join(merge.model.temp_path, "kit_cache", f"{repo_obj.name}-{repo_obj.branch}")
 
 
 def load_json(fn, validate=True):
@@ -833,10 +833,10 @@ def flush_kit(repo_obj, save=True, prune=True):
 		# Add summary to hub of error count for this kit, and also write out the error logs:
 
 		error_outpath = os.path.join(
-			merge.model.MERGE_CONFIG.temp_path, f"metadata-errors-{repo_obj.name}-{repo_obj.branch}.log"
+			merge.model.temp_path, f"metadata-errors-{repo_obj.name}-{repo_obj.branch}.log"
 		)
 		if len(repo_obj.METADATA_ERRORS):
-			merge.model.METADATA_ERROR_STATS.append(
+			merge.model.metadata_error_stats.append(
 				{"name": repo_obj.name, "branch": repo_obj.branch, "count": len(repo_obj.METADATA_ERRORS)}
 			)
 			with open(error_outpath, "w") as f:
@@ -845,9 +845,9 @@ def flush_kit(repo_obj, save=True, prune=True):
 			if os.path.exists(error_outpath):
 				os.unlink(error_outpath)
 
-		error_outpath = os.path.join(merge.model.MERGE_CONFIG.temp_path, f"warnings-{repo_obj.name}-{repo_obj.branch}.log")
+		error_outpath = os.path.join(merge.model.temp_path, f"warnings-{repo_obj.name}-{repo_obj.branch}.log")
 		if len(repo_obj.PROCESSING_WARNINGS):
-			merge.model.PROCESSING_WARNING_STATS.append(
+			merge.model.processing_warning_stats.append(
 				{"name": repo_obj.name, "branch": repo_obj.branch, "count": len(repo_obj.PROCESSING_WARNINGS)}
 			)
 			with open(error_outpath, "w") as f:
