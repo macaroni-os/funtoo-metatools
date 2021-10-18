@@ -4,6 +4,22 @@ import re
 import subprocess
 
 
+def escape_module_str(version):
+	"""
+	This method will escape a module string to comply with the Go Modules reference.
+
+	https://golang.org/ref/mod#module-cache
+	"""
+
+	def escape_character(ch):
+		if ch.isupper():
+			return f"!{ch.lower()}"
+
+		return ch
+
+	return ''.join([escape_character(c) for c in version])
+
+
 async def get_gosum_artifacts(gosum_path):
 	"""
 	This method will extract package data from ``go.sum`` and generate Artifacts for all packages it finds.
@@ -13,11 +29,11 @@ async def get_gosum_artifacts(gosum_path):
 	gosum = ""
 	gosum_artifacts = []
 	for line in gosum_lines:
-		module = line.split()
+		module = escape_module_str(line).split()
 		if not len(module):
 			continue
 		gosum = gosum + '\t"' + module[0] + " " + module[1] + '"\n'
-		module_path = re.sub("([A-Z]{1})", r"!\1", module[0]).lower()
+		module_path = module[0]
 		module_ver = module[1].split("/")
 		module_ext = "zip"
 		if "go.mod" in module[1]:
