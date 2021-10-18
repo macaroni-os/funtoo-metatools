@@ -5,7 +5,7 @@
 # $ list-kits 1.4-release
 
 import sys
-from funtoo.merge.tree import GitTree
+from metatools.tree import GitTree
 from subpop.hub import Hub
 
 import dyne.org.funtoo.metatools.merge as merge

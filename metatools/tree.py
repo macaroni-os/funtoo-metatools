@@ -5,8 +5,6 @@ import subprocess
 
 debug = True
 
-import dyne.org.funtoo.metatools.merge as merge
-
 
 class ShellError(Exception):
 	pass
@@ -49,7 +47,7 @@ def headSHA1(tree):
 
 
 class Tree:
-	def __init__(self, root=None):
+	def __init__(self, root=None, model=None):
 		self.root = root
 		self.autogenned = False
 		self.name = None
@@ -57,6 +55,7 @@ class Tree:
 		self.forcepush = False
 		self.mirror = False
 		self.url = None
+		self.model = model
 
 	def logTree(self, srctree):
 		# record name and SHA of src tree in dest tree, used for git commit message/auditing:
@@ -86,7 +85,7 @@ class Tree:
 		print(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
 		# use subprocess.call so we can see the output of autogen:
 		retcode = subprocess.call(
-			f"cd {autogen_path} && doit --release {merge.model.RELEASE} --fastpull",
+			f"cd {autogen_path} && doit --release {self.model.release} --fastpull",
 			shell=True,
 		)
 		if retcode != 0:
@@ -208,8 +207,8 @@ class AutoCreatedGitTree(Tree):
 	stuff"-type tree.
 	"""
 
-	def __init__(self, name: str, branch: str = "master", root: str = None, commit_sha1: str = None, **kwargs):
-		super().__init__(root=root)
+	def __init__(self, name: str, branch: str = "master", root: str = None, commit_sha1: str = None, model=None, **kwargs):
+		super().__init__(root=root, model=model)
 		self.branch = branch
 		self.name = self.reponame = name
 		self.has_cleaned = False
@@ -262,9 +261,10 @@ class GitTree(Tree):
 		reclone: bool = False,
 		pull: bool = True,
 		checkout_all_branches: bool = True,
+		model = None
 	):
 
-		super().__init__(root=root)
+		super().__init__(root=root, model=model)
 
 		self.name = name
 		self.url = url
@@ -293,7 +293,7 @@ class GitTree(Tree):
 
 	def _initialize_tree(self):
 		if self.root is None:
-			base = merge.model.MERGE_CONFIG.source_trees
+			base = self.model.source_trees
 			self.root = "%s/%s" % (base, self.name)
 
 		if os.path.isdir("%s/.git" % self.root) and self.reclone:
@@ -484,11 +484,11 @@ class GitTree(Tree):
 
 
 class RsyncTree(Tree):
-	def __init__(self, name, url="rsync://rsync.us.gentoo.org/gentoo-portage/"):
+	def __init__(self, name, url="rsync://rsync.us.gentoo.org/gentoo-portage/", model=None):
 		super().__init__()
 		self.name = name
 		self.url = url
-		base = merge.model.MERGE_CONFIG.source_trees
+		base = model.source_trees
 		self.root = "%s/%s" % (base, self.name)
 		if not os.path.exists(base):
 			os.makedirs(base)

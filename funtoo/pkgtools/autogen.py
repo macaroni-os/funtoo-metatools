@@ -14,7 +14,6 @@ from yaml import safe_load
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 import dyne.org.funtoo.metatools.generators as generators
-import dyne.org.funtoo.metatools.merge as merge
 
 from subpop.util import load_plugin
 
@@ -65,7 +64,7 @@ def generate_manifests():
 	written once for each catpkg, rather than written as each individual ebuild is autogenned (which would create a
 	race condition writing to each Manifest file.)
 	"""
-	for manifest_file, manifest_lines in pkgtools.model.MANIFEST_LINES.items():
+	for manifest_file, manifest_lines in pkgtools.model.manifest_lines.items():
 		manifest_lines = sorted(list(manifest_lines))
 		with open(manifest_file, "w") as myf:
 			pos = 0
@@ -79,7 +78,7 @@ def queue_all_indy_autogens():
 	"""
 	This will find all independent autogens and queue them up in the pending queue.
 	"""
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % hub.CONTEXT.start)
+	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % pkgtools.model.context.start)
 	files = o.split("\n")
 	for file in files:
 		file = file.strip()
@@ -166,7 +165,7 @@ def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=Non
 	# for all our generate() calls to complete, outside this for loop.
 
 	# This is the path where the autogen lives. Either the autogen.py or the autogen.yaml:
-	common_prefix = os.path.commonprefix([hub.CONTEXT.root, gen_path])
+	common_prefix = os.path.commonprefix([pkgtools.model.context.root, gen_path])
 	path_from_root = gen_path[len(common_prefix):].lstrip("/")
 	pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
 	return pkginfo
@@ -356,7 +355,7 @@ def queue_all_yaml_autogens():
 	to `parse_yaml_rule`.) This queues up all generators to execute.
 	"""
 
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % hub.CONTEXT.start)
+	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % pkgtools.model.context.start)
 	files = o.split("\n")
 
 	for file in files:
@@ -365,7 +364,7 @@ def queue_all_yaml_autogens():
 			continue
 		yaml_base_path = os.path.dirname(file)
 		# This will be [ "category", "pkgname" ] or [ "category" ] if it's nestled inside a category dir:
-		yaml_base_path_split = yaml_base_path[len(hub.CONTEXT.root)+1:].split("/")
+		yaml_base_path_split = yaml_base_path[len(pkgtools.model.context.root)+1:].split("/")
 		if len(yaml_base_path_split):
 			cat = yaml_base_path_split[0]
 		else:
@@ -422,7 +421,7 @@ async def execute_all_queued_generators():
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
 			async_func, pkginfo_list = await execute_generator(**task_args)
-			future = loop.run_in_executor(executor, pkgtools.thread.run_async_adapter, async_func, pkginfo_list)
+			future = loop.run_in_executor(executor, hub.run_async_adapter, async_func, pkginfo_list)
 			futures.append(future)
 
 		results, exceptions = await gather_pending_tasks(futures)
@@ -430,18 +429,11 @@ async def execute_all_queued_generators():
 			print(exceptions)
 
 
-async def start(start_path=None, out_path=None):
-
-	"""
-	This method will start the auto-generation of packages in an ebuild repository.
-	"""
-	pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
-	# TODO:
+async def start():
 	# This is a hack to iterate through all plugins to ensure they are all loaded prior to starting threads, so we
 	# don't experience race conditions loading modules, as this clobbers sys.modules in a non-threadsafe way currently.
 	for plugin in pkgtools:
 		pass
-	getattr(merge, "deepdive")
 	queue_all_indy_autogens()
 	queue_all_yaml_autogens()
 	await execute_all_queued_generators()

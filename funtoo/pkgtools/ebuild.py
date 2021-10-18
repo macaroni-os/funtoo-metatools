@@ -7,8 +7,9 @@ from asyncio import Task
 import jinja2
 import logging
 
-import dyne.org.funtoo.metatools.merge as merge
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
+from metatools.hashutils import calc_hashes
 
 
 class DigestFailure(Exception):
@@ -56,7 +57,7 @@ class Artifact(Fetchable):
 
 	@property
 	def temp_path(self):
-		return os.path.join(merge.model.MERGE_CONFIG.fetch_download_path, f"{self.final_name}.__download__")
+		return os.path.join(pkgtools.model.fetch_download_path, f"{self.final_name}.__download__")
 
 	@property
 	def extract_path(self):
@@ -67,7 +68,7 @@ class Artifact(Fetchable):
 		if self._final_path:
 			return self._final_path
 		else:
-			return os.path.join(merge.model.MERGE_CONFIG.fetch_download_path, self.final_name)
+			return os.path.join(pkgtools.model.fetch_download_path, self.final_name)
 
 	@property
 	def final_name(self):
@@ -132,7 +133,31 @@ class Artifact(Fetchable):
 	@property
 	def fastpull_path(self):
 		sh = self._final_data["hashes"]["sha512"]
-		return merge.fastpull.get_disk_path(sh)
+		return pkgtools.model.fastpull.get_disk_path(sh)
+
+	async def inject_into_fastpull(self):
+		"""
+		For a given artifact, make sure it's fetched locally and then add it to the fastpull archive.
+		"""
+		success = await self.ensure_fetched()
+		if not success:
+			return
+		fastpull_path = self.fastpull_path
+		if os.path.islink(fastpull_path):
+			# This will fix-up the situation where we used symlinks in fastpull rather than copying the file. It will
+			# replace the symlink with the actual file. I did this for quickly migrating the legacy fastpull db. Once
+			# I have migrated it over, this condition can probably be safely removed.
+			actual_file = os.path.realpath(fastpull_path)
+			if os.path.exists(actual_file):
+				os.unlink(fastpull_path)
+				os.link(actual_file, fastpull_path)
+		elif not os.path.exists(fastpull_path):
+			try:
+				os.makedirs(os.path.dirname(fastpull_path), exist_ok=True)
+				os.link(self.final_path, fastpull_path)
+			except Exception as e:
+				# Multiple doits running in parallel, trying to link the same file -- could cause exceptions:
+				logging.error(f"Exception encountered when trying to link into fastpull (may be harmless) -- {repr(e)}")
 
 	async def ensure_completed(self) -> bool:
 		"""
@@ -151,7 +176,7 @@ class Artifact(Fetchable):
 			# Since we are using this outside of the context of an autogen, and there is no associated BreezyBuild,
 			# using the distfile integrity database doesn't make sense. So just ensure the file is fetched:
 			return await self.ensure_fetched()
-		integrity_item = merge.deepdive.get_distfile_integrity(self.breezybuilds[0].catpkg, distfile=self.final_name)
+		integrity_item = pkgtools.model.distfile_integrity.get(self.breezybuilds[0].catpkg, distfile=self.final_name)
 		if integrity_item is not None:
 			self._final_data = integrity_item["final_data"]
 			# Will throw an exception if our new final data doesn't match any expected values.
@@ -181,14 +206,14 @@ class Artifact(Fetchable):
 				# This condition handles a situation where the distfile integrity database has been wiped. We need to
 				# re-populate the data. We already have the file.
 				if len(self.breezybuilds):
-					self._final_data = merge.deepdive.get_distfile_integrity(self.breezybuilds[0].catpkg, distfile=self.final_name)
+					self._final_data = pkgtools.model.distfile_integrity.get(self.breezybuilds[0].catpkg, distfile=self.final_name)
 					if self._final_data is None:
-						self._final_data = pkgtools.download.calc_hashes(self.final_path)
+						self._final_data = calc_hashes(self.final_path)
 						# Will throw an exception if our new final data doesn't match any expected values.
 						self.validate_digests()
-						merge.deepdive.store_distfile_integrity(self.breezybuilds[0].catpkg, self.final_name, self._final_data)
+						pkgtools.model.distfile_integrity.store(self.breezybuilds[0].catpkg, self.final_name, self._final_data)
 				else:
-					self._final_data = pkgtools.download.calc_hashes(self.final_path)
+					self._final_data = calc_hashes(self.final_path)
 					# Will throw an exception if our new final data doesn't match any expected values.
 					self.validate_digests()
 				return True
@@ -240,8 +265,8 @@ class BreezyBuild:
 		template_path: str = None,
 		**kwargs,
 	):
-		self.source_tree = hub.CONTEXT
-		self.output_tree = hub.OUTPUT_CONTEXT
+		self.source_tree = pkgtools.model.context
+		self.output_tree = pkgtools.model.output_context
 		self._pkgdir = None
 		self.template_args = kwargs
 		for kwarg in ["cat", "name", "version", "path"]:
@@ -425,7 +450,7 @@ class BreezyBuild:
 			success = await artifact.ensure_completed()
 			if not success:
 				raise BreezyError(f"Something prevented us from storing Manifest data for {key}.")
-			pkgtools.model.MANIFEST_LINES[key].add(
+			pkgtools.model.manifest_lines[key].add(
 				"DIST %s %s BLAKE2B %s SHA512 %s\n"
 				% (artifact.final_name, artifact.size, artifact.hash("blake2b"), artifact.hash("sha512"))
 			)

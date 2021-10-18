@@ -19,6 +19,7 @@ import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 http_timeout = aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)
 
+
 async def get_resolver():
 	"""
 	This returns a DNS resolver local to the ioloop of the caller.
@@ -60,9 +61,9 @@ def get_auth_kwargs(hostname, url):
 	in ~/.autogen (YAML format.)
 	"""
 	kwargs = {}
-	if "authentication" in pkgtools.model.AUTOGEN_CONFIG:
-		if hostname in pkgtools.model.AUTOGEN_CONFIG["authentication"]:
-			auth_info = pkgtools.model.AUTOGEN_CONFIG["authentication"][hostname]
+	if "authentication" in pkgtools.model.config:
+		if hostname in pkgtools.model.config["authentication"]:
+			auth_info = pkgtools.model.config["authentication"][hostname]
 			logging.warning(f"Using authentication (username {auth_info['username']}) for {url}")
 			kwargs = {"auth": aiohttp.BasicAuth(auth_info["username"], auth_info["password"])}
 	return kwargs

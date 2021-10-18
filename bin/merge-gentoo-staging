@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from funtoo.merge.tree import GitTree
+from metatools.tree import GitTree
 from funtoo.merge.steps import SyncFromTree
 from subpop.hub import Hub
 

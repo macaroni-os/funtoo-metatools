@@ -24,7 +24,7 @@ CACHE_DATA_VERSION = "1.0.6"
 def cleanup_error_logs():
 	# This should be explicitly called at the beginning of every command that generates metadata for kits:
 
-	for file in glob.glob(os.path.join(merge.model.MERGE_CONFIG.temp_path, "metadata-errors*.log")):
+	for file in glob.glob(os.path.join(merge.model.temp_path, "metadata-errors*.log")):
 		os.unlink(file)
 
 
@@ -42,37 +42,9 @@ def display_error_summary():
 			logging.warning(f"{name} errors logged to {merge.model.MERGE_CONFIG.temp_path}.")
 
 
-def get_thirdpartymirrors(repo_path):
-	mirr_dict = {}
-	with open(os.path.join(repo_path, "profiles/thirdpartymirrors"), "r") as f:
-		lines = f.readlines()
-		for line in lines:
-			ls = line.split()
-			mirr_dict[ls[0]] = ls[1:]
-	return mirr_dict
 
 
-def iter_thirdpartymirror(mirr_dict, mirror):
-	if mirror not in mirr_dict:
-		return None
-	for mirr_url in mirr_dict[mirror]:
-		yield mirr_url
 
-
-def expand_thirdpartymirror(mirr_dict, url):
-
-	non_mirr_part = url[9:]
-	mirr_split = non_mirr_part.split("/")
-	mirror = mirr_split[0]
-	rest_of_url = "/".join(mirr_split[1:])
-	if mirror not in mirr_dict:
-		print("Mirror", mirror, "not found")
-		return None
-	for mirr_url in mirr_dict[mirror]:
-		if mirror == "gentoo" and mirr_url.startswith("https://fastpull-us"):
-			continue
-		final_url = mirr_url.rstrip("/") + "/" + rest_of_url
-		return final_url
 
 
 METADATA_LINES = [

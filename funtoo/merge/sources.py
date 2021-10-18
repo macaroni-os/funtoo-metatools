@@ -16,8 +16,8 @@ def initialize_repo(repo_dict):
 	repo_key = repo_name
 	repo_branch = repo_dict["branch"] if "branch" in repo_dict else "master"
 	repo_sha1 = repo_dict["src_sha1"] if "src_sha1" in repo_dict else None
-	if repo_key in merge.model.SOURCE_REPOS:
-		repo_obj = merge.model.SOURCE_REPOS[repo_key]
+	if repo_key in merge.model.source_repos:
+		repo_obj = merge.model.source_repos[repo_key]
 		if repo_sha1:
 			repo_obj.gitCheckout(sha1=repo_sha1)
 		elif repo_branch:
@@ -27,18 +27,19 @@ def initialize_repo(repo_dict):
 		repo_obj = merge.tree.GitTree(
 			repo_name,
 			url=repo_url,
-			root="%s/%s" % (merge.model.MERGE_CONFIG.source_trees, path),
+			root="%s/%s" % (merge.model.source_trees, path),
 			branch=repo_branch,
 			commit_sha1=repo_sha1,
 			origin_check=False,
 			reclone=False,
 		)
 		repo_obj.initialize()
-		merge.model.SOURCE_REPOS[repo_key] = repo_obj
+		merge.model.source_repos[repo_key] = repo_obj
 	logging.warning(f"Git updates for {repo_dict['name']} complete.")
 
+
 async def initialize_sources(source):
-	if merge.model.CURRENT_SOURCE_DEF == source:
+	if merge.model.current_source_def == source:
 		return
 	repos = list(merge.foundations.get_repos(source))
 	repo_futures = []
@@ -50,7 +51,7 @@ async def initialize_sources(source):
 			# Getting .result() will also cause any exception to be thrown:
 			repo_dict = repo_fut.result()
 			continue
-	merge.model.CURRENT_SOURCE_DEF = source
+	merge.model.current_source_def = source
 
 
 def get_kit_preferred_branches():
@@ -63,7 +64,7 @@ def get_kit_preferred_branches():
 	"""
 	out = {}
 
-	for kit_dict in merge.model.KIT_GROUPS:
+	for kit_dict in merge.model.kit_groups:
 		name = kit_dict["name"]
 		stability = kit_dict["stability"]
 		if stability != "prime":
@@ -137,11 +138,11 @@ def get_kits_in_correct_processing_order():
 		return None
 
 	process_indy_kits = False
-	if "features" in merge.model.RELEASE_INFO:
-		if "independent-kits" in merge.model.RELEASE_INFO["features"]:
+	if "features" in merge.model.release_info:
+		if "independent-kits" in merge.model.release_info["features"]:
 			process_indy_kits = True
 
-	for kit_dict in merge.model.KIT_GROUPS:
+	for kit_dict in merge.model.kit_groups:
 		if kit_dict["kind"] == "independent":
 			kit_dict["process"] = process_indy_kits
 		if kit_dict["name"] == "core-kit":

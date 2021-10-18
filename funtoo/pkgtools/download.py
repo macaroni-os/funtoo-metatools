@@ -9,8 +9,9 @@ from threading import Semaphore, Lock
 from subprocess import getstatusoutput
 from contextlib import asynccontextmanager
 
-import dyne.org.funtoo.metatools.merge as merge
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
+from metatools.hashutils import HASHES
 
 """
 This sub deals with the higher-level logic related to downloading of distfiles. Where the 'fetch.py'
@@ -110,8 +111,6 @@ def get_download(final_name):
 			return None
 
 
-HASHES = ["sha256", "sha512", "blake2b"]
-
 # TODO: implement different download strategies with different levels of security. Maybe as a
 #       declarative pipeline.
 
@@ -187,7 +186,7 @@ class Download:
 					# avoid duplicate records.
 
 					for catpkg, final_name in integrity_keys.keys():
-						merge.deepdive.store_distfile_integrity(catpkg, final_name, self.final_data)
+						pkgtools.model.distfile_integrity.store(catpkg, final_name, self.final_data)
 
 		for future in self.futures:
 			future.set_result(success)
@@ -196,7 +195,7 @@ class Download:
 
 
 def extract_path(artifact):
-	return os.path.join(merge.model.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name)
+	return os.path.join(pkgtools.model.temp_path, "artifact_extract", artifact.final_name)
 
 
 async def _download(artifact, retry=True):
@@ -266,7 +265,7 @@ async def _download(artifact, retry=True):
 
 def cleanup(artifact):
 	# TODO: check for path stuff like ../.. in final_name to avoid security issues.
-	getstatusoutput("rm -rf " + os.path.join(merge.model.MERGE_CONFIG.temp_path, "artifact_extract", artifact.final_name))
+	getstatusoutput("rm -rf " + os.path.join(pkgtools.model.temp_path, "artifact_extract", artifact.final_name))
 
 
 def extract(artifact):
@@ -279,38 +278,6 @@ def extract(artifact):
 	s, o = getstatusoutput(cmd)
 	if s != 0:
 		raise pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
-
-
-def calc_hashes(fn):
-	hashes = {}
-	for h in HASHES:
-		hashes[h] = getattr(hashlib, h)()
-	filesize = 0
-	with open(fn, "rb") as myf:
-		while True:
-			data = myf.read(1280000)
-			if not data:
-				break
-			for h in hashes:
-				hashes[h].update(data)
-			filesize += len(data)
-	final_data = {"size": filesize, "hashes": {}, "path": fn}
-	for h in HASHES:
-		final_data["hashes"][h] = hashes[h].hexdigest()
-	return final_data
-
-
-async def check_hashes(old_hashes, new_hashes):
-	"""
-	This method compares two sets of hashes passed to it and throws an exception if they don't match.
-	"""
-	failures = []
-	for h in HASHES:
-		old = old_hashes[h]
-		new = new_hashes[h]
-		if old != new:
-			failures.append((h, old, new))
-	return failures
 
 
 # vim: ts=4 sw=4 noet
