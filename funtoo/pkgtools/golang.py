@@ -1,6 +1,5 @@
 import glob
 import os
-import re
 import subprocess
 
 
@@ -39,7 +38,7 @@ async def get_gosum_artifacts(gosum_path):
 		if "go.mod" in module[1]:
 			module_ext = "mod"
 		module_uri = module_path + "/@v/" + module_ver[0] + "." + module_ext
-		module_file = re.sub("/", "%2F", module_uri)
+		module_file = module_uri.replace("/", "%2F")
 		gosum_artifacts.append(
 			hub.pkgtools.ebuild.Artifact(url="https://proxy.golang.org/" + module_uri, final_name=module_file)
 		)
