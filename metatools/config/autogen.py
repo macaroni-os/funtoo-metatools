@@ -1,6 +1,7 @@
 import logging
 import os
 from collections import defaultdict
+from datetime import timedelta
 
 import yaml
 
@@ -20,7 +21,7 @@ class AutogenConfig(MinimalConfig):
 	This class is used for the autogen workflow -- i.e. the 'doit' command.
 	"""
 	fetch_cache = fetch_cache()
-    fetch_cache_interval = timedelta(minutes=15)
+	fetch_cache_interval = timedelta(minutes=15)
 	check_disk_hashes = False
 	manifest_lines = defaultdict(set)
 	fetch_attempts = 3
@@ -34,7 +35,8 @@ class AutogenConfig(MinimalConfig):
 		"autogen": "~/.autogen"
 	}
 
-	async def initialize(self, start_path=None, out_path=None):
+	async def initialize(self, start_path=None, out_path=None, fetch_cache_interval=None):
+		self.fetch_cache_interval = fetch_cache_interval
 		self.start_path = start_path
 		self.out_path = out_path
 		self.config = yaml.safe_load(self.get_file("autogen"))
