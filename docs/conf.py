@@ -14,11 +14,16 @@
 # import sys
 # sys.path.insert(0, os.path.abspath('.'))
 
+import os
+import sys
+
+sys.path.append(os.path.abspath("./_ext"))
+
 
 # -- Project information -----------------------------------------------------
 
 project = 'funtoo-metatools'
-copyright = '2020, Daniel Robbins'
+copyright = '2020-2021, Daniel Robbins'
 author = 'Daniel Robbins'
 html_context = {
     "project_url" : "https://projects.funtoo.org/metatools"
@@ -56,6 +61,7 @@ master_doc = 'index'
 import sphinx_funtoo_theme
 
 extensions = [
+    "consoleoutput",
     "sphinx_funtoo_theme",
     'sphinx.ext.autosectionlabel'
 ]
