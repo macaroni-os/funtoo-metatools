@@ -1,7 +1,22 @@
 import glob
 import os
-import re
 import subprocess
+
+
+def escape_module_str(version):
+	"""
+	This method will escape a module string to comply with the Go Modules reference.
+
+	https://golang.org/ref/mod#module-cache
+	"""
+
+	def escape_character(ch):
+		if ch.isupper():
+			return f"!{ch.lower()}"
+
+		return ch
+
+	return ''.join([escape_character(c) for c in version])
 
 
 async def get_gosum_artifacts(gosum_path):
@@ -13,17 +28,17 @@ async def get_gosum_artifacts(gosum_path):
 	gosum = ""
 	gosum_artifacts = []
 	for line in gosum_lines:
-		module = line.split()
+		module = escape_module_str(line).split()
 		if not len(module):
 			continue
 		gosum = gosum + '\t"' + module[0] + " " + module[1] + '"\n'
-		module_path = re.sub("([A-Z]{1})", r"!\1", module[0]).lower()
+		module_path = module[0]
 		module_ver = module[1].split("/")
 		module_ext = "zip"
 		if "go.mod" in module[1]:
 			module_ext = "mod"
 		module_uri = module_path + "/@v/" + module_ver[0] + "." + module_ext
-		module_file = re.sub("/", "%2F", module_uri)
+		module_file = module_uri.replace("/", "%2F")
 		gosum_artifacts.append(
 			hub.pkgtools.ebuild.Artifact(url="https://proxy.golang.org/" + module_uri, final_name=module_file)
 		)

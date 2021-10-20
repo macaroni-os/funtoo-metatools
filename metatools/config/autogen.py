@@ -20,6 +20,7 @@ class AutogenConfig(MinimalConfig):
 	This class is used for the autogen workflow -- i.e. the 'doit' command.
 	"""
 	fetch_cache = fetch_cache()
+    fetch_cache_interval = timedelta(minutes=15)
 	check_disk_hashes = False
 	manifest_lines = defaultdict(set)
 	fetch_attempts = 3
