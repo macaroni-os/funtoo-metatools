@@ -27,10 +27,6 @@ logging.basicConfig(level=logging.ERROR)
 CLI_CONFIG = {
 	"start_path": {"default": os.getcwd(), "os": "AUTOGEN_START_PATH", "help": "Where to start processing"},
 	"out_path": {"default": None, "os": "AUTOGEN_OUTPUT_PATH", "help": "Destination repository path"},
-	"name": {"default": None, "os": "AUTOGEN_REPONAME", "help": "Repository name (to override)"},
-	"release": {"default": None, "help": "Specify a release (used for production distfile integrity/fastpull.)"},
-	"kit": {"default": None, "help": "Specify a kit (used for production distfile integrity/fastpull.)"},
-	"branch": {"default": None, "help": "Specify a branch (used for production distfile integrity/fastpull.)"},
 	"immediate": {"default": False, "action": "store_true", "help": "Never cache HTTP(s) fetches (default 15 mins)"}
 }
 
