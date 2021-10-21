@@ -135,13 +135,10 @@ class Artifact(Fetchable):
 		sh = self._final_data["hashes"]["sha512"]
 		return pkgtools.model.fastpull.get_disk_path(sh)
 
-	async def inject_into_fastpull(self):
+	async def inject_into_fastpull(self, revalidate_hashes=False):
 		"""
-		For a given artifact, make sure it's fetched locally and then add it to the fastpull archive.
+		For a given artifact, add it to the fastpull archive. To be called from ensure_fetched().
 		"""
-		success = await self.ensure_fetched()
-		if not success:
-			return
 		fastpull_path = self.fastpull_path
 		if os.path.islink(fastpull_path):
 			# This will fix-up the situation where we used symlinks in fastpull rather than copying the file. It will
@@ -152,6 +149,17 @@ class Artifact(Fetchable):
 				os.unlink(fastpull_path)
 				os.link(actual_file, fastpull_path)
 		elif not os.path.exists(fastpull_path):
+			if revalidate_hashes:
+				final_data = calc_hashes(self.final_path)
+				if final_data['hashes']['sha512'] != self._final_data['hashes']['sha512']:
+					logging.error(f"""Unexpected SHA512 for {self.final_path}:
+current:  {final_data['hashes']['sha512']}
+expected: {self._final_data['hashes']['sha512']}
+Moving {self.final_path} to {self.final_path}.{final_data['hashes']['sha512']}
+""")
+					os.link(self.final_path, self.final_path+final_data['hashes']['sha512'])
+					os.unlink(self.final_path)
+					return
 			try:
 				os.makedirs(os.path.dirname(fastpull_path), exist_ok=True)
 				os.link(self.final_path, fastpull_path)
@@ -181,6 +189,9 @@ class Artifact(Fetchable):
 			self._final_data = integrity_item["final_data"]
 			# Will throw an exception if our new final data doesn't match any expected values.
 			self.validate_digests()
+			# if migrating from older versions of metatools, it's possible the fetched artifact isn't in fastpull yet.
+			# This shouldn't impact new installs so can eventually be removed.
+			await self.inject_into_fastpull()
 			return True
 		else:
 			return await self.ensure_fetched()
@@ -200,7 +211,8 @@ class Artifact(Fetchable):
 		"""
 		if self.is_fetched():
 			if self._final_data is not None:
-				# Nothing to do.
+				# inject into fastpull -- make sure on-disk hash matches our final_data in case obj has been messed with on disk.
+				await self.inject_into_fastpull(revalidate_hashes=True)
 				return True
 			else:
 				# This condition handles a situation where the distfile integrity database has been wiped. We need to
@@ -212,10 +224,12 @@ class Artifact(Fetchable):
 						# Will throw an exception if our new final data doesn't match any expected values.
 						self.validate_digests()
 						pkgtools.model.distfile_integrity.store(self.breezybuilds[0].catpkg, self.final_name, self._final_data)
+						await self.inject_into_fastpull()
 				else:
 					self._final_data = calc_hashes(self.final_path)
 					# Will throw an exception if our new final data doesn't match any expected values.
 					self.validate_digests()
+					await self.inject_into_fastpull()
 				return True
 		else:
 			active_dl = pkgtools.download.get_download(self.final_name)
@@ -232,6 +246,7 @@ class Artifact(Fetchable):
 			if success:
 				# Will throw an exception if our new final data doesn't match any expected values.
 				self.validate_digests()
+				await self.inject_into_fastpull()
 			return success
 
 
