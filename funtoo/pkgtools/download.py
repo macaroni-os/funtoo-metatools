@@ -175,10 +175,29 @@ class Download:
 						logging.error(f"FETCH ERROR: {self.artifacts[0].url}")
 						success = False
 
+
 				if success:
 					integrity_keys = {}
+
+					# When we normally think about them, BreezyBuilds reference artifacts, not the other way around.
+
+					# But when we add an artifact to a BreezyBuild, an internal table is updated in the Artifact, so the
+					# artifact knows what BreezyBuilds it is part of.
+
+					# This way, if a download is fired off by the Artifact, when it completes, it can then
+
+					# But from the perspective of a Download, things are a bit wacky. A Download contains Artifacts, and
+					# each Artifact can contain zero or more BreezyBuilds. When an artifact is added to a BreezyBuild, the
+					# BreezyBuild also makes sure it is in the artifact's BreezyBuild list. This is done because multiple
+					# BreezyBuilds can be created that reference the same artifact. And when a download completes, we record
+					# digest information for the downloaded artifact. It's stored in our integrity database like this:
+
+					# key: catpkg of BreezyBuild
+
 					for artifact in self.artifacts:
 						artifact.record_final_data(self.final_data)
+
+
 						for breezybuild in artifact.breezybuilds:
 							integrity_keys[(breezybuild.catpkg, artifact.final_name)] = True
 
@@ -241,15 +260,21 @@ async def _download(artifact, retry=True):
 		sys.stdout.write("x")
 		sys.stdout.flush()
 		fd.close()
-		try:
-			os.link(temp_path, final_path)
-		except (FileExistsError, FileNotFoundError):
-			# FL-8301: address possible race condition
-			pass
-		final_data = {"size": filesize, "hashes": {}, "path": final_path}
+
+		final_data = {"size": filesize, "hashes": {}}
 
 		for h in HASHES:
 			final_data["hashes"][h] = hashes[h].hexdigest()
+
+		final_data["path"] = fastpull_path = pkgtools.model.fastpull.get_disk_path(final_data["hashes"]["sha512"])
+
+		try:
+			os.makedirs(os.path.dirname(fastpull_path), exist_ok=True)
+			os.link(temp_path, fastpull_path)
+		except FileNotFoundError:
+			# FL-8301: address possible race condition
+			pass
+		return final_data
 
 	# TODO: this is likely a good place for GPG verification. Implement.
 	finally:
@@ -259,8 +284,6 @@ async def _download(artifact, retry=True):
 			except FileNotFoundError:
 				# FL-8301: address possible race condition
 				pass
-
-	return final_data
 
 
 def cleanup(artifact):

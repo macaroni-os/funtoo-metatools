@@ -27,7 +27,7 @@ class GenerateLicensingFile(MergeStep):
 		self.active_repo_names = active_repo_names
 
 	async def run(self, kit):
-		with open(os.path.join(merge.model.FIXUP_REPO.root, "COPYRIGHT.rst.tmpl"), "r") as lic_temp:
+		with open(os.path.join(merge.model.kit_fixups.root, "COPYRIGHT.rst.tmpl"), "r") as lic_temp:
 			template = jinja2.Template(lic_temp.read())
 		with open(os.path.join(kit.root, "COPYRIGHT.rst"), "wb") as lic_out:
 			lic_out.write(
@@ -36,7 +36,9 @@ class GenerateLicensingFile(MergeStep):
 
 
 class ThirdPartyMirrors(MergeStep):
-	"Add funtoo's distfiles mirror, and add funtoo's mirrors as gentoo back-ups."
+	"""
+	Add funtoo's distfiles mirror, and add funtoo's mirrors as gentoo back-ups.
+	"""
 
 	async def run(self, tree):
 		orig = "%s/profiles/thirdpartymirrors" % tree.root

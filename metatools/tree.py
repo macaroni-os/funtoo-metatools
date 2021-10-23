@@ -52,7 +52,7 @@ class Tree:
 		self.autogenned = False
 		self.name = None
 		self.merged = []
-		self.forcepush = False
+		self.forcepush = "--no-force"
 		self.mirror = False
 		self.url = None
 		self.model = model
@@ -193,7 +193,7 @@ class Tree:
 
 	def mirrorLocalBranches(self):
 		# This is a special push command that will push local tags and branches *only*
-		run_shell("(cd %s && git push %s %s +refs/heads/* +refs/tags/*)" % (self.root, self.forcepush, self.url))
+		run_shell(f"(cd {self.root} && git push {self.forcepush} {self.url} +refs/heads/* +refs/tags/*)")
 
 
 class GitTreeError(Exception):

@@ -30,6 +30,7 @@ class AutogenConfig(MinimalConfig):
 	start_path = None
 	out_path = None
 	config = None
+	kit_spy = None
 
 	config_files = {
 		"autogen": "~/.autogen"
@@ -39,8 +40,10 @@ class AutogenConfig(MinimalConfig):
 		self.fetch_cache_interval = fetch_cache_interval
 		self.start_path = start_path
 		self.out_path = out_path
+		self.kit_spy = None
 		self.config = yaml.safe_load(self.get_file("autogen"))
 		self.set_context()
+
 
 	def repository_of(self, start_path):
 		root_path = start_path
@@ -79,6 +82,7 @@ class AutogenConfig(MinimalConfig):
 				"Could not determine output repo context: %s -- please create a profiles/repo_name file in your repository."
 				% self.out_path
 			)
+		self.kit_spy = "/".join(self.context.root.split("/")[-2:])
 		logging.debug("Set source context to %s." % self.context.root)
 		logging.debug("Set output context to %s." % self.output_context.root)
 

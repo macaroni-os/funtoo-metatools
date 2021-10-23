@@ -55,15 +55,20 @@ class DistfileIntegrity:
 		di = self.c = mc.db.distfile_integrity
 		di.create_index([("category", pymongo.ASCENDING), ("package", pymongo.ASCENDING), ("distfile", pymongo.ASCENDING)])
 
-	def get(self, catpkg=None, distfile=None):
-		return self.c.find_one({"catpkg": catpkg, "distfile": distfile})
+	def get(self, catpkg=None, key=None, distfile=None):
+		if catpkg:
+			return self.c.find_one({"catpkg": catpkg, "distfile": distfile})
+		elif key:
+			return self.c.find_one({"catpkg": key, "distfile": distfile})
+		else:
+			raise AttributeError("Must specify catpkg or key for distfile integrity lookup.")
 
-	def store(self, catpkg, final_name, final_data, **kwargs):
+	def store(self, catpkg_or_key, final_name, final_data, **kwargs):
 		"""
 		Store something in the distfile integrity database. This method is not thread-safe so you should call it from the
 		main thread of 'doit' and not a sub-thread.
 		"""
-		out = {"catpkg": catpkg, "distfile": final_name, "final_data": final_data}
+		out = {"catpkg": catpkg_or_key, "distfile": final_name, "final_data": final_data}
 		for extra in "release", "kit", "branch":
 			if extra in kwargs:
 				out[extra] = kwargs[extra]

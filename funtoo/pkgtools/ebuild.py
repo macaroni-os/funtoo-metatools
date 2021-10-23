@@ -39,8 +39,26 @@ class Fetchable:
 
 
 class Artifact(Fetchable):
-	def __init__(self, url=None, final_name=None, final_path=None, expect=None, extra_http_headers=None, **kwargs):
+	"""
+	An artifact is a tarball or other archive that is used by a BreezyBuild, and ultimately referenced in an ebuild. It's also
+	possible that an artifact could be fetched by an autogen directly, but not included in an ebuild.
+
+	If an artifact is going to be incorporated into an ebuild, it's passed to the ``artifacts=[]`` keyword argument of the
+	``BreezyBuild`` constructor. When it is passed in this way, we perform extra processing. We will store the resultant download
+	in the "fastpull" database (an archive of fetched artifacts, indexed by their SHA512 hash), and we will also generate an
+	entry in the "distfile integrity database" for each catpkg. This "distfile integrity database" is what links the BreezyBuild's
+	catpkg, via the filename, to the entries in the fastpull database. So, for example:
+
+	"sys-apps/foo-1.0.ebuild" references "foo-1.0.tar.gz".
+	The distfile integrity database entry for "sys-apps/foo" has an entry for "foo-1.0.tar.gz" which points it to <SHA512>.
+	The fastpull database stores an entry for <SHA512>.
+
+	When an artifact is used in a stand-alone fashion
+
+	"""
+	def __init__(self, key=None, url=None, final_name=None, final_path=None, expect=None, extra_http_headers=None, **kwargs):
 		super().__init__(url=url, **kwargs)
+		self.key = key
 		self._final_name = final_name
 		self._final_data = None
 		self._final_path = final_path
@@ -113,7 +131,7 @@ class Artifact(Fetchable):
 	def record_final_data(self, final_data):
 		self._final_data = final_data
 
-	def validate_digests(self):
+	def validate_digests_against_expected_values(self):
 		"""
 		The self.expect dictionary can be used to specify digests that we should expect to find in any completed
 		or fetched Artifact. This method will throw a DigestFailure() exception when these expectations are not
@@ -134,38 +152,6 @@ class Artifact(Fetchable):
 	def fastpull_path(self):
 		sh = self._final_data["hashes"]["sha512"]
 		return pkgtools.model.fastpull.get_disk_path(sh)
-
-	async def inject_into_fastpull(self, revalidate_hashes=False):
-		"""
-		For a given artifact, add it to the fastpull archive. To be called from ensure_fetched().
-		"""
-		fastpull_path = self.fastpull_path
-		if os.path.islink(fastpull_path):
-			# This will fix-up the situation where we used symlinks in fastpull rather than copying the file. It will
-			# replace the symlink with the actual file. I did this for quickly migrating the legacy fastpull db. Once
-			# I have migrated it over, this condition can probably be safely removed.
-			actual_file = os.path.realpath(fastpull_path)
-			if os.path.exists(actual_file):
-				os.unlink(fastpull_path)
-				os.link(actual_file, fastpull_path)
-		elif not os.path.exists(fastpull_path):
-			if revalidate_hashes:
-				final_data = calc_hashes(self.final_path)
-				if final_data['hashes']['sha512'] != self._final_data['hashes']['sha512']:
-					logging.error(f"""Unexpected SHA512 for {self.final_path}:
-current:  {final_data['hashes']['sha512']}
-expected: {self._final_data['hashes']['sha512']}
-Moving {self.final_path} to {self.final_path}.{final_data['hashes']['sha512']}
-""")
-					os.link(self.final_path, self.final_path+final_data['hashes']['sha512'])
-					os.unlink(self.final_path)
-					return
-			try:
-				os.makedirs(os.path.dirname(fastpull_path), exist_ok=True)
-				os.link(self.final_path, fastpull_path)
-			except Exception as e:
-				# Multiple doits running in parallel, trying to link the same file -- could cause exceptions:
-				logging.error(f"Exception encountered when trying to link into fastpull (may be harmless) -- {repr(e)}")
 
 	async def ensure_completed(self) -> bool:
 		"""
@@ -188,10 +174,7 @@ Moving {self.final_path} to {self.final_path}.{final_data['hashes']['sha512']}
 		if integrity_item is not None:
 			self._final_data = integrity_item["final_data"]
 			# Will throw an exception if our new final data doesn't match any expected values.
-			self.validate_digests()
-			# if migrating from older versions of metatools, it's possible the fetched artifact isn't in fastpull yet.
-			# This shouldn't impact new installs so can eventually be removed.
-			await self.inject_into_fastpull()
+			self.validate_digests_against_expected_values()
 			return True
 		else:
 			return await self.ensure_fetched()
@@ -209,11 +192,11 @@ Moving {self.final_path} to {self.final_path}.{final_data['hashes']['sha512']}
 
 		Returns a boolean with True indicating success and False failure.
 		"""
+
 		if self.is_fetched():
 			if self._final_data is not None:
-				# inject into fastpull -- make sure on-disk hash matches our final_data in case obj has been messed with on disk.
-				await self.inject_into_fastpull(revalidate_hashes=True)
-				return True
+				if os.path.exists(self.fastpull_path):
+					return True
 			else:
 				# This condition handles a situation where the distfile integrity database has been wiped. We need to
 				# re-populate the data. We already have the file.
@@ -222,7 +205,7 @@ Moving {self.final_path} to {self.final_path}.{final_data['hashes']['sha512']}
 					if self._final_data is None:
 						self._final_data = calc_hashes(self.final_path)
 						# Will throw an exception if our new final data doesn't match any expected values.
-						self.validate_digests()
+						self.validate_digests_against_expected_values()
 						pkgtools.model.distfile_integrity.store(self.breezybuilds[0].catpkg, self.final_name, self._final_data)
 						await self.inject_into_fastpull()
 				else:
@@ -246,7 +229,7 @@ Moving {self.final_path} to {self.final_path}.{final_data['hashes']['sha512']}
 					#       Hatchisms in the design.
 					self._final_data = calc_hashes(self.final_path)
 					# Will throw an exception if our new final data doesn't match any expected values.
-					self.validate_digests()
+					self.validate_digests_against_expected_values()
 					await self.inject_into_fastpull()
 				return True
 		else:
@@ -263,7 +246,7 @@ Moving {self.final_path} to {self.final_path}.{final_data['hashes']['sha512']}
 				success = await dl_file.download(throw=throw)
 			if success:
 				# Will throw an exception if our new final data doesn't match any expected values.
-				self.validate_digests()
+				self.validate_digests_against_expected_values()
 				await self.inject_into_fastpull()
 			return success
 

@@ -20,10 +20,11 @@ class MergeError(Exception):
 	pass
 
 
-async def main_thread(**kwargs):
+async def main_thread(args):
 
-	# PASS OPTIONS!
-	await merge.launch(MergeConfig, **kwargs)
+	await merge.launch(MergeConfig, release=args.release, prod=args.prod, push=not args.nopush, create_branches=args.create_branches)
+
+	merge.metadata.cleanup_error_logs()
 
 	# We want to delete all locally-cloned independent kits before we start processing, so we re-clone them to get
 	# pristine copies with the latest commits (see FL-7935):
@@ -102,10 +103,8 @@ def parse_args():
 
 
 if __name__ == "__main__":
-
-	# TODO: do something with OPTIONS!
 	args = parse_args()
-	hub.LOOP.run_until_complete(main_thread(release=args.release))
+	hub.LOOP.run_until_complete(main_thread(args))
 	sys.exit(0)
 
 # vim: ts=4 sw=4 noet

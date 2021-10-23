@@ -187,6 +187,7 @@ async def execute_generator(
 	defaults=None,
 	pkginfo_list=None,
 	gen_path=None,
+	autogen_id=None
 ):
 	"""
 	This function will return an async function that requires no arguments, that is ready to run in its own
@@ -252,12 +253,36 @@ async def execute_generator(
 			# hub.THREAD_CTX.running_breezybuilds. This will happen during this task execution:
 
 			async def gen_wrapper(pkginfo):
-				# For now, all generate() methods in autogens are expecting the hub.
+
+				# AutoHub is an evolution of the Hub. The hub is becoming less and less important
+				# in subpop but has a purpose as a convenient thing in metatools autogens. We want
+				# people to use the hub to directly instantiate objects easily, and also access all
+				# of pkgtools. We want ad-hoc autogens to be instantiated as hub.Artifact() not
+				# hub.pkgtools.ebuild.Artifact().
+
+				class AutoHub:
+
+					autogen_id = None
+					pkgtools = None
+
+					def __init__(self, autogen_id, pkgtools):
+						self.autogen_id = autogen_id
+						self.pkgtools = pkgtools
+
+					def Artifact(self, **kwargs):
+						return self.pkgtools.ebuild.Artifact(key=self.autogen_id, **kwargs)
+
+					def BreezyBuild(self, **kwargs):
+						return self.pkgtools.ebuild.BreezyBuild(**kwargs)
+
+					def BreezyError(self, **kwargs):
+						return self.pkgtools.ebuild.BreezyError(**kwargs)
+
 				generate = getattr(hub.THREAD_CTX.sub, "generate", None)
 				if generate is None:
 					raise AttributeError(f"generate() not found in {generator_sub}")
 				try:
-					await generate(hub, **pkginfo)
+					await generate(AutoHub(autogen_id, pkgtools), **pkginfo)
 				except TypeError as te:
 					if not inspect.iscoroutinefunction(generate):
 						raise TypeError(f"generate() in {generator_sub} must be async")
@@ -420,6 +445,13 @@ async def execute_all_queued_generators():
 	with ThreadPoolExecutor(max_workers=8) as executor:
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
+
+			# The "autogen_id" entry here is going to be used like an ID for distfile integrity Artifacts that aren't
+			# attached to a specific BreezyBuild.
+
+			base = os.path.commonprefix([task_args["gen_path"], pkgtools.model.context.root])
+			task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base)+1:]}"
+
 			async_func, pkginfo_list = await execute_generator(**task_args)
 			future = loop.run_in_executor(executor, hub.run_async_adapter, async_func, pkginfo_list)
 			futures.append(future)

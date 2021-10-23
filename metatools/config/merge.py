@@ -23,9 +23,8 @@ class MergeConfig(MinimalConfig):
 	release = None
 	push = False
 	create_branches = False
-	fastpull = None
-	db = None
 
+	fastpull = None
 	_foundation_data = None
 	_kit_groups = None
 	_package_data_dict = {}
@@ -50,18 +49,19 @@ class MergeConfig(MinimalConfig):
 	config: ConfigParser = None
 	start_time: datetime = None
 
-	async def initialize(self, prod=False, push=False, release=None, create_branches=False, fastpull=False):
+	async def initialize(self, prod=False, push=False, release=None, create_branches=False):
 
 		self.prod = prod
 		self.push = push
 		self.release = release
 		self.create_branches = create_branches
-		self.fastpull = True if self.prod else fastpull
 
 		self.config = ConfigParser()
 		self.config.read_string(self.get_file("merge"))
 
 		if not self.prod:
+			# The ``push`` keyword argument only makes sense in prod mode. If not in prod mode, we don't push.
+			self.push = False
 			self.defaults = {
 				"urls": {
 					"auto": "https://code.funtoo.org/bitbucket/scm/auto",
@@ -75,10 +75,11 @@ class MergeConfig(MinimalConfig):
 				},
 			}
 		else:
+
 			# In this mode, we're actually wanting to update real kits, and likely are going to push our updates to remotes (unless
 			# --nopush is specified as an arg.) This might be used by people generating their own custom kits for use on other systems,
 			# or by Funtoo itself for updating official kits and meta-repo.
-
+			self.push = push
 			self.nest_kits = False
 			self.push = push
 			self.mirror_repos = push
@@ -114,7 +115,6 @@ class MergeConfig(MinimalConfig):
 						raise ConfigurationError(f"Error: ~/.merge [{section}] option {opt} is invalid.")
 
 		await self.initial_repo_setup()
-
 	async def initial_repo_setup(self):
 		self.meta_repo =self.git_class(
 			name="meta-repo",
@@ -143,9 +143,6 @@ class MergeConfig(MinimalConfig):
 
 		if not self.release_exists(self.release):
 			raise ConfigurationError(f"Release not found: {self.release}")
-
-	# TODO: this should be added to start of regen run:
-	#merge.metadata.cleanup_error_logs()
 
 	@property
 	def third_party_mirrors(self):
@@ -281,7 +278,6 @@ class MergeConfig(MinimalConfig):
 			yield repo_dict
 
 	def get_package_data(self, ctx):
-		print(ctx)
 		key = f"{ctx.kit.name}/{ctx.kit.branch}"
 		if key not in self._package_data_dict:
 			# Try to use branch-specific packages.yaml if it exists. Fall back to global kit-specific YAML:
@@ -402,12 +398,4 @@ class MergeConfig(MinimalConfig):
 
 	@property
 	def fastpull_enabled(self):
-		# If set via constructor, we use that. Otherwise, read from config.
-		if self.fastpull is not None:
-			return self.fastpull
-		features = self.get_option("main", "features", "")
-		f_split = features.split()
-		if "fastpull" in f_split:
-			return True
-		else:
-			return False
+		return True

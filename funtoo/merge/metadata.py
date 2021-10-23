@@ -17,6 +17,7 @@ import dyne.org.funtoo.metatools.merge as merge
 
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
 # version, we'll consider the kit cache stale and regenerate it.
+from metatools.tree import run
 
 CACHE_DATA_VERSION = "1.0.6"
 
@@ -337,7 +338,7 @@ def extract_ebuild_metadata(repo_obj, atom, ebuild_path=None, env=None, eclass_p
 	# This tells ebuild.sh to write out the metadata to stdout (fd 1) which is where we will grab
 	# it from:
 	env["PORTAGE_PIPE_FD"] = "1"
-	result = merge.tree.run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
+	result = run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
 	if result.returncode != 0:
 		repo_obj.METADATA_ERRORS[atom] = {"status": "ebuild.sh failure", "output": result.stderr}
 		return None
@@ -644,8 +645,8 @@ def gen_cache(repo):
 		fut_map = {}
 
 		# core-kit's eclass hashes are cached here:
-		eclass_hashes = merge.model.ECLASS_HASHES.hashes.copy()
-		eclass_paths = [merge.model.ECLASS_HASHES.path]
+		eclass_hashes = merge.model.eclass_hashes.hashes.copy()
+		eclass_paths = [merge.model.eclass_hashes.path]
 
 		if repo.name != "core-kit":
 			# Add in any eclasses that exist local to the kit.
