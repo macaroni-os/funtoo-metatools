@@ -5,6 +5,8 @@ from pymongo import MongoClient
 
 from metatools.fastpull.download import WebSpider
 
+# TODO: connect to spider, and add necessary mongo access.
+
 
 class FastPullObjectStoreError(Exception):
 	pass

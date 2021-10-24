@@ -5,29 +5,14 @@ import logging
 import re
 import sys
 
+from metatools.fastpull.download import FetchError
+
 """
 This sub implements high-level fetching logic. Not the lower-level HTTP stuff. Things involving
 retrying, using our fetch cache, etc.
 """
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
-
-
-class FetchError(Exception):
-
-	"""
-	When this exception is raised, we can set retry to True if the failure is something that could conceivably be
-	retried, such as a network failure. However, if we are reading from a cache, then it's just going to fail again,
-	and thus retry should have the default value of False.
-	"""
-
-	def __init__(self, fetchable, msg, retry=False):
-		self.fetchable = fetchable
-		self.msg = msg
-		self.retry = retry
-
-	def __repr__(self):
-		return f"{self.fetchable}: {self.msg}"
 
 
 class CacheMiss(Exception):
