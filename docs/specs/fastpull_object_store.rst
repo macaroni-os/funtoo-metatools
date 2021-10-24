@@ -48,7 +48,9 @@ The base layer object store (BLOS) of FPOS will store at minimum the following i
   }
 
 This information contains the SHA512 cryptographic hash of the downloaded file, its size in bytes, the timestamp of
-when the file download completed, and the URL used for downloading the file.
+when the file download completed, and the URL used for downloading the file. The BLOS may store additional information
+related to the file -- for example, legacy versions of fastpull used a `rand_id` -- a random string -- that was
+associated with each file store.
 
 In addition, at a specific path on disk, the downloaded file will be stored in the following directory structure --
 expressed in Python code::
@@ -60,15 +62,25 @@ The base layer of FPOS is simply intended to be an object store, and record what
 the object store, and when this population happened. It can be leveraged by multiple scopes in the scope layer (see
 next section.)
 
+FastPull Download API
+======================
+
+It is recommended that the BLOS API perform transparent downloading and self-population of resources in a transparent
+way when a URL is requested that is not yet downloaded. This simplifies interaction with the BLOS, but creates the
+need to return relevant information when a requested URL retrieval fails for whatever reason.
+
 Scope Layer
 ===========
 
-The scope layer of the database must store the following information::
+The scope layer of the database must store the following information as individual records (hereafter called a
+"record") for requested files::
 
   {
     "scope" : "org.funtoo:linux:1.4-release",
     "url" : <url>,
-    "sha512" : <sha512>
+    "hashes" : {
+        "sha512" : <sha512>,
+    }
   }
 
 The purpose of the scope layer is to create a "link" to the BLOS for a specific scope. The meaning of "url" here is
@@ -114,5 +126,37 @@ recommended to use the field "final_name" to record the expected name of the fil
 A single scope may have variant ref formats, so the contents of the dictionary do not need to be consistent from ref
 to ref. Different parts of your project may have different important metadata to store, and this is permitted.
 
-TODO: add support for rand_id.
+Missing Fetches
+===============
+
+A request for a URL on the scope layer may result in a record being created, but with the `sha512` field empty.
+This will denote a file that was requested, but could not be retrieved. In this case, "refs" must be stored with the
+entry to indicate what has requested the file, and additional information returned by the BLOS layer related to the
+failed retrieval of the artifact
+
 TODO: add support for requested resources that FAILED to populate the BLOS
+
+This is an old docstring that may not be relevant but is being preserved:
+"""
+The DeepDive database is designed to get wiped and re-loaded to contain only the metadata for all ebuilds processed
+in the last merge-kits run.
+
+In contrast, the Distfile Integrity database is intended to be persistent and store cryptographic hashes related
+to distfiles used by catpkgs. This allows us to autogen ebuilds without having the actual distfile present, and ensures
+that distfile hashes don't magically change if a newly-fetched distfile has been modified upstream.
+
+When using the fastpull database with autogen, we need the Distfile Integrity Database to retrieve existing
+distfiles that have been stored in fastpull. We need a way to map the distfile filename (which is not stored
+in fastpull) to a SHA1 that exists in fastpull. The Distfile Integrity Database provides this mapping.
+
+The Distfile Integrity database associates distfile file names with catpkgs. The catpkg is the 'namespace' for
+any files. Additionally, when run in production mode, the release, kit and branch are recorded in the database.
+
+The one challenge that appears necessary to resolve with the Distfile Integrity Database is that we can potentially have
+multiple 'doit' processes accessing it at the same time and reading and writing to it, due to 'merge-kits'
+multi-threaded architecture.
+
+However, this is not needed -- due to the design of 'merge-kits', and the fact that 'doit'
+will be running on a particular release, kit and branch, any reads and writes will not clobber one another, and thus
+we don't need to arbitrate/lock access to the Distfile Integrity DB. The Architecture makes it safe.
+"""
