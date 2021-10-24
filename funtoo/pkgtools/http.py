@@ -116,8 +116,6 @@ async def http_fetch_stream(url, on_chunk, retry=True, extra_headers=None):
 								completed = True
 								break
 							else:
-								sys.stdout.write(".")
-								sys.stdout.flush()
 								on_chunk(chunk)
 			except Exception as e:
 				# If we are "making progress on the download", then continue indefinitely --

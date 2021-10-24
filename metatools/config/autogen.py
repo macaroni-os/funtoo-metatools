@@ -44,7 +44,6 @@ class AutogenConfig(MinimalConfig):
 		self.config = yaml.safe_load(self.get_file("autogen"))
 		self.set_context()
 
-
 	def repository_of(self, start_path):
 		root_path = start_path
 		while (

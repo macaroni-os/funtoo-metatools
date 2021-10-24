@@ -160,3 +160,43 @@ However, this is not needed -- due to the design of 'merge-kits', and the fact t
 will be running on a particular release, kit and branch, any reads and writes will not clobber one another, and thus
 we don't need to arbitrate/lock access to the Distfile Integrity DB. The Architecture makes it safe.
 """
+
+more docstrings:
+
+This sub deals with the higher-level logic related to downloading of distfiles. Where the 'fetch.py'
+sub deals with grabbing HTTP data from APIs, this is much more geared towards grabbing tarballs that
+are bigger, and organizing them into a distfiles directory. This includes calculating cryptographic
+hashes on the resultant downloads and ensuring they match what we expect.
+
+The implementation is based around a class called `Download`.
+
+Why do we have a class called 'Download'? Imagine we have an autogen, and it has two Artifacts
+referencing the same file (this can and does happen.) Do we want to download the same file twice?
+No -- it would be far better if we downloaded the file once, and then provided the results to
+each Artifact, saying in effect 'here is the file you wanted to download.' This is why the
+Download class exists.
+
+Because autogen uses asyncio, it's possible for two autogens to try downloading the same file
+at the same time. If they create a `Download` object, this special class will do the magic of looking
+for any active downloads of the same file, and if one exists, it will not fire
+off a new download but instead wait for the existing download to complete. So the 'downloader'
+(code trying to download the file) can remain ignorant of the fact that the download was already
+started previously.
+
+
+	"""
+	When we need to download an artifact, we create a download. Multiple, co-existing Artifact
+	objects can reference the same file. Rather than have them try to download the same file
+	at the same time, they leverage a "Download" which eliminates conflicts and manages the
+	retrieval of the file.
+
+	The Download object will record all Artifacts that need this file, and arbitrate the download
+	of this file and update the Artifacts with the completion data when the download is complete.
+
+	A Download will be shared only if the Artifacts fetching the file are storing it as the same
+	final_name. So it's possible that if the final_name differs that files could be theoretically
+	downloaded multiple times or simultaneously and redundantly (but this rarely if ever happens,
+	just worth mentioning and a possible improvement in the future.)
+
+	The
+	"""

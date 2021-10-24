@@ -1,8 +1,9 @@
 #!/usr/bin/python3
-
 import os
 import pymongo
 from pymongo import MongoClient
+
+from metatools.fastpull.download import WebSpider
 
 
 class FastPullObjectStoreError(Exception):
@@ -28,13 +29,17 @@ class FastPullObject:
 class FastPullObjectStore:
 
 	fastpull_path = None
+	spider = None
 
-	def __init__(self, fastpull_path):
+	def __init__(self, fastpull_path, temp_path):
 		mc = MongoClient()
-		self.fastpull_path = fastpull_path
 		fp = self.c = mc.db.fastpull
 		fp.create_index([("hashes.sha512", pymongo.ASCENDING)])
 		fp.create_index([("rand_id", pymongo.ASCENDING)])
+
+		self.temp_path = temp_path
+		self.fastpull_path = fastpull_path
+		self.spider = WebSpider(temp_path)
 
 	def get_object(self, sha512):
 		"""
@@ -45,6 +50,14 @@ class FastPullObjectStore:
 			return fp
 		else:
 			return None
+
+	def insert_object(self, temp_file, final_data=None):
+		"""
+		This will be used to directly add an object to fastpull, by pointing to the file to insert, and its
+		final data. If no final data is provided, it will be calculated based on the contents of the temp_file.
+		This file will be linked into place inside fastpull.
+		"""
+		pass
 
 	def populate_object(self, authoritative_url, url_list=None):
 		"""
@@ -58,6 +71,29 @@ class FastPullObjectStore:
 		"""
 		pass
 
+		temp_path, final_data = await self.spider.download(authoritative_url)
+
+		fastpull_path = self.fastpull_path(final_data["hashes"]["sha512"])
+
+		try:
+			os.makedirs(os.path.dirname(fastpull_path), exist_ok=True)
+			os.link(temp_path, fastpull_path)
+		except FileExistsError:
+		# FL-8301: address possible race condition
+		except FileNotFoundError:
+			# This should not happen -- means someone cleaned up our temp_path during download. In this case, the
+			# download should likely fail.
+			raise FastPullObjectStoreError("Temp file {temp_path} appears to have been removed underneath us!")
+
+
+		# TODO: this is likely a good place for GPG verification. Implement.
+		finally:
+			if os.path.exists(temp_path):
+				try:
+					os.unlink(temp_path)
+				except FileNotFoundError:
+					# FL-8301: address possible race condition
+					pass
 
 class FastPullError(Exception):
 	pass

@@ -4,6 +4,8 @@ import os
 import asyncio
 import sys
 from asyncio import Task
+from subprocess import getstatusoutput
+
 import jinja2
 import logging
 
@@ -79,7 +81,7 @@ class Artifact(Fetchable):
 
 	@property
 	def extract_path(self):
-		return pkgtools.download.extract_path(self)
+		return os.path.join(pkgtools.model.temp_path, "artifact_extract", self.final_name)
 
 	@property
 	def final_path(self):
@@ -120,10 +122,19 @@ class Artifact(Fetchable):
 			return self.url + " -> " + self._final_name
 
 	def extract(self):
-		return pkgtools.download.extract(self)
+		# TODO: maybe refactor these next 2 lines
+		if not self.exists:
+			self.fetch()
+		ep = self.extract_path
+		os.makedirs(ep, exist_ok=True)
+		cmd = "tar -C %s -xf %s" % (ep, self.final_path)
+		s, o = getstatusoutput(cmd)
+		if s != 0:
+			raise pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
 
 	def cleanup(self):
-		return pkgtools.download.cleanup(self)
+		# TODO: check for path stuff like ../.. in final_name to avoid security issues.
+		getstatusoutput("rm -rf " + os.path.join(pkgtools.model.temp_path, "artifact_extract", self.final_name))
 
 	def exists(self):
 		return self.is_fetched()
