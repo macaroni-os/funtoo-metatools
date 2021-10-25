@@ -200,3 +200,23 @@ started previously.
 
 	The
 	"""
+
+
+	# TODO: There is a minor problem with this part of the code in regard to autogens that do a fetch of an artifact, but
+    #       do not pass the artifact to a BreezyBuild. The rust and go autogens currently do this.
+    #       .
+    #       What happens is that while these artifacts gets stored in fastpull, they don't get "pulled" from fastpull if
+    #       you wipe ~/repo_tmp/fetch -- instead they get re-downloaded.
+    #       .
+    #       This is because the lack of the distfile integrity entry means that the artifact can only be looked for 'by name'.
+    #       So the actual filename has to exist in ~/repo_tmp/fetch or it will be re-downloaded.
+    #       .
+    #       Some thought needs to go into this, how it should be resolved, and what optimal design is in this case.
+    #       One idea is to require a catpkg to be specified with every fetch operation, so the distfile integrity catpkg
+    #       can be used.
+    #       .
+    #       Now, these artifacts will never need to be fetched by the end-user, since they are not referenced by ebuilds
+    #       directly. However, it is annoying on an intellectual level :)
+    #       .
+    #       The problem can be considered a more fundamental design problem, related to the lack of clear hierarchy due to
+    #       Hatchisms in the design.

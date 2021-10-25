@@ -2,6 +2,7 @@ import hashlib
 
 HASHES = ["sha256", "sha512", "blake2b"]
 
+
 def calc_hashes(fn):
 	hashes = {}
 	for h in HASHES:

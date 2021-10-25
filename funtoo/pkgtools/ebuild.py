@@ -139,9 +139,6 @@ class Artifact(Fetchable):
 	def exists(self):
 		return self.is_fetched()
 
-	def record_final_data(self, final_data):
-		self._final_data = final_data
-
 	def validate_digests_against_expected_values(self):
 		"""
 		The self.expect dictionary can be used to specify digests that we should expect to find in any completed
@@ -196,6 +193,7 @@ class Artifact(Fetchable):
 		"""
 		await self.ensure_fetched(throw=True)
 
+	# TODO: MOAR REFACTOR!
 	async def ensure_fetched(self, throw=False) -> bool:
 		"""
 		This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
@@ -203,7 +201,14 @@ class Artifact(Fetchable):
 
 		Returns a boolean with True indicating success and False failure.
 		"""
+		if self._final_data:
+			# if we have final_data, we consider ourselves fetched.
+			return True
 
+
+
+
+"""
 		if self.is_fetched():
 			if self._final_data is not None:
 				if os.path.exists(self.fastpull_path):
@@ -220,24 +225,7 @@ class Artifact(Fetchable):
 						pkgtools.model.distfile_integrity.store(self.breezybuilds[0].catpkg, self.final_name, self._final_data)
 						await self.inject_into_fastpull()
 				else:
-					# TODO: There is a minor problem with this part of the code in regard to autogens that do a fetch of an artifact, but
-					#       do not pass the artifact to a BreezyBuild. The rust and go autogens currently do this.
-					#       .
-					#       What happens is that while these artifacts gets stored in fastpull, they don't get "pulled" from fastpull if
-					#       you wipe ~/repo_tmp/fetch -- instead they get re-downloaded.
-					#       .
-					#       This is because the lack of the distfile integrity entry means that the artifact can only be looked for 'by name'.
-					#       So the actual filename has to exist in ~/repo_tmp/fetch or it will be re-downloaded.
-					#       .
-					#       Some thought needs to go into this, how it should be resolved, and what optimal design is in this case.
-					#       One idea is to require a catpkg to be specified with every fetch operation, so the distfile integrity catpkg
-					#       can be used.
-					#       .
-					#       Now, these artifacts will never need to be fetched by the end-user, since they are not referenced by ebuilds
-					#       directly. However, it is annoying on an intellectual level :)
-					#       .
-					#       The problem can be considered a more fundamental design problem, related to the lack of clear hierarchy due to
-					#       Hatchisms in the design.
+
 					self._final_data = calc_hashes(self.final_path)
 					# Will throw an exception if our new final data doesn't match any expected values.
 					self.validate_digests_against_expected_values()
@@ -260,7 +248,7 @@ class Artifact(Fetchable):
 				self.validate_digests_against_expected_values()
 				await self.inject_into_fastpull()
 			return success
-
+"""
 
 def aggregate(meta_list):
 	out_list = []
@@ -359,13 +347,6 @@ class BreezyBuild:
 		So this means we want to create some associations. We want to record that the Artifact is associated with the
 		catpkg of this BreezyBuild. We use this for writing new entries to the Distfile Integrity database for
 		to-be-fetched artifacts.
-
-		The `ensure_completed()` call will ensure the Artifact has hashes from the Distfile Integrity Database or is
-		fetched and hashes calculated.
-
-		TODO: if the file exists on disk, but there is no Distfile Integrity entry, we need to make sure that hashes
-		      are not just calculated -- the distfile integrity entry should be created as well.
-
 		"""
 
 		fetch_tasks_dict = {}

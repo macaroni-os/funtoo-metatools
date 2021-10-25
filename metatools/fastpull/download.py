@@ -8,7 +8,7 @@ import threading
 from collections import defaultdict
 from contextlib import asynccontextmanager
 
-from threading import Lock, Semaphore
+from asyncio import Semaphore
 from urllib.parse import urlparse
 
 import aiohttp
@@ -31,6 +31,10 @@ class FetchRequest:
 	def hostname(self):
 		parsed_url = urlparse(self.url)
 		return parsed_url.hostname
+
+	def set_auth(self, username=None, password=None):
+		self.username = username
+		self.password = password
 
 
 class FetchResponse:
@@ -106,9 +110,9 @@ class WebSpider:
 	slots are exhausted, any pending downloads will wait for an active slot before they can begin.
 	"""
 
-	DL_ACTIVE_LOCK = Lock()
+	DL_ACTIVE_LOCK = threading.Lock()
 	DL_ACTIVE = dict()
-	DOWNLOAD_SLOT = Semaphore(value=200)
+	DOWNLOAD_SLOT = threading.Semaphore(value=200)
 	http_timeout = aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)
 	thread_ctx = threading.local()
 	fetch_headers = {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
@@ -218,7 +222,7 @@ class WebSpider:
 			auth = aiohttp.BasicAuth(request.username, request.password)
 		else:
 			auth = None
-		return {"headers": headers, "auth": auth}
+		return headers, auth
 
 	async def http_fetch(self, request: FetchRequest, encoding=None) -> str:
 		"""

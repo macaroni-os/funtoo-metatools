@@ -6,6 +6,8 @@ from datetime import timedelta
 import yaml
 
 from metatools.config.base import MinimalConfig
+from metatools.fastpull.core_classes import FastPullObjectStore
+from metatools.fastpull.download import WebSpider
 from metatools.mongo_backends import fetch_cache
 from subpop.config import ConfigurationError
 
@@ -31,6 +33,8 @@ class AutogenConfig(MinimalConfig):
 	out_path = None
 	config = None
 	kit_spy = None
+	spider = None
+	fpos = None
 
 	config_files = {
 		"autogen": "~/.autogen"
@@ -43,6 +47,12 @@ class AutogenConfig(MinimalConfig):
 		self.kit_spy = None
 		self.config = yaml.safe_load(self.get_file("autogen"))
 		self.set_context()
+		self.spider = WebSpider(os.path.join(self.temp_path, "spider"))
+		self.fpos = FastPullObjectStore(
+			fastpull_path=self.fastpull_path,
+			temp_path=os.path.join(self.temp_path, "fastpull"),
+			spider=self.spider
+		)
 
 	def repository_of(self, start_path):
 		root_path = start_path

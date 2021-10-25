@@ -5,7 +5,7 @@ import aiohttp
 from tornado import httpclient
 from tornado.httpclient import HTTPRequest
 
-from metatools.fastpull.download import FetchError
+from metatools.fastpull.download import FetchError, FetchRequest
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
@@ -15,18 +15,16 @@ proper headers and authentication, etc.
 """
 
 
-def get_auth_kwargs(hostname, url):
+def set_basic_auth(request: FetchRequest):
 	"""
 	Keyword arguments to aiohttp ClientSession.get() for authentication to certain URLs based on configuration
 	in ~/.autogen (YAML format.)
 	"""
 	kwargs = {}
 	if "authentication" in pkgtools.model.config:
-		if hostname in pkgtools.model.config["authentication"]:
-			auth_info = pkgtools.model.config["authentication"][hostname]
-			logging.warning(f"Using authentication (username {auth_info['username']}) for {url}")
-			kwargs = {"username" : auth_info["username"], "password": auth_info["password"]}
-	return kwargs
+		if request.hostname in pkgtools.model.config["authentication"]:
+			auth_info = pkgtools.model.config["authentication"][request.hostname]
+			request.set_auth(**auth_info)
 
 
 async def get_page(url, encoding=None):
@@ -40,7 +38,10 @@ async def get_page(url, encoding=None):
 	"""
 	logging.info(f"Fetching page {url}...")
 	try:
-		result = await pkgtools.model.spider.http_fetch(url, encoding=encoding)
+		request = FetchRequest(url=url)
+		set_basic_auth(request)
+		# Leverage the spider for this fetch. This bypasses the FPOS, etc:
+		result = await pkgtools.model.spider.http_fetch(request, encoding=encoding)
 		logging.info(f">>> Page fetched: {url}")
 		return result
 	except Exception as e:
