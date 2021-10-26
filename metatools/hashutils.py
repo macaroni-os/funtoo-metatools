@@ -3,18 +3,19 @@ import hashlib
 HASHES = ["sha256", "sha512", "blake2b"]
 
 
-def calc_hashes(fn):
-	hashes = {}
-	for h in HASHES:
-		hashes[h] = getattr(hashlib, h)()
+def calc_hashes(fn, hashes: set):
+	hashes = hashes - {"size"}
+	hash_objs = {}
+	for h in hashes:
+		hash_objs[h] = getattr(hashlib, h)()
 	filesize = 0
 	with open(fn, "rb") as myf:
 		while True:
 			data = myf.read(1280000)
 			if not data:
 				break
-			for h in hashes:
-				hashes[h].update(data)
+			for h in hash_objs:
+				hash_objs[h].update(data)
 			filesize += len(data)
 	final_data = {"size": filesize, "hashes": {}, "path": fn}
 	for h in HASHES:

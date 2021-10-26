@@ -1,14 +1,12 @@
 #!/usr/bin/python3
+
 import os
 from enum import Enum
 
 import pymongo
 from pymongo import MongoClient
 
-from metatools.fastpull.download import WebSpider
-
-
-# TODO: connect to spider, and add necessary mongo access.
+from metatools.hashutils import calc_hashes
 
 
 class BLOSError(Exception):
@@ -17,50 +15,46 @@ class BLOSError(Exception):
 
 class BLOSHashError(BLOSError):
 
-	def __init__(self, expected: dict = None, actual: dict = None):
-		self.expected = expected
-		self.actual = actual
+	def __init__(self, invalid_hashes):
+		self.invalid_hashes = invalid_hashes
 
 
-class BLOSMissingIndexError(BLOSError):
+class BLOSCorruptionError(BLOSHashError):
+	"""
+	This will be raised in circumstances where any of the calculated on-disk hashes do not match
+	what is recorded on the MongoDB record.
+
+	To maintain integrity of the BLOS, this file will automatically be removed. But this exception
+	will still be raised to notify the caller of the issue.
+
+	TODO: "quarantine" the corrupt file, instead?
+	"""
 	pass
 
 
-class BLOSCorruptionError(BLOSError):
-	"""
-	This will be raised in circumstances where the SHA512 of the on-disk file is recalculated, and
-	the SHA512 of the file contents does not match the index in the BLOS. To maintain integrity of
-	the BLOS, this file will automatically be removed. But this exception will still be raised to
-	notify the caller of the issue.
-	"""
-
-	def __init__(self, contents_sha512=None, index_sha512=None):
-		self.contents_sha512 = contents_sha512
-		self.index_sha512 = index_sha512
+class BLOSNotFoundError(BLOSError):
+	pass
 
 
-class BLOSObject:
-
-	def __init__(self, fpos, sha512):
-		self.fpos = fpos
-		self.sha512 = sha512
-
-	def get_disk_path(self):
-		return os.path.join(self.fpos.fastpull_path, self.sha512[:2], self.sha512[2:4], self.sha512[4:6], self.sha512)
-
-	@property
-	def exists(self):
-		return os.path.exists(self.get_disk_path())
+class BLOSInvalidRequest(BLOSError):
+	pass
 
 
-# TODO: Add BLOS Response object that shows what hashes were actually verified, so this can be explicitly confirmed by the
-#       caller.
+class BLOSIncompleteRecord(BLOSError):
+	pass
 
 
 class BackFillStrategy(Enum):
 	NONE = 0
 	DESIRED = 1
 	ALL = 2
+
+
+class BLOSResponse:
+
+	def __init__(self, path: str = None, checked_hashes: set = None):
+		self.path = path
+		self.checked_hashes = checked_hashes
 
 
 class BaseLayerObjectStore:
@@ -75,9 +69,9 @@ class BaseLayerObjectStore:
 
 	def __init__(self, fastpull_path=None, spider=None):
 		mc = MongoClient()
-		fp = self.c = mc.db.fastpull
-		fp.create_index([("hashes.sha512", pymongo.ASCENDING)])
-		fp.create_index([("rand_id", pymongo.ASCENDING)])
+		self.collection = self.c = mc.db.fastpull
+		self.collection.create_index([("hashes.sha512", pymongo.ASCENDING)])
+		# fp.create_index([("rand_id", pymongo.ASCENDING)])
 
 		self.fastpull_path = fastpull_path
 		self.spider = spider
@@ -88,7 +82,7 @@ class BaseLayerObjectStore:
 
 		self.disk_verify = self.disk_verify | {"size"}
 
-		# The hashes we desire include those we require, plus those we need to verify on disk.
+		# The hashes we desire in db include those we require, plus those we need to verify on disk.
 		self.desired_hashes = self.req_blos_hashes | self.desired_hashes | self.disk_verify
 
 		"""
@@ -199,42 +193,115 @@ class BaseLayerObjectStore:
 
 		"""
 
+	def get_disk_path(self, sha512):
+		return os.path.join(self.fastpull_path, sha512[:2], sha512[2:4], sha512[4:6], sha512)
+
 	def get_object(self, hashes: dict):
 		"""
 		Returns a FastPullObject representing the object by cryptographic hash if it exists.
 
-		``hashes`` is a dictionary which contains "final data", which will be used to verify the integrity
-		of the requested file. ``hashes['sha512']`` must exist for the lookup to succeed, or a
-		``BLOSMissingIndexError`` will be raised. All other fields will be used to verify integrity only.
+		``hashes`` is a dictionary which contains cryptographic hashes and optionally a filesize in "size",
+		which will be used to match the requested file. ``hashes['sha512']`` must exist for the lookup to
+		succeed, or a ``BLOSInvalidRequest`` will be raised. In addition, all fields defined in
+		``self.req_client_hashes`` must exist, or ``BLOSInvalidRequest`` error will be raised.
 
-		``get_object()`` will always perform some level of verification for object retrieval, though there
-		are ways that this can be tuned. But in all cases, *all* hashes supplied in the ``hashes`` argument
-		must be in the MongoDB BLOS record for the object, and they must all match. If this is not the case,
-		then a ``BLOSHashError`` will be raised detailing the mismatch.
+		``get_object()`` performs by default an 'adequate' level of verification for object retrieval,
+		though there are ways that this can be tuned.
 
 		If integrity checks succeed, a reference to the object will be returned. If integrity checks fail,
 		then a ``BLOSHashError`` will be raised with the details related to the expected and
 		actual hashes in the exception itself.
 
-		It is possible, if the file exists on disk but is not in the BLOS mongo collection, that this method
-		will 'fixup' the mongo collection by adding hash information to the database. It will also at this
-		point reverify the SHA512 of the file on disk. If this check fails, a BLOSCorruptionError will be
-		raised, and this BLOS entry will be auto-wiped to maintain integrity of the database.
-
-		If the requested file is not found, BLOSNotFoundError will be returned.
+		If the requested object is not found, BLOSNotFoundError will be raised.
 		"""
-		if 'sha512' not in hashes:
-			raise BLOSMissingIndexError()
 
-		sha512 = hashes['sha512']
-		fp = BLOSObject(self, sha512)
+		client_hash_names = set(hashes.keys())
+		missing = client_hash_names - self.req_client_hashes
+		if missing:
+			raise BLOSInvalidRequest(f"Missing hashes in request: {missing}")
 
-		if fp.exists:
-		# Perform integrity checks
-		else:
-			return None
+		index = hashes['sha512']
+		exists_on_disk = False
+		disk_path = self.get_disk_path(index)
+		if os.path.exists(disk_path):
+			exists_on_disk = True
 
-	def insert_object(self, temp_file, final_data=None):
+		if not exists_on_disk:
+			raise BLOSNotFoundError(f"Object does not exist on disk.")
+
+		db_record = self.collection.findOne({"sha512": index})
+
+		if not exists_on_disk and self.backfill in (BackFillStrategy.NONE, BackFillStrategy.DESIRED):
+			raise BLOSNotFoundError(f"Object exists on disk but no DB record exists. Backfill strategy is {self.backfill}.")
+
+		db_hash_names = set(db_record["hashes"].keys())
+		missing_expected_client_hashes = self.req_blos_hashes - db_hash_names
+		if BackFillStrategy.NONE and missing_expected_client_hashes:
+			raise BLOSIncompleteRecord(f"BLOS record is missing digest: {missing_expected_client_hashes}")
+
+		# If we have gotten here, we have validated that we have all the hashes we absolutely need from client.
+		# We will now check that all our hashes are in harmony. This will take into account client-supplied
+		# hashes, db record hashes, as well as any disk hashes we are required to check in real-time:
+
+		common_hashes = client_hash_names & db_hash_names
+		invalid_hashes = {}
+
+		# This calculates all the hashes we need from the object on disk:
+		disk_hashes = calc_hashes(disk_path, self.disk_verify)
+
+		corrupt = False
+		for hash_name in common_hashes:
+			if hash_name in self.disk_verify:
+				diskhash = disk_hashes["hashes"][hash_name]
+			else:
+				diskhash = None
+			supplied = db_record["hashes"][hash_name]
+			recorded = hashes[hash_name]
+			if diskhash and (supplied == recorded == diskhash):
+				# All hashes match!
+				pass
+			elif supplied == recorded:
+				# We don't require disk hash checking, and supplied hash and recorded match!
+				pass
+			else:
+				if diskhash and (recorded != diskhash):
+					# Disk corruption or tampering!
+					corrupt = True
+				invalid_hashes[hash_name] = {
+					"supplied": supplied,
+					"recorded": recorded,
+				}
+				if diskhash:
+					invalid_hashes[hash_name]["diskhash"] = diskhash
+
+		if corrupt:
+			os.unlink(disk_path)
+			raise BLOSCorruptionError(invalid_hashes)
+		elif invalid_hashes:
+			raise BLOSHashError(invalid_hashes)
+
+		# We will record any new hashes we do not yet have, which we have happened to have just calculated --
+		# according to our backfill strategy:
+
+		if self.backfill != BackFillStrategy.NONE:
+			to_be_recorded_db_hashes = self.desired_hashes & disk_hashes
+			if to_be_recorded_db_hashes:
+				new_hash_dict = {}
+				for hash in to_be_recorded_db_hashes:
+					new_hash_dict[hash] = disk_hashes["hashes"][hash]
+
+				if self.backfill == BackFillStrategy.ALL and not db_record:
+					self.collection.insertOne({
+						"hashes": new_hash_dict
+					})
+				else:
+					self.collection.updateOne({"sha512": index}, {"hashes": new_hash_dict})
+
+		# All done.
+		return BLOSResponse(path=disk_path, checked_hashes=common_hashes)
+
+	def insert_object(self):
+
 		"""
 		This will be used to directly add an object to fastpull, by pointing to the file to insert, and its
 		final data. If no final data is provided, it will be calculated based on the contents of the temp_file.
@@ -279,4 +346,3 @@ class BaseLayerObjectStore:
 				except FileNotFoundError:
 					# FL-8301: address possible race condition
 					pass
-
