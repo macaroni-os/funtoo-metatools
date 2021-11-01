@@ -71,8 +71,6 @@ class BaseLayerObjectStore:
 		mc = MongoClient()
 		self.collection = self.c = mc.db.fastpull
 		self.collection.create_index([("hashes.sha512", pymongo.ASCENDING)])
-		# fp.create_index([("rand_id", pymongo.ASCENDING)])
-
 		self.fastpull_path = fastpull_path
 		self.spider = spider
 
@@ -300,49 +298,38 @@ class BaseLayerObjectStore:
 		# All done.
 		return BLOSResponse(path=disk_path, checked_hashes=common_hashes)
 
-	def insert_object(self):
+	def insert_object(self, temp_path):
 
 		"""
 		This will be used to directly add an object to fastpull, by pointing to the file to insert, and its
-		final data. If no final data is provided, it will be calculated based on the contents of the temp_file.
-		This file will be linked into place inside fastpull.
+		final data. The final data (hashes) are optional. We will by default generate all missing final data.
+		We will use self.desired_hashes as a reference of what we want.
+
+		The file will be hard-linked into fastpull, and a MongoDB record will be created for the object. If
+		the physical file is already in fastpull, it won't be hard-linked and the existing file will be kept.
+		Likewise, the db entry will be created if it doesn't already exist, and also augmented with any
+
+		Any error condition should raise a BLOSError of some kind, such as BLOSNotFoundError if the source
+		file could not be found.
+
+		Upon success, None is returned.
 		"""
-		pass
 
-	def get_url(self, url, mirrors=None):
-		"""
-		This method is used by the integrity database to request an object that has not yet been downloaded.
-		``get_url`` will leverage ``self.spider`` to download the requested resource and if successful, store
-		the result in the FPOS, and return a reference to this new object.
-
-		``url`` specifies the URL for the resource requested.
-		``mirrors`` is an optional list of alternate URLs for the requested resource.
-
-		If successful, a FastPullObject will be returned representing the result of the fetch. If the fetch fails
-		for whatever reason, a FastPullObjectStoreError exception will be raised containing information regarding
-		what failed.
-		"""
-		# TODO -- handle exceptions....
-		temp_path, final_data = await self.spider.download(url, mirrors=mirrors)
-		fastpull_path = self.fastpull_path(final_data["hashes"]["sha512"])
-
+		hash_set = set()
+		hashes = {}
+		missing_hashes = self.desired_hashes - hash_set
+		if len(missing_hashes):
+			hashes.update(calc_hashes(temp_path, missing_hashes))
 		try:
-			os.makedirs(os.path.dirname(fastpull_path), exist_ok=True)
-			os.link(temp_path, fastpull_path)
+			os.link(temp_path, self.fastpull_path(hashes['sha512']))
 		except FileExistsError:
 			pass
-		# FL-8301: address possible race condition
 		except FileNotFoundError:
-			# This should not happen -- means someone cleaned up our temp_path during download. In this case, the
-			# download should likely fail.
-			raise FastPullObjectStoreError("Temp file {temp_path} appears to have been removed underneath us!")
+			raise BLOSNotFoundError(f"Source file {temp_path} not found.")
+		self.collection.update_one({"hashes": hashes}, upsert=True)
 
-
-		# TODO: this is likely a good place for GPG verification. Implement.
-		finally:
-			if os.path.exists(temp_path):
-				try:
-					os.unlink(temp_path)
-				except FileNotFoundError:
-					# FL-8301: address possible race condition
-					pass
+		def delete_object(hashes: dict):
+			"""
+			This method is used to delete objects from the BLOS. It shouldn't generally need to be used.
+			H
+			"""
