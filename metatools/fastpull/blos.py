@@ -13,6 +13,10 @@ class BLOSError(Exception):
 	pass
 
 
+class BLOSObjectAlreadyExists(BLOSError):
+	pass
+
+
 class BLOSHashError(BLOSError):
 
 	def __init__(self, invalid_hashes):
@@ -234,7 +238,7 @@ class BaseLayerObjectStore:
 
 		db_hash_names = set(db_record["hashes"].keys())
 		missing_expected_client_hashes = self.req_blos_hashes - db_hash_names
-		if BackFillStrategy.NONE and missing_expected_client_hashes:
+		if self.backfill == BackFillStrategy.NONE and missing_expected_client_hashes:
 			raise BLOSIncompleteRecord(f"BLOS record is missing digest: {missing_expected_client_hashes}")
 
 		# If we have gotten here, we have validated that we have all the hashes we absolutely need from client.
@@ -298,38 +302,55 @@ class BaseLayerObjectStore:
 		# All done.
 		return BLOSResponse(path=disk_path, checked_hashes=common_hashes)
 
-	def insert_object(self, temp_path):
+	def insert_object(self, temp_path, pregenned_hashes=None):
 
 		"""
 		This will be used to directly add an object to fastpull, by pointing to the file to insert, and its
 		final data. The final data (hashes) are optional. We will by default generate all missing final data.
 		We will use self.desired_hashes as a reference of what we want.
 
-		The file will be hard-linked into fastpull, and a MongoDB record will be created for the object. If
-		the physical file is already in fastpull, it won't be hard-linked and the existing file will be kept.
-		Likewise, the db entry will be created if it doesn't already exist, and also augmented with any
+		There is potential complication involved if the object already exists in our MongoDB collection --
+		what do we do in this case? In this case, we will raise an BLOSObjectAlreadyExists exception and NOT
+		insert the object. This just keeps this security-focused code as clean as possible.
 
-		Any error condition should raise a BLOSError of some kind, such as BLOSNotFoundError if the source
-		file could not be found.
+		We will also throw this exception if the on-disk object already exists.
 
-		Upon success, None is returned.
+		We will perform a 'fixup' of any existing records only on object *retrieval*, not on object *insert*.
+		So if there's an existing record that is missing some hashes that we would want to automatically add,
+		we don't do that fixing-up here.
+
+		Intentionally keeping this very simple.
 		"""
 
-		hash_set = set()
-		hashes = {}
-		missing_hashes = self.desired_hashes - hash_set
-		if len(missing_hashes):
-			hashes.update(calc_hashes(temp_path, missing_hashes))
+		if pregenned_hashes is None:
+			pregenned_hashes = {}
+
+		pregenned_set = set(pregenned_hashes.keys())
+		missing = pregenned_set - self.req_client_hashes
+		if missing:
+			raise BLOSInvalidRequest(f"Missing hashes in request: {missing}")
+
+		index = pregenned_hashes['sha512']
+
+		existing = self.collection.findOne({'hashes.sha512': index})
+		if existing:
+			raise BLOSObjectAlreadyExists("mongo db record already exists.")
+		disk_path = self.get_disk_path(index)
+		if os.path.exists(disk_path):
+			raise BLOSObjectAlreadyExists(f"no mongo db record but disk file already exists: {disk_path}")
+
 		try:
-			os.link(temp_path, self.fastpull_path(hashes['sha512']))
-		except FileExistsError:
-			pass
+			os.link(temp_path, disk_path)
 		except FileNotFoundError:
 			raise BLOSNotFoundError(f"Source file {temp_path} not found.")
-		self.collection.update_one({"hashes": hashes}, upsert=True)
+		except FileExistsError:
+			# possible race? multiple threads inserting same download shouldn't really happen
+			pass
+		# protect against possible race that shouldn't happen: multiple threads inserting same download.
+		self.collection.update_one({"hashes": pregenned_hashes}, upsert=True)
 
 		def delete_object(hashes: dict):
 			"""
 			This method is used to delete objects from the BLOS. It shouldn't generally need to be used.
-			H
 			"""
+			pass

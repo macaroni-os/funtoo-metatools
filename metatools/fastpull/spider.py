@@ -18,7 +18,7 @@ from metatools.hashutils import HASHES
 
 class FetchRequest:
 
-	def __init__(self, url, retry=True, extra_headers=None, mirror_urls=None, username=None, password=None):
+	def __init__(self, url, retry=True, extra_headers=None, mirror_urls=None, username=None, password=None, expected_hashes=None):
 		self.url = url
 		self.retry = retry
 		self.extra_headers = extra_headers if extra_headers else {}
@@ -26,6 +26,8 @@ class FetchRequest:
 		# for basic auth
 		self.username = username
 		self.password = password
+		# TODO: this was a last-minute add to FetchRequest and we could possibly leverage this in the BLOS.
+		self.expected_hashes = expected_hashes if expected_hashes is not None else {}
 
 	@property
 	def hostname(self):
@@ -48,10 +50,6 @@ class FetchResponse:
 		self.failure_reason = failure_reason
 
 
-class StreamingFetchRequest(FetchRequest):
-	pass
-
-
 class Download:
 	
 	"""
@@ -59,7 +57,7 @@ class Download:
 	for this particular download to complete.
 	"""
 
-	def __init__(self, request: StreamingFetchRequest):
+	def __init__(self, request: FetchRequest):
 		self.request = request
 		self.waiters = []
 
@@ -127,7 +125,7 @@ class WebSpider:
 		os.makedirs(os.path.dirname(temp_path), exist_ok=True)
 		return temp_path
 
-	async def download(self, request: StreamingFetchRequest) -> FetchResponse:
+	async def download(self, request: FetchRequest) -> FetchResponse:
 		"""
 		This method attempts to start a download. It is what users of the spider should call, and will take into
 		account any in-flight downloads for the same resource, which is most efficient and safe and will prevent
@@ -275,7 +273,7 @@ class WebSpider:
 		except aiohttp.ClientConnectorError as ce:
 			raise FetchError(request, f"Could not connect to {request.url}: {repr(ce)}", retry=False)
 
-	async def http_fetch_stream(self, request: StreamingFetchRequest, on_chunk, chunk_size=262144) -> FetchResponse:
+	async def http_fetch_stream(self, request: FetchRequest, on_chunk, chunk_size=262144) -> FetchResponse:
 		"""
 		This is a low-level streaming HTTP fetcher that will call on_chunk(bytes) for each chunk. On_chunk is called with literal bytes from the response
 		body so no decoding is performed. Inspect the FetchResponse.success boolean to determine success or failure. Note that if successful,
@@ -389,7 +387,7 @@ class WebSpider:
 				if download.request.url in self.DL_ACTIVE:
 					del self.DL_ACTIVE[download.request.url]
 
-	def get_existing_download(self, request: StreamingFetchRequest):
+	def get_existing_download(self, request: FetchRequest):
 		"""
 		Get a download object for the file we're interested in if one is already being downloaded.
 		"""
