@@ -1,12 +1,15 @@
 #!/usr/bin/python3
-import logging
 import os
 
-from metatools.fastpull.blos import BaseLayerObjectStore, BLOSError, BLOSNotFoundError, BLOSResponse
+from metatools.fastpull.blos import BaseLayerObjectStore, BLOSNotFoundError, BLOSResponse
 from metatools.fastpull.spider import WebSpider, FetchRequest, FetchResponse
 
 
-# TODO: add mongoisms.
+class FastPullError(Exception):
+	pass
+
+class FastPullIntegrityError(Exception):
+	pass
 
 
 class IntegrityScope:
@@ -40,7 +43,7 @@ class IntegrityScope:
 			if 'sha512' not in request.expected_hashes:
 				raise FastPullInvalidRequest('Please include sha512 in expected hashes.')
 			if request.expected_hashes['sha512'] != existing['sha512']:
-				raise FastPullIntegrityError("TODO")
+				raise FastPullIntegrityError()
 			blos_index = request.expected_hashes
 		else:
 			# No supplied hashes were provided, so create this index for later retrieval
