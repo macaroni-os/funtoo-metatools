@@ -125,6 +125,19 @@ class WebSpider:
 		os.makedirs(os.path.dirname(temp_path), exist_ok=True)
 		return temp_path
 
+	def cleanup(self, response: FetchResponse):
+		"""
+		This is a utility function to clean up a temporary file provided by the spider, once the caller is done
+		with it.
+		"""
+
+		if os.path.exists(response.temp_path):
+			try:
+				os.unlink(response.temp_path)
+			except FileNotFoundError:
+				# FL-8301: address possible race condition
+				pass
+
 	async def download(self, request: FetchRequest) -> FetchResponse:
 		"""
 		This method attempts to start a download. It is what users of the spider should call, and will take into

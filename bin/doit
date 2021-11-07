@@ -27,7 +27,8 @@ logging.basicConfig(level=logging.ERROR)
 CLI_CONFIG = {
 	"start_path": {"default": os.getcwd(), "os": "AUTOGEN_START_PATH", "help": "Where to start processing"},
 	"out_path": {"default": None, "os": "AUTOGEN_OUTPUT_PATH", "help": "Destination repository path"},
-	"immediate": {"default": False, "action": "store_true", "help": "Never cache HTTP(s) fetches (default 15 mins)"}
+	"immediate": {"default": False, "action": "store_true", "help": "Never cache HTTP(s) fetches (default 15 mins)"},
+	"fastpull_scope": {"default": "local", "action": "store", "help": "Default index into fastpull for collecting artifacts."}
 }
 
 
@@ -43,7 +44,7 @@ def parse_args():
 async def main_thread():
 	hub.OPT = parse_args()
 	kwargs = {}
-	for arg in ["out_path", "start_path"]:
+	for arg in ["out_path", "start_path", "fastpull_scope"]:
 		kwargs[arg] = getattr(hub.OPT, arg)
 	if not hub.OPT.immediate:
 		kwargs['fetch_cache_interval'] = None

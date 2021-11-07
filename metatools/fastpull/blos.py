@@ -56,9 +56,10 @@ class BackFillStrategy(Enum):
 
 class BLOSResponse:
 
-	def __init__(self, path: str = None, checked_hashes: set = None):
+	def __init__(self, path: str = None, checked_hashes: set = None, genned_hashes: set = None):
 		self.path = path
-		self.checked_hashes = checked_hashes
+		self.checked_hashes = checked_hashes if checked_hashes is not None else set()
+		self.genned_hashes = genned_hashes if genned_hashes is not None else set()
 
 
 class BaseLayerObjectStore:
@@ -300,7 +301,7 @@ class BaseLayerObjectStore:
 					self.collection.updateOne({"sha512": index}, {"hashes": new_hash_dict})
 
 		# All done.
-		return BLOSResponse(path=disk_path, checked_hashes=common_hashes)
+		return BLOSResponse(path=disk_path, checked_hashes=disk_hashes)
 
 	def insert_object(self, temp_path, pregenned_hashes=None):
 
@@ -330,6 +331,14 @@ class BaseLayerObjectStore:
 		if missing:
 			raise BLOSInvalidRequest(f"Missing hashes in request: {missing}")
 
+		# Add any missing, but not absolutely required hashes:
+
+		final_hashes = pregenned_hashes.copy()
+		missing_optional = pregenned_set - self.desired_hashes
+		if missing_optional:
+			new_hashes = calc_hashes(temp_path, missing_optional)
+			final_hashes.update(new_hashes)
+
 		index = pregenned_hashes['sha512']
 
 		existing = self.collection.findOne({'hashes.sha512': index})
@@ -348,9 +357,11 @@ class BaseLayerObjectStore:
 			pass
 		# protect against possible race that shouldn't happen: multiple threads inserting same download.
 		self.collection.update_one({"hashes": pregenned_hashes}, upsert=True)
+		return BLOSResponse(path=disk_path, genned_hashes=missing_optional)
 
-		def delete_object(hashes: dict):
-			"""
-			This method is used to delete objects from the BLOS. It shouldn't generally need to be used.
-			"""
-			pass
+
+	def delete_object(hashes: dict):
+		"""
+		This method is used to delete objects from the BLOS. It shouldn't generally need to be used.
+		"""
+		pass

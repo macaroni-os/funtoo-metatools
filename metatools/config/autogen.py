@@ -6,10 +6,9 @@ from datetime import timedelta
 import yaml
 
 from metatools.config.base import MinimalConfig
-from metatools.fastpull.core_classes import FastPullObjectStore
-from metatools.fastpull.download import WebSpider
+from metatools.fastpull.core import FastPullIntegrityDatabase
+from metatools.fastpull.spider import WebSpider
 from metatools.mongo_backends import fetch_cache
-from subpop.config import ConfigurationError
 
 
 class Tree:
@@ -22,6 +21,7 @@ class AutogenConfig(MinimalConfig):
 	"""
 	This class is used for the autogen workflow -- i.e. the 'doit' command.
 	"""
+
 	fetch_cache = fetch_cache()
 	fetch_cache_interval = timedelta(minutes=15)
 	check_disk_hashes = False
@@ -35,12 +35,15 @@ class AutogenConfig(MinimalConfig):
 	kit_spy = None
 	spider = None
 	fpos = None
+	fastpull_scope = None
+	fastpull_session = None
 
 	config_files = {
 		"autogen": "~/.autogen"
 	}
 
-	async def initialize(self, start_path=None, out_path=None, fetch_cache_interval=None):
+	async def initialize(self, start_path=None, out_path=None, fetch_cache_interval=None, fastpull_scope=None):
+		self.fastpull_scope = fastpull_scope
 		self.fetch_cache_interval = fetch_cache_interval
 		self.start_path = start_path
 		self.out_path = out_path
@@ -48,11 +51,11 @@ class AutogenConfig(MinimalConfig):
 		self.config = yaml.safe_load(self.get_file("autogen"))
 		self.set_context()
 		self.spider = WebSpider(os.path.join(self.temp_path, "spider"))
-		self.fpos = FastPullObjectStore(
+		self.fpos = FastPullIntegrityDatabase(
 			fastpull_path=self.fastpull_path,
-			temp_path=os.path.join(self.temp_path, "fastpull"),
 			spider=self.spider
 		)
+		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
 
 	def repository_of(self, start_path):
 		root_path = start_path

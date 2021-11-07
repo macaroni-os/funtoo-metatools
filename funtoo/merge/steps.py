@@ -446,7 +446,13 @@ class InsertEbuilds(MergeStep):
 		ebuildloc=None,
 		move_maps: dict = None,
 		skip_duplicates=True,
+		scope=None
 	):
+		# 'scope' means the 'fastpull scope', as in our persistent database where urls for artifacts are associated with
+		# certain tarballs. This is used for integrity checking and tracking artifacts on a per-release basis. This is
+		# typically set to the name of the release for production autogen, or 'local'.
+		self.scope = scope
+		assert scope is not None
 		self.select = select
 		self.skip = skip
 		self.srctree = srctree

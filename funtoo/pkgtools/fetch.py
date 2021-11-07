@@ -5,8 +5,6 @@ import logging
 import re
 import sys
 
-from metatools.fastpull.download import FetchError
-
 """
 This sub implements high-level fetching logic. Not the lower-level HTTP stuff. Things involving
 retrying, using our fetch cache, etc.
