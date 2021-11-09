@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-from funtoo.merge.tree import GitTree
-from funtoo.merge.steps import SyncFromTree
 from subpop.hub import Hub
 
 hub = Hub()
 
 import dyne.org.funtoo.metatools.merge as merge
+from funtoo.merge.tree import GitTree
+from funtoo.merge.steps import SyncFromTree
 
 # This function updates the gentoo-staging tree with all the latest gentoo updates:
 
@@ -15,12 +15,12 @@ async def gentoo_staging_update():
 	gentoo_staging_w = GitTree(
 		"gentoo-staging",
 		"master",
-		url=merge.MERGE_CONFIG.gentoo_staging,
-		root=merge.MERGE_CONFIG.dest_trees + "/gentoo-staging",
+		url=merge.model.MERGE_CONFIG.gentoo_staging,
+		root=merge.model.MERGE_CONFIG.dest_trees + "/gentoo-staging",
 	)
 	gentoo_staging_w.initialize()
 
-	gentoo_src = GitTree("gentoo-x86", "master", "https://gitmerge.com/gentoo/gentoo.git", pull=True)
+	gentoo_src = GitTree("gentoo-x86", "master", "https://github.com/gentoo/gentoo", pull=True)
 	gentoo_src.initialize()
 
 	all_steps = [
