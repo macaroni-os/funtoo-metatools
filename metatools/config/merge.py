@@ -1,3 +1,4 @@
+import logging
 import os
 from collections import OrderedDict, defaultdict
 from configparser import ConfigParser
@@ -115,6 +116,7 @@ class MergeConfig(MinimalConfig):
 						raise ConfigurationError(f"Error: ~/.merge [{section}] option {opt} is invalid.")
 
 		await self.initial_repo_setup()
+
 	async def initial_repo_setup(self):
 		self.meta_repo =self.git_class(
 			name="meta-repo",
@@ -288,13 +290,35 @@ class MergeConfig(MinimalConfig):
 				self._package_data_dict[key] = yaml.safe_load(f)
 		return self._package_data_dict[key]
 
+	def yaml_walk(self, yaml_section):
+		"""
+		This method will scan a section of loaded YAML and return all list elements -- the leaf items.
+		"""
+		retval = []
+		for item in yaml_section:
+			if isinstance(item, str):
+				retval.append(item)
+			elif isinstance(item, dict):
+				for key, val in item.items():
+					retval += self.yaml_walk(val)
+			else:
+				logging.warning(f"yaml_walk: ignoring {repr(item)}")
+		return retval
+
 	def get_kit_items(self, ctx, section="packages"):
 		pdata = self.get_package_data(ctx)
 		if section in pdata:
 			for package_set in pdata[section]:
 				repo_name = list(package_set.keys())[0]
-				packages = package_set[repo_name]
-				yield repo_name, packages
+				if section == "packages":
+					# for packages, allow arbitrary nesting, only capturing leaf nodes (catpkgs):
+					package_tree = package_set[repo_name]
+					packages = self.yaml_walk(package_tree)
+					yield repo_name, packages
+				else:
+					# not a packages section, and just return the raw YAML subsection for further parsing:
+					packages = package_set[repo_name]
+					yield repo_name, packages
 
 	def get_kit_packages(self, ctx):
 		return self.get_kit_items(ctx)
