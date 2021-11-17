@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import logging
 from collections import defaultdict
 from datetime import datetime
 
@@ -101,13 +101,37 @@ def grab_pdata(ctx):
 		ctx["PDATA"] = yaml.safe_load(f)
 
 
+def yaml_walk(yaml_section):
+	"""
+	This method will scan a section of loaded YAML and return all list elements -- the leaf items.
+	"""
+	retval = []
+	for item in yaml_section:
+		if isinstance(item, str):
+			retval.append(item)
+		elif isinstance(item, dict):
+			for key, val in item.items():
+				retval += yaml_walk(val)
+		else:
+			logging.warning(f"yaml_walk: ignoring {repr(item)}")
+	print("RETURNING", retval)
+	return retval
+
+
 def get_kit_items(ctx, section="packages"):
 	grab_pdata(ctx)
 	if section in ctx.PDATA:
 		for package_set in ctx.PDATA[section]:
 			repo_name = list(package_set.keys())[0]
-			packages = package_set[repo_name]
-			yield repo_name, packages
+			if section == "packages":
+				# for packages, allow arbitrary nesting, only capturing leaf nodes (catpkgs):
+				package_tree = package_set[repo_name]
+				packages = yaml_walk(package_tree)
+				yield repo_name, packages
+			else:
+				# not a packages section, and just return the raw YAML subsection for further parsing:
+				packages = package_set[repo_name]
+				yield repo_name, packages
 
 
 def get_excludes_from_yaml(ctx):
