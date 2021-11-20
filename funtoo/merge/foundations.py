@@ -101,19 +101,18 @@ def grab_pdata(ctx):
 		ctx["PDATA"] = yaml.safe_load(f)
 
 
-def yaml_walk(yaml_section):
+def yaml_walk(yaml_dict):
 	"""
 	This method will scan a section of loaded YAML and return all list elements -- the leaf items.
 	"""
 	retval = []
-	for item in yaml_section:
-		if isinstance(item, str):
-			retval.append(item)
-		elif isinstance(item, dict):
-			for key, val in item.items():
-				retval += yaml_walk(val)
+	for key, item in yaml_dict.items():
+		if isinstance(item, dict):
+			retval += yaml_walk(item)
+		elif isinstance(item, list):
+			retval += item
 		else:
-			logging.warning(f"yaml_walk: ignoring {repr(item)}")
+			raise TypeError(f"yaml_walk: unrecognized: {repr(item)}")
 	print("RETURNING", retval)
 	return retval
 
@@ -125,9 +124,7 @@ def get_kit_items(ctx, section="packages"):
 			repo_name = list(package_set.keys())[0]
 			if section == "packages":
 				# for packages, allow arbitrary nesting, only capturing leaf nodes (catpkgs):
-				package_tree = package_set[repo_name]
-				packages = yaml_walk(package_tree)
-				yield repo_name, packages
+				yield repo_name, yaml_walk(package_set)
 			else:
 				# not a packages section, and just return the raw YAML subsection for further parsing:
 				packages = package_set[repo_name]
