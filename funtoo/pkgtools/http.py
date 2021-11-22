@@ -5,9 +5,9 @@ import aiohttp
 from tornado import httpclient
 from tornado.httpclient import HTTPRequest
 
-from metatools.fastpull.download import FetchError, FetchRequest
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
+from metatools.fastpull.spider import FetchRequest, FetchError
 
 """
 This sub implements lower-level HTTP fetching logic, such as actually grabbing the data, sending the
@@ -20,7 +20,6 @@ def set_basic_auth(request: FetchRequest):
 	Keyword arguments to aiohttp ClientSession.get() for authentication to certain URLs based on configuration
 	in ~/.autogen (YAML format.)
 	"""
-	kwargs = {}
 	if "authentication" in pkgtools.model.config:
 		if request.hostname in pkgtools.model.config["authentication"]:
 			auth_info = pkgtools.model.config["authentication"][request.hostname]

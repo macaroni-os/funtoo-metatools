@@ -52,7 +52,7 @@ class AutogenConfig(MinimalConfig):
 		self.set_context()
 		self.spider = WebSpider(os.path.join(self.temp_path, "spider"))
 		self.fpos = FastPullIntegrityDatabase(
-			fastpull_path=self.fastpull_path,
+			blos_path=self.fastpull_path,
 			spider=self.spider
 		)
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)

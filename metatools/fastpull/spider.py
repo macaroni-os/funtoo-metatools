@@ -120,7 +120,7 @@ class WebSpider:
 
 	def _get_temp_path(self, request: FetchRequest):
 		# Use MD5 to create the path for the temporary file to avoid collisions.
-		temp_name = hashlib.md5(request.url).hexdigest()
+		temp_name = hashlib.md5(request.url.encode('utf-8')).hexdigest()
 		temp_path = os.path.join(self.temp_path, temp_name)
 		os.makedirs(os.path.dirname(temp_path), exist_ok=True)
 		return temp_path
@@ -153,8 +153,8 @@ class WebSpider:
 			return await download_future
 		else:
 			download = Download(request)
-			async with self.acquire_download_slot(self):
-				async with self.start_download(self, download):
+			async with self.acquire_download_slot():
+				async with self.start_download(download):
 					response = await self._download(request)
 					download.notify_waiters(response)
 					return response

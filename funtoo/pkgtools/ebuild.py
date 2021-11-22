@@ -5,12 +5,15 @@ import asyncio
 import sys
 from asyncio import Task
 from subprocess import getstatusoutput
+from typing import Optional
 
 import jinja2
 import logging
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
+from metatools.fastpull.blos import BLOSResponse
+from metatools.fastpull.spider import FetchError, FetchRequest
 from metatools.hashutils import calc_hashes
 
 
@@ -58,15 +61,20 @@ class Artifact(Fetchable):
 	When an artifact is used in a stand-alone fashion
 
 	"""
-	def __init__(self, key=None, url=None, final_name=None, final_path=None, expect=None, extra_http_headers=None, **kwargs):
+	def __init__(self, key=None, url=None, final_name=None, expect=None, extra_http_headers=None, **kwargs):
 		super().__init__(url=url, **kwargs)
 		self.key = key
 		self._final_name = final_name
-		self._final_data = None
-		self._final_path = final_path
 		self.breezybuilds = []
 		self.expect = expect
 		self.extra_http_headers = extra_http_headers
+		self.blos_response: Optional[BLOSResponse] = None
+
+	@property
+	def final_data(self):
+		if self.blos_response:
+			return self.blos_response.authoritative_hashes
+		return None
 
 	@property
 	def catpkgs(self):
@@ -76,19 +84,12 @@ class Artifact(Fetchable):
 		return outstr.strip()
 
 	@property
-	def temp_path(self):
-		return os.path.join(pkgtools.model.fetch_download_path, f"{self.final_name}.__download__")
-
-	@property
 	def extract_path(self):
 		return os.path.join(pkgtools.model.temp_path, "artifact_extract", self.final_name)
 
 	@property
 	def final_path(self):
-		if self._final_path:
-			return self._final_path
-		else:
-			return os.path.join(pkgtools.model.fetch_download_path, self.final_name)
+		return self.blos_response.path
 
 	@property
 	def final_name(self):
@@ -105,14 +106,14 @@ class Artifact(Fetchable):
 
 	@property
 	def hashes(self):
-		return self._final_data["hashes"]
+		return self.blos_response.authoritative_hashes
 
 	@property
 	def size(self):
-		return self._final_data["size"]
+		return self.blos_response.authoritative_hashes['size']
 
 	def hash(self, h):
-		return self._final_data["hashes"][h]
+		return self.blos_response.authoritative_hashes[h]
 
 	@property
 	def src_uri(self):
@@ -139,61 +140,6 @@ class Artifact(Fetchable):
 	def exists(self):
 		return self.is_fetched()
 
-	def validate_digests_against_expected_values(self):
-		"""
-		The self.expect dictionary can be used to specify digests that we should expect to find in any completed
-		or fetched Artifact. This method will throw a DigestFailure() exception when these expectations are not
-		met.
-		"""
-		if self.expect is None:
-			return
-		for key, val in self.expect.items():
-			if key == "size":
-				if val != self.size:
-					raise DigestFailure(artifact=self, kind="size", expected=val, actual=self.size)
-			else:
-				actual_hash = self.hash(key)
-				if val != actual_hash:
-					raise DigestFailure(artifact=self, kind=val, expected=val, actual=actual_hash)
-
-	@property
-	def fastpull_path(self):
-		sh = self._final_data["hashes"]["sha512"]
-		return pkgtools.model.fastpull.get_disk_path(sh)
-
-	async def ensure_completed(self) -> bool:
-		"""
-		This function ensures that we can 'complete' the artifact -- meaning we have its hash data in the integrity database.
-		If this hash data is not found, then we need to fetch the artifact.
-
-		This function returns True if we do indeed have the artifact available to us, and False if there was some error
-		which prevents this.
-
-		So basically, this tries to use the distfile integrity database first to get the hash information, but will fall
-		back to fetching. When this method is used instead of ensure_fetched(), we can get by without the file even
-		existing on disk, as long as we have a distfile integrity entry. So it's preferred if that's all you need.
-		"""
-
-		if not len(self.breezybuilds):
-			# Since we are using this outside of the context of an autogen, and there is no associated BreezyBuild,
-			# using the distfile integrity database doesn't make sense. So just ensure the file is fetched:
-			return await self.ensure_fetched()
-		integrity_item = pkgtools.model.distfile_integrity.get(self.breezybuilds[0].catpkg, distfile=self.final_name)
-		if integrity_item is not None:
-			self._final_data = integrity_item["final_data"]
-			# Will throw an exception if our new final data doesn't match any expected values.
-			self.validate_digests_against_expected_values()
-			return True
-		else:
-			return await self.ensure_fetched()
-
-	async def try_fetch(self):
-		"""
-		This is like ensure_fetched, but will return an exception if the download fails.
-		"""
-		await self.ensure_fetched(throw=True)
-
-	# TODO: MOAR REFACTOR!
 	async def ensure_fetched(self, throw=False) -> bool:
 		"""
 		This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
@@ -201,54 +147,36 @@ class Artifact(Fetchable):
 
 		Returns a boolean with True indicating success and False failure.
 		"""
-		if self._final_data:
-			# if we have final_data, we consider ourselves fetched.
+		if self.blos_response is not None:
 			return True
+		try:
+			# TODO: add extra headers, retry,
+			req = FetchRequest(self.url,
+				expected_hashes=self.expect,
+				extra_headers=self.extra_http_headers,
+				# TODO: we currently don't support authenticating to retrieve an Artifact (just HTTP requests for API)
+				username=None,
+				password=None
+			)
+			# TODO: this used to be indexed by catpkg, and by final_name. So we are now indexing by source URL.
+			self.blos_response: BLOSResponse = await pkgtools.model.fastpull_session.get_file_by_url(req)
+		except FetchError as fe:
+			# We encountered some error retrieving the resource.
+			if throw:
+				raise fe
+			logging.error(f"Fetch error: {fe}")
+			return False
+		return True
 
+	async def ensure_completed(self) -> bool:
+		return await self.ensure_fetched()
 
+	async def try_fetch(self):
+		"""
+		This is like ensure_fetched, but will return an exception if the download fails.
+		"""
+		await self.ensure_fetched(throw=True)
 
-
-"""
-		if self.is_fetched():
-			if self._final_data is not None:
-				if os.path.exists(self.fastpull_path):
-					return True
-			else:
-				# This condition handles a situation where the distfile integrity database has been wiped. We need to
-				# re-populate the data. We already have the file.
-				if len(self.breezybuilds):
-					self._final_data = pkgtools.model.distfile_integrity.get(self.breezybuilds[0].catpkg, distfile=self.final_name)
-					if self._final_data is None:
-						self._final_data = calc_hashes(self.final_path)
-						# Will throw an exception if our new final data doesn't match any expected values.
-						self.validate_digests_against_expected_values()
-						pkgtools.model.distfile_integrity.store(self.breezybuilds[0].catpkg, self.final_name, self._final_data)
-						await self.inject_into_fastpull()
-				else:
-
-					self._final_data = calc_hashes(self.final_path)
-					# Will throw an exception if our new final data doesn't match any expected values.
-					self.validate_digests_against_expected_values()
-					await self.inject_into_fastpull()
-				return True
-		else:
-			active_dl = pkgtools.download.get_download(self.final_name)
-			if active_dl is not None:
-				# Active download -- wait for it to finish:
-				logging.info(f"Waiting for {self.final_name} download to finish")
-				success = await active_dl.wait_for_completion(self)
-				if success:
-					self._final_data = active_dl.final_data
-			else:
-				# No active download for this file -- start one:
-				dl_file = pkgtools.download.Download(self)
-				success = await dl_file.download(throw=throw)
-			if success:
-				# Will throw an exception if our new final data doesn't match any expected values.
-				self.validate_digests_against_expected_values()
-				await self.inject_into_fastpull()
-			return success
-"""
 
 def aggregate(meta_list):
 	out_list = []

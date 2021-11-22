@@ -1,6 +1,9 @@
 #!/usr/bin/python3
 import os
 
+import pymongo
+from pymongo import MongoClient
+
 from metatools.fastpull.blos import BaseLayerObjectStore, BLOSNotFoundError, BLOSResponse, BLOSError
 from metatools.fastpull.spider import WebSpider, FetchRequest, FetchResponse
 
@@ -41,7 +44,11 @@ class IntegrityScope:
 		# First, check if we have an existing association for this URL in this scope. The URL
 		# will then be linked by sha512 hash to a specific object stored in the BLOS:
 
-		existing = self.fastpull.collection.findOne({"url": request.url, "scope": self.scope})
+		existing = self.fastpull.get(url=request.url, scope=self.scope)
+
+		# TODO: the code below needs to be fixed. get_file_by_url does not require a sha512
+		#       in the fetchrequest, and yet we are enforcing it here. If we have just a url,
+		#       we want to get the sha512 from our existing record above.
 
 		# IF expected hashes are supplied, then we expect the sha512 to be part of this set,
 		# and we will expect that any existing association with this URL to a file will have
@@ -50,7 +57,8 @@ class IntegrityScope:
 		# BLOS -- but this is the first, easiest and most obvious initial check to perform
 		# before we get too involved:
 
-		if request.expected_hashes is not None:
+		blos_index = None
+		if request.expected_hashes:
 			if 'sha512' not in request.expected_hashes:
 				raise FastPullInvalidRequest('Please include sha512 in expected hashes.')
 			if existing and request.expected_hashes['sha512'] != existing['sha512']:
@@ -63,11 +71,11 @@ class IntegrityScope:
 			# This will potentially supply extra hashes to for retrieval, which will be
 			# used by the BLOS to perform more exhaustive verification.
 			blos_index = request.expected_hashes
-		else:
-			# No supplied hashes were provided, so create this index for later retrieval
-			blos_index = {'sha512': existing['sha512']}
 
 		if existing:
+
+			if blos_index is None:
+				blos_index = {'sha512': existing['sha512']}
 
 			# If we have gotten here, we know that any supplied sha512 hash matches the index
 			# in fastpull. Now let's attempt to retrieve the object and return the BLOSResponse
@@ -81,15 +89,14 @@ class IntegrityScope:
 			except BLOSNotFoundError:
 				existing = False
 
-		else:
-
+		if not existing:
 			# We have attempted to find the existing resource in fastpull, so we can grab it
 			# from the BLOS. That failed. So now we want to use the WebSpider to download the
 			# resource. If successful, we will insert the downloaded file into the BLOS for
 			# good measure, and return the BLOSResponse to the caller so they get the file
 			# they were after.
 
-			resp: FetchResponse = await self.fastpull.spider.download(request, cleanup=False)
+			resp: FetchResponse = await self.fastpull.spider.download(request)
 			if resp.success:
 				# TODO: include extra info like URL, etc. maybe allow misc metadata to flow from
 				#       fetch request all the way into the BLOS.
@@ -100,8 +107,6 @@ class IntegrityScope:
 				return blos_response
 			else:
 				raise FastPullFetchError()
-
-	# TODO:
 
 	def remove_record(self, authoritative_url):
 		"""
@@ -116,8 +121,23 @@ class IntegrityScope:
 
 class FastPullIntegrityDatabase:
 
-	def __init__(self, fastpull_path=None, spider=None):
-		self.blos: BaseLayerObjectStore = BaseLayerObjectStore(fastpull_path)
+	# TODO: this integrity database needs to have a DB initialized for storing references to the BLOS!
+	#       The scope will use this to perform queries. Or we can provide methods here that will do the
+	#       heavy lifting.
+
+	def __init__(self, blos_path=None, spider=None):
+
+		mc = MongoClient()
+		self.collection = c = mc.db.fastpull
+
+		# The fastpull database uses sha512 as a 'linking mechanism' to the Base Layer Object Store (BLOS). So only
+		# one hash needs to be recorded, since this is not an exhaustive integrity check (that is performed by the
+		# BLOS itself upon retrieval). This is stored in the 'sha512' key, which is not placed inside 'hashes' like
+		# it is in the BLOS. But we do not create an index for it, since we don't encourage retrieval of objects from
+		# fastpull by their hash. They should be retrieved by target URL (and scope).
+
+		c.create_index([("scope", pymongo.ASCENDING), ("url", pymongo.ASCENDING)], unique=True)
+		self.blos: BaseLayerObjectStore = BaseLayerObjectStore(blos_path)
 		self.spider = spider
 		self.scopes = {}
 
@@ -125,3 +145,6 @@ class FastPullIntegrityDatabase:
 		if scope_id not in self.scopes:
 			self.scopes[scope_id] = IntegrityScope(self, scope_id)
 		return self.scopes[scope_id]
+
+	def get(self, url, scope):
+		return self.collection.find_one({"url": url, "scope": scope})

@@ -56,14 +56,15 @@ class BackFillStrategy(Enum):
 
 class BLOSResponse:
 
-	def __init__(self, path: str = None, checked_hashes: set = None, genned_hashes: set = None):
+	def __init__(self, path: str = None, checked_hashes: set = None, genned_hashes: set = None, authoritative_hashes: dict = None):
 		self.path = path
 		self.checked_hashes = checked_hashes if checked_hashes is not None else set()
 		self.genned_hashes = genned_hashes if genned_hashes is not None else set()
+		self.authoritative_hashes = authoritative_hashes if authoritative_hashes is not None else {}
 
 
 class BaseLayerObjectStore:
-	fastpull_path = None
+	blos_path = None
 	spider = None
 	req_client_hashes = {"sha512"}
 	req_blos_hashes = {"sha512"}
@@ -72,11 +73,11 @@ class BaseLayerObjectStore:
 
 	backfill = BackFillStrategy.DESIRED
 
-	def __init__(self, fastpull_path=None, spider=None):
+	def __init__(self, blos_path=None, spider=None):
 		mc = MongoClient()
-		self.collection = self.c = mc.db.fastpull
+		self.collection = self.c = mc.db.blos
 		self.collection.create_index([("hashes.sha512", pymongo.ASCENDING)])
-		self.fastpull_path = fastpull_path
+		self.blos_path = blos_path
 		self.spider = spider
 
 		# The hashes we require in MongoDB records include those we demand in all client 'get
@@ -197,7 +198,7 @@ class BaseLayerObjectStore:
 		"""
 
 	def get_disk_path(self, sha512):
-		return os.path.join(self.fastpull_path, sha512[:2], sha512[2:4], sha512[4:6], sha512)
+		return os.path.join(self.blos_path, sha512[:2], sha512[2:4], sha512[4:6], sha512)
 
 	def get_object(self, hashes: dict):
 		"""
@@ -232,7 +233,7 @@ class BaseLayerObjectStore:
 		if not exists_on_disk:
 			raise BLOSNotFoundError(f"Object does not exist on disk.")
 
-		db_record = self.collection.findOne({"sha512": index})
+		db_record = self.collection.find_one({"sha512": index})
 
 		if not exists_on_disk and self.backfill in (BackFillStrategy.NONE, BackFillStrategy.DESIRED):
 			raise BLOSNotFoundError(f"Object exists on disk but no DB record exists. Backfill strategy is {self.backfill}.")
@@ -284,24 +285,23 @@ class BaseLayerObjectStore:
 			raise BLOSHashError(invalid_hashes)
 
 		# We will record any new hashes we do not yet have, which we have happened to have just calculated --
-		# according to our backfill strategy:
+		# according to our backfill strategy. We will also return our official hashes as authoritative hashes
+		# to the caller.
 
+		returned_hashes = db_record['hashes']
 		if self.backfill != BackFillStrategy.NONE:
 			to_be_recorded_db_hashes = self.desired_hashes & disk_hashes
 			if to_be_recorded_db_hashes:
-				new_hash_dict = {}
 				for hash in to_be_recorded_db_hashes:
-					new_hash_dict[hash] = disk_hashes["hashes"][hash]
-
+					returned_hashes[hash] = disk_hashes["hashes"][hash]
 				if self.backfill == BackFillStrategy.ALL and not db_record:
 					self.collection.insertOne({
-						"hashes": new_hash_dict
+						"hashes": returned_hashes
 					})
 				else:
-					self.collection.updateOne({"sha512": index}, {"hashes": new_hash_dict})
-
+					self.collection.updateOne({"sha512": index}, {"hashes": returned_hashes})
 		# All done.
-		return BLOSResponse(path=disk_path, checked_hashes=disk_hashes)
+		return BLOSResponse(path=disk_path, checked_hashes=disk_hashes, authoritative_hashes=returned_hashes)
 
 	def insert_object(self, temp_path, pregenned_hashes=None):
 
@@ -310,11 +310,7 @@ class BaseLayerObjectStore:
 		final data. The final data (hashes) are optional. We will by default generate all missing final data.
 		We will use self.desired_hashes as a reference of what we want.
 
-		There is potential complication involved if the object already exists in our MongoDB collection --
-		what do we do in this case? In this case, we will raise an BLOSObjectAlreadyExists exception and NOT
-		insert the object. This just keeps this security-focused code as clean as possible.
-
-		We will also throw this exception if the on-disk object already exists.
+		If the object already exists, the insert_object() call is a NOOP.
 
 		We will perform a 'fixup' of any existing records only on object *retrieval*, not on object *insert*.
 		So if there's an existing record that is missing some hashes that we would want to automatically add,
@@ -326,10 +322,13 @@ class BaseLayerObjectStore:
 		if pregenned_hashes is None:
 			pregenned_hashes = {}
 
-		pregenned_set = set(pregenned_hashes.keys())
-		missing = pregenned_set - self.req_client_hashes
-		if missing:
-			raise BLOSInvalidRequest(f"Missing hashes in request: {missing}")
+		# TODO: REMOVE FEATURES! THIS IS TOO COMPLICATED TO DEAL WITH FIXUPS.
+
+		if 'sha512' in pregenned_hashes:
+			existing = self.collection.find_one({'hashes.sha512': pregenned_hashes['sha512']})
+
+
+
 
 		# Add any missing, but not absolutely required hashes:
 
@@ -339,26 +338,32 @@ class BaseLayerObjectStore:
 			new_hashes = calc_hashes(temp_path, missing_optional)
 			final_hashes.update(new_hashes)
 
-		index = pregenned_hashes['sha512']
+		if 'sha512' in pregenned_hashes:
 
-		existing = self.collection.findOne({'hashes.sha512': index})
-		if existing:
-			raise BLOSObjectAlreadyExists("mongo db record already exists.")
-		disk_path = self.get_disk_path(index)
-		if os.path.exists(disk_path):
-			raise BLOSObjectAlreadyExists(f"no mongo db record but disk file already exists: {disk_path}")
+			# We can use this to attempt to retrieve it --
 
-		try:
-			os.link(temp_path, disk_path)
-		except FileNotFoundError:
-			raise BLOSNotFoundError(f"Source file {temp_path} not found.")
-		except FileExistsError:
-			# possible race? multiple threads inserting same download shouldn't really happen
-			pass
+			index = pregenned_hashes['sha512']
+			existing = self.collection.find_one({'hashes.sha512': index})
+
+			if existing:
+				disk_path = self.get_disk_path(index)
+				if not os.path.exists(disk_path)
+				return BLOSResponse(path=self.get_disk_path(index), genned_hashes={}, authoritative_hashes=existing['hashes'])
+				raise BLOSObjectAlreadyExists("mongo db record already exists.")
+			disk_path = self.get_disk_path(index)
+			if os.path.exists(disk_path):
+				raise BLOSObjectAlreadyExists(f"no mongo db record but disk file already exists: {disk_path}")
+
+			try:
+				os.link(temp_path, disk_path)
+			except FileNotFoundError:
+				raise BLOSNotFoundError(f"Source file {temp_path} not found.")
+			except FileExistsError:
+				# possible race? multiple threads inserting same download shouldn't really happen
+				pass
 		# protect against possible race that shouldn't happen: multiple threads inserting same download.
 		self.collection.update_one({"hashes": pregenned_hashes}, upsert=True)
-		return BLOSResponse(path=disk_path, genned_hashes=missing_optional)
-
+		return BLOSResponse(path=disk_path, genned_hashes=missing_optional, authoritative_hashes=pregenned_hashes)
 
 	def delete_object(hashes: dict):
 		"""
