@@ -290,31 +290,28 @@ class MergeConfig(MinimalConfig):
 				self._package_data_dict[key] = yaml.safe_load(f)
 		return self._package_data_dict[key]
 
-	def yaml_walk(self, yaml_section):
+	def yaml_walk(self, yaml_dict):
 		"""
 		This method will scan a section of loaded YAML and return all list elements -- the leaf items.
 		"""
 		retval = []
-		for item in yaml_section:
-			if isinstance(item, str):
-				retval.append(item)
-			elif isinstance(item, dict):
-				for key, val in item.items():
-					retval += self.yaml_walk(val)
+		for key, item in yaml_dict.items():
+			if isinstance(item, dict):
+				retval += self.yaml_walk(item)
+			elif isinstance(item, list):
+				retval += item
 			else:
-				logging.warning(f"yaml_walk: ignoring {repr(item)}")
+				raise TypeError(f"yaml_walk: unrecognized: {repr(item)}")
 		return retval
 
 	def get_kit_items(self, ctx, section="packages"):
 		pdata = self.get_package_data(ctx)
 		if section in pdata:
-			for package_set in pdata[section]:
+			for package_set in ctx.PDATA[section]:
 				repo_name = list(package_set.keys())[0]
 				if section == "packages":
 					# for packages, allow arbitrary nesting, only capturing leaf nodes (catpkgs):
-					package_tree = package_set[repo_name]
-					packages = self.yaml_walk(package_tree)
-					yield repo_name, packages
+					yield repo_name, self.yaml_walk(package_set)
 				else:
 					# not a packages section, and just return the raw YAML subsection for further parsing:
 					packages = package_set[repo_name]
