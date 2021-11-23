@@ -197,9 +197,10 @@ class WebSpider:
 		sys.stdout.flush()
 		fd.close()
 
-		final_data = {"size": filesize, "hashes": {}}
+		final_data = {}
 		for h in self.hashes:
-			final_data["hashes"][h] = hashes[h].hexdigest()
+			final_data[h] = hashes[h].hexdigest()
+		final_data['size'] = filesize
 		response.temp_path = temp_path
 		response.final_data = final_data
 		return response

@@ -1,14 +1,17 @@
 import logging
 import os
+import sys
 from collections import defaultdict
 from datetime import timedelta
 
+import pymongo
 import yaml
+from pymongo import MongoClient
 
 from metatools.config.base import MinimalConfig
 from metatools.fastpull.core import FastPullIntegrityDatabase
 from metatools.fastpull.spider import WebSpider
-from metatools.mongo_backends import fetch_cache
+from subpop.config import ConfigurationError
 
 
 class Tree:
@@ -17,11 +20,18 @@ class Tree:
 		self.start = start
 
 
+def fetch_cache():
+	mc = MongoClient()
+	fc = mc.db.fetch_cache
+	fc.create_index([("method_name", pymongo.ASCENDING), ("url", pymongo.ASCENDING)])
+	fc.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {"$exists": True}})
+	return fc
+
+
 class AutogenConfig(MinimalConfig):
 	"""
 	This class is used for the autogen workflow -- i.e. the 'doit' command.
 	"""
-
 	fetch_cache = fetch_cache()
 	fetch_cache_interval = timedelta(minutes=15)
 	check_disk_hashes = False
@@ -37,6 +47,7 @@ class AutogenConfig(MinimalConfig):
 	fpos = None
 	fastpull_scope = None
 	fastpull_session = None
+	hashes = None
 
 	config_files = {
 		"autogen": "~/.autogen"
@@ -44,7 +55,9 @@ class AutogenConfig(MinimalConfig):
 
 	async def initialize(self, start_path=None, out_path=None, fetch_cache_interval=None, fastpull_scope=None):
 		self.fastpull_scope = fastpull_scope
-		self.fetch_cache_interval = fetch_cache_interval
+		if fetch_cache_interval:
+			# use our default unless another timedelta specified:
+			self.fetch_cache_interval = fetch_cache_interval
 		self.start_path = start_path
 		self.out_path = out_path
 		self.kit_spy = None
@@ -58,6 +71,7 @@ class AutogenConfig(MinimalConfig):
 			hashes=self.hashes
 		)
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
+		sys.stdout.write(f"fetch cache interval set to {self.fetch_cache_interval}\n")
 
 	def repository_of(self, start_path):
 		root_path = start_path

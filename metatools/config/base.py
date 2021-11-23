@@ -37,17 +37,9 @@
 #
 # orbit.model <-- the subsystem-specific hub? mapped into namespace?
 # orbit.foo
-import logging
 import os
-from collections import defaultdict, OrderedDict
-from configparser import ConfigParser
-from datetime import datetime
 
-import yaml
-
-from metatools.mongo_backends import DistfileIntegrity, FastPull
-from metatools.tree import GitTree, AutoCreatedGitTree
-from subpop.config import SubPopModel, ConfigurationError
+from subpop.config import SubPopModel
 
 
 # Components: fastpull: spider
@@ -61,12 +53,8 @@ class MinimalConfig(SubPopModel):
 	This class contains configuration settings common to all the metatools plugins and tools.
 	"""
 
-	distfile_integrity = DistfileIntegrity()
-	fastpull = None
-
 	def __init__(self):
 		super().__init__()
-		self.fastpull = FastPull(self.fastpull_path)
 
 	@property
 	def work_path(self):

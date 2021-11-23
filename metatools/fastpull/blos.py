@@ -31,7 +31,7 @@ class BLOSCorruptionError(BLOSHashError):
 	To maintain integrity of the BLOS, this file will automatically be removed. But this exception
 	will still be raised to notify the caller of the issue.
 
-	TODO: "quarantine" the corrupt file, instead?
+	TODO: "quarantine" the corrupt file?
 	"""
 	pass
 
@@ -86,6 +86,7 @@ class BaseLayerObjectStore:
 		assert self.desired_hashes
 		assert self.disk_verify
 
+
 		"""
 		The base layer object store (BLOS) of FPOS will store at minimum the following information::
 
@@ -95,8 +96,6 @@ class BaseLayerObjectStore:
 		      ...
 		      "size" : 1234
 		    }
-		    "fetched_on" : <timestamp>,
-		    "url" : <url>
 		  }
 
 		This information contains the SHA512 cryptographic hash of the downloaded file, its size in bytes, the timestamp of
@@ -109,6 +108,9 @@ class BaseLayerObjectStore:
 		self.collection.create_index([("hashes.sha512", pymongo.ASCENDING)])
 		self.blos_path = blos_path
 		self.spider = spider
+
+		# Always require a sha512, since it is used for indexing the files on disk.
+		self.req_client_hashes |= {'sha512'}
 
 		# The hashes we require in MongoDB records include those we demand in all client 'get
 		# object' requests:
@@ -219,8 +221,8 @@ class BaseLayerObjectStore:
 
 		For example, if::
 
-		   desired_hashes = ( "size", "sha512", "blake2b" )
-		   req_client_hashes = ( "sha512" )
+		   desired_hashes = { "size", "sha512", "blake2b" }
+		   req_client_hashes = { "sha512" }
 
 		Then will we automatically add blake2b hashes to MongoDB BLOS records as objects are retrieved?
 		This setting works in conjunction with ``self.desired_hashes``.
@@ -263,7 +265,7 @@ class BaseLayerObjectStore:
 		if not exists_on_disk:
 			raise BLOSNotFoundError(f"Object does not exist on disk.")
 
-		db_record = self.collection.find_one({"sha512": index})
+		db_record = self.collection.find_one({"hashes.sha512": index})
 
 		if not exists_on_disk and self.backfill in (BackFillStrategy.NONE, BackFillStrategy.DESIRED):
 			raise BLOSNotFoundError(f"Object exists on disk but no DB record exists. Backfill strategy is {self.backfill}.")
@@ -289,7 +291,6 @@ class BaseLayerObjectStore:
 				diskhash = disk_hashes["hashes"][hash_name]
 			else:
 				diskhash = None
-			# TODO: this is WRONG, as we don't store everything inside 'hashes'....
 			supplied = db_record["hashes"][hash_name]
 			recorded = hashes[hash_name]
 			if diskhash and (supplied == recorded == diskhash):
@@ -330,7 +331,7 @@ class BaseLayerObjectStore:
 						"hashes": returned_hashes
 					})
 				else:
-					self.collection.updateOne({"sha512": index}, {"hashes": returned_hashes})
+					self.collection.updateOne({"hashes.sha512": index}, {"hashes": returned_hashes})
 		# All done.
 		return BLOSResponse(path=disk_path, checked_hashes=disk_hashes, authoritative_hashes=returned_hashes)
 
@@ -341,13 +342,9 @@ class BaseLayerObjectStore:
 		final data. The final data (hashes) are optional. We will by default generate all missing final data.
 		We will use self.desired_hashes as a reference of what we want.
 
-		If the object already exists, the insert_object() call is a NOOP.
+		If the object already exists, the get_object() call is used to return the object.
 
-		We will perform a 'fixup' of any existing records only on object *retrieval*, not on object *insert*.
-		So if there's an existing record that is missing some hashes that we would want to automatically add,
-		we don't do that fixing-up here.
-
-		Intentionally keeping this very simple.
+		Returns a BLOSResponse containing the object inserted (or already inserted.)
 		"""
 
 		if pregenned_hashes is None:
@@ -365,9 +362,7 @@ class BaseLayerObjectStore:
 		missing = self.desired_hashes - set(pregenned_hashes.keys())
 
 		if missing:
-			print("MISSING", missing)
 			new_hashes = calc_hashes(temp_path, missing)
-			print("NEW HASHES", new_hashes)
 			final_hashes.update(new_hashes)
 
 		index = final_hashes['sha512']
@@ -383,7 +378,7 @@ class BaseLayerObjectStore:
 			# possible race? multiple threads inserting same download shouldn't really happen
 			pass
 
-		self.collection.update_one({"hashes": final_hashes}, upsert=True)
+		self.collection.update_one({'hashes.sha512': final_hashes['sha512']}, {"$set" :{"hashes": final_hashes}}, upsert=True)
 		return BLOSResponse(path=disk_path, genned_hashes=missing, authoritative_hashes=final_hashes)
 
 	def delete_object(hashes: dict):

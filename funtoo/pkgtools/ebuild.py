@@ -331,7 +331,6 @@ class BreezyBuild:
 	@property
 	def output_pkgdir(self):
 		if self._pkgdir is None:
-			logging.info(f"OUTPUT PKGDIR: {self.output_tree.root} {self.cat} {self.name}")
 			self._pkgdir = os.path.join(self.output_tree.root, self.cat, self.name)
 			os.makedirs(self._pkgdir, exist_ok=True)
 		return self._pkgdir
