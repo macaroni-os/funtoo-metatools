@@ -41,7 +41,11 @@ class BreezyError(Exception):
 class Fetchable:
 	def __init__(self, url=None, **kwargs):
 		self.url = url
-
+		assert self.url is not None
+		try:
+			assert self.url.split(':')[0] in [ 'http', 'https', 'ftp' ]
+		except (IndexError, AssertionError):
+			raise ValueError(f"url= argument of Artifact is '{url}', which appears invalid.")
 
 class Artifact(Fetchable):
 	"""
@@ -61,7 +65,7 @@ class Artifact(Fetchable):
 	When an artifact is used in a stand-alone fashion
 
 	"""
-	def __init__(self, key=None, url=None, final_name=None, expect=None, extra_http_headers=None, **kwargs):
+	def __init__(self, url=None, key=None, final_name=None, expect=None, extra_http_headers=None, **kwargs):
 		super().__init__(url=url, **kwargs)
 		self.key = key
 		self._final_name = final_name
@@ -147,6 +151,7 @@ class Artifact(Fetchable):
 
 		Returns a boolean with True indicating success and False failure.
 		"""
+
 		if self.blos_response is not None:
 			return True
 		try:
@@ -158,6 +163,7 @@ class Artifact(Fetchable):
 				username=None,
 				password=None
 			)
+			logging.info(f'Artifact.ensure_fetched: now fetching {self.url} using FetchRequest {req}')
 			# TODO: this used to be indexed by catpkg, and by final_name. So we are now indexing by source URL.
 			self.blos_response: BLOSResponse = await pkgtools.model.fastpull_session.get_file_by_url(req)
 		except FetchError as fe:

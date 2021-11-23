@@ -79,29 +79,6 @@ def expand_thirdpartymirror(mirr_dict, url):
 
 class FastPull:
 
-	def __init__(self, fastpull_path):
-		mc = MongoClient()
-		self.fastpull_path = fastpull_path
-		fp = self.c = mc.db.fastpull
-		fp.create_index([("hashes.sha512", pymongo.ASCENDING), ("filename", pymongo.ASCENDING)], unique=True)
-		# rand_ids don't need to be unique -- they can be shared if they are pointing to the same underlying file.
-		fp.create_index([("rand_id", pymongo.ASCENDING)])
-		#
-		# Structure of Fastpull database:
-		#
-		# filename: actual destination final_name, string.
-		# hashes: dictionary containing:
-		#   size: file size
-		#   sha512: sha512 hash
-		#   ... other hashes
-		# rand_id: random_id from legacy fastpull. We are going to keep using this for all our new fastpulls too.
-		# src_uri: URI file was downloaded from.
-		# fetched_on: timestamp file was fetched on.
-		# refs: list of references in packages, each item in list a dictionary in the following format:
-		#  kit: kit
-		#  catpkg: catpkg
-		#  Some items may be omitted from the above list.
-
 	def expand_uris(self, third_party_mirrors, src_uri_list):
 		real_uri = []
 		for src_uri in src_uri_list:

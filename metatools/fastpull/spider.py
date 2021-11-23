@@ -16,6 +16,7 @@ import aiohttp
 class FetchRequest:
 
 	def __init__(self, url, retry=True, extra_headers=None, mirror_urls=None, username=None, password=None, expected_hashes=None):
+		assert url is not None
 		self.url = url
 		self.retry = retry
 		self.extra_headers = extra_headers if extra_headers else {}
@@ -59,11 +60,13 @@ class Download:
 		self.waiters = []
 
 	async def add_waiter(self):
+		logging.info(f"Download.add_waiter: {self.request.url}")
 		fut = asyncio.get_running_loop()
 		self.waiters.append(fut)
 		return fut
 
 	def notify_waiters(self, result):
+		logging.info(f"Download.notify_waiters for {self.request.url}: result is {result}")
 		for future in self.waiters:
 			future.set_result(result)
 
@@ -118,6 +121,7 @@ class WebSpider:
 
 	def _get_temp_path(self, request: FetchRequest):
 		# Use MD5 to create the path for the temporary file to avoid collisions.
+		assert request.url is not None
 		temp_name = hashlib.md5(request.url.encode('utf-8')).hexdigest()
 		temp_path = os.path.join(self.temp_path, temp_name)
 		os.makedirs(os.path.dirname(temp_path), exist_ok=True)
@@ -146,10 +150,13 @@ class WebSpider:
 		the fetch failed.
 		"""
 
-		download_future = self.get_existing_download(request)
-		if download_future:
-			return await download_future
+		download : Download = self.get_existing_download(request)
+		if download:
+			logging.info(f"Webspider.download: waiting on existing download for {request.url}")
+			fut = download.add_waiter()
+			return await fut
 		else:
+			logging.info(f"Webspider.download: starting new download for {request.url}")
 			download = Download(request)
 			async with self.acquire_download_slot():
 				async with self.start_download(download):

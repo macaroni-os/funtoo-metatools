@@ -4,8 +4,8 @@ import os
 from enum import Enum
 
 import pymongo
-from pymongo import MongoClient
 
+from metatools.config.mongodb import get_collection
 from metatools.hashutils import calc_hashes
 
 
@@ -67,7 +67,6 @@ class BaseLayerObjectStore:
 	backfill = BackFillStrategy.DESIRED
 
 	def __init__(self, blos_path=None, spider=None, hashes=None, req_client_hashes=None, req_blos_hashes=None, desired_hashes=None, disk_verify=None):
-		mc = MongoClient()
 
 		if hashes:
 			self.req_client_hashes = self.req_blos_hashes = self.desired_hashes = self.disk_verify = hashes
@@ -104,9 +103,10 @@ class BaseLayerObjectStore:
 		associated with each file store.
 		"""
 
-		self.collection = self.c = mc.metatools.blos
+		self.collection = get_collection('blos')
 		self.collection.create_index([("hashes.sha512", pymongo.ASCENDING)])
 		self.blos_path = blos_path
+		os.makedirs(self.blos_path, exist_ok=True)
 		self.spider = spider
 
 		# Always require a sha512, since it is used for indexing the files on disk.
@@ -374,9 +374,10 @@ class BaseLayerObjectStore:
 		if os.path.exists(disk_path):
 			logging.debug(f"no mongo db record but disk file already exists: {disk_path}")
 		try:
+			os.makedirs(os.path.dirname(disk_path), exist_ok=True)
 			os.link(temp_path, disk_path)
 		except FileNotFoundError:
-			raise BLOSNotFoundError(f"Source file {temp_path} not found.")
+			raise BLOSNotFoundError(f"Error copying {temp_path} to {disk_path} -- file not found.")
 		except FileExistsError:
 			# possible race? multiple threads inserting same download shouldn't really happen
 			pass

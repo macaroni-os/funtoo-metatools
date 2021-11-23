@@ -3,8 +3,8 @@ import logging
 from datetime import datetime
 
 import pymongo
-from pymongo import MongoClient
 
+from metatools.config.mongodb import get_collection
 from metatools.fastpull.blos import BaseLayerObjectStore, BLOSNotFoundError, BLOSResponse
 from metatools.fastpull.spider import FetchRequest, FetchResponse
 
@@ -41,6 +41,8 @@ class IntegrityScope:
 		self.scope = scope
 
 	async def get_file_by_url(self, request: FetchRequest) -> BLOSResponse:
+
+		assert request.url is not None
 
 		# First, check if we have an existing association for this URL in this scope. The URL
 		# will then be linked by sha512 hash to a specific object stored in the BLOS:
@@ -129,9 +131,8 @@ class FastPullIntegrityDatabase:
 
 	def __init__(self, blos_path=None, spider=None, hashes: set = None):
 		assert hashes
-		mc = MongoClient()
 		self.hashes = hashes
-		self.collection = c = mc.metatools.fastpull
+		self.collection = c = get_collection('fastpull')
 
 		# The fastpull database uses sha512 as a 'linking mechanism' to the Base Layer Object Store (BLOS). So only
 		# one hash needs to be recorded, since this is not an exhaustive integrity check (that is performed by the

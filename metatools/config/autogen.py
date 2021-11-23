@@ -6,9 +6,9 @@ from datetime import timedelta
 
 import pymongo
 import yaml
-from pymongo import MongoClient
 
 from metatools.config.base import MinimalConfig
+from metatools.config.mongodb import get_collection
 from metatools.fastpull.core import FastPullIntegrityDatabase
 from metatools.fastpull.spider import WebSpider
 from subpop.config import ConfigurationError
@@ -21,8 +21,7 @@ class Tree:
 
 
 def fetch_cache():
-	mc = MongoClient()
-	fc = mc.metatools.fetch_cache
+	fc = get_collection('fetch_cache')
 	fc.create_index([("method_name", pymongo.ASCENDING), ("url", pymongo.ASCENDING)])
 	fc.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {"$exists": True}})
 	return fc
