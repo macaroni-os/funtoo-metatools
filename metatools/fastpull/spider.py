@@ -13,9 +13,6 @@ from urllib.parse import urlparse
 
 import aiohttp
 
-from metatools.hashutils import HASHES
-
-
 class FetchRequest:
 
 	def __init__(self, url, retry=True, extra_headers=None, mirror_urls=None, username=None, password=None, expected_hashes=None):
@@ -115,8 +112,9 @@ class WebSpider:
 	thread_ctx = threading.local()
 	fetch_headers = {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
 
-	def __init__(self, temp_path):
+	def __init__(self, temp_path, hashes):
 		self.temp_path = temp_path
+		self.hashes = hashes - {'size'}
 
 	def _get_temp_path(self, request: FetchRequest):
 		# Use MD5 to create the path for the temporary file to avoid collisions.
@@ -175,7 +173,7 @@ class WebSpider:
 		fd = open(temp_path, "wb")
 		hashes = {}
 
-		for h in HASHES:
+		for h in self.hashes:
 			hashes[h] = getattr(hashlib, h)()
 		filesize = 0
 
@@ -183,7 +181,7 @@ class WebSpider:
 			# See https://stackoverflow.com/questions/5218895/python-nested-functions-variable-scoping
 			nonlocal filesize
 			fd.write(chunk)
-			for hash in HASHES:
+			for hash in self.hashes:
 				hashes[hash].update(chunk)
 			filesize += len(chunk)
 			sys.stdout.write("")
@@ -200,7 +198,7 @@ class WebSpider:
 		fd.close()
 
 		final_data = {"size": filesize, "hashes": {}}
-		for h in HASHES:
+		for h in self.hashes:
 			final_data["hashes"][h] = hashes[h].hexdigest()
 		response.temp_path = temp_path
 		response.final_data = final_data

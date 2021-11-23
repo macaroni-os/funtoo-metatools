@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-
+import logging
 import os
 from enum import Enum
 
@@ -64,17 +64,47 @@ class BLOSResponse:
 
 
 class BaseLayerObjectStore:
-	blos_path = None
-	spider = None
-	req_client_hashes = {"sha512"}
-	req_blos_hashes = {"sha512"}
-	desired_hashes = {"sha512"}
-	disk_verify = {"sha512"}
-
 	backfill = BackFillStrategy.DESIRED
 
-	def __init__(self, blos_path=None, spider=None):
+	def __init__(self, blos_path=None, spider=None, hashes=None, req_client_hashes=None, req_blos_hashes=None, desired_hashes=None, disk_verify=None):
 		mc = MongoClient()
+
+		if hashes:
+			self.req_client_hashes = self.req_blos_hashes = self.desired_hashes = self.disk_verify = hashes
+
+		if req_client_hashes:
+			self.req_client_hashes = req_client_hashes
+		if req_blos_hashes:
+			self.req_blos_hashes = req_blos_hashes
+		if desired_hashes:
+			self.desired_hashes = desired_hashes
+		if disk_verify:
+			self.disk_verify = disk_verify
+
+		assert self.req_client_hashes
+		assert self.req_blos_hashes
+		assert self.desired_hashes
+		assert self.disk_verify
+
+		"""
+		The base layer object store (BLOS) of FPOS will store at minimum the following information::
+
+		  {
+		    "hashes" : {
+		      "sha512" : "abcdef...",
+		      ...
+		      "size" : 1234
+		    }
+		    "fetched_on" : <timestamp>,
+		    "url" : <url>
+		  }
+
+		This information contains the SHA512 cryptographic hash of the downloaded file, its size in bytes, the timestamp of
+		when the file download completed, and the URL used for downloading the file. The BLOS may store additional information
+		related to the file -- for example, legacy versions of fastpull used a `rand_id` -- a random string -- that was
+		associated with each file store.
+		"""
+
 		self.collection = self.c = mc.db.blos
 		self.collection.create_index([("hashes.sha512", pymongo.ASCENDING)])
 		self.blos_path = blos_path
@@ -259,6 +289,7 @@ class BaseLayerObjectStore:
 				diskhash = disk_hashes["hashes"][hash_name]
 			else:
 				diskhash = None
+			# TODO: this is WRONG, as we don't store everything inside 'hashes'....
 			supplied = db_record["hashes"][hash_name]
 			recorded = hashes[hash_name]
 			if diskhash and (supplied == recorded == diskhash):
@@ -321,49 +352,39 @@ class BaseLayerObjectStore:
 
 		if pregenned_hashes is None:
 			pregenned_hashes = {}
+		else:
+			try:
+				return self.get_object(hashes=pregenned_hashes)
+			except BLOSNotFoundError:
+				pass
 
-		# TODO: REMOVE FEATURES! THIS IS TOO COMPLICATED TO DEAL WITH FIXUPS.
-
-		if 'sha512' in pregenned_hashes:
-			existing = self.collection.find_one({'hashes.sha512': pregenned_hashes['sha512']})
-
-
-
-
-		# Add any missing, but not absolutely required hashes:
+		# If we get here, we can assume the object does not yet exist -- though in theory if another process is
+		# accessing fastpull, we could see a race condition.
 
 		final_hashes = pregenned_hashes.copy()
-		missing_optional = pregenned_set - self.desired_hashes
-		if missing_optional:
-			new_hashes = calc_hashes(temp_path, missing_optional)
+		missing = self.desired_hashes - set(pregenned_hashes.keys())
+
+		if missing:
+			print("MISSING", missing)
+			new_hashes = calc_hashes(temp_path, missing)
+			print("NEW HASHES", new_hashes)
 			final_hashes.update(new_hashes)
 
-		if 'sha512' in pregenned_hashes:
+		index = final_hashes['sha512']
+		disk_path = self.get_disk_path(index)
 
-			# We can use this to attempt to retrieve it --
+		if os.path.exists(disk_path):
+			logging.debug(f"no mongo db record but disk file already exists: {disk_path}")
+		try:
+			os.link(temp_path, disk_path)
+		except FileNotFoundError:
+			raise BLOSNotFoundError(f"Source file {temp_path} not found.")
+		except FileExistsError:
+			# possible race? multiple threads inserting same download shouldn't really happen
+			pass
 
-			index = pregenned_hashes['sha512']
-			existing = self.collection.find_one({'hashes.sha512': index})
-
-			if existing:
-				disk_path = self.get_disk_path(index)
-				if not os.path.exists(disk_path)
-				return BLOSResponse(path=self.get_disk_path(index), genned_hashes={}, authoritative_hashes=existing['hashes'])
-				raise BLOSObjectAlreadyExists("mongo db record already exists.")
-			disk_path = self.get_disk_path(index)
-			if os.path.exists(disk_path):
-				raise BLOSObjectAlreadyExists(f"no mongo db record but disk file already exists: {disk_path}")
-
-			try:
-				os.link(temp_path, disk_path)
-			except FileNotFoundError:
-				raise BLOSNotFoundError(f"Source file {temp_path} not found.")
-			except FileExistsError:
-				# possible race? multiple threads inserting same download shouldn't really happen
-				pass
-		# protect against possible race that shouldn't happen: multiple threads inserting same download.
-		self.collection.update_one({"hashes": pregenned_hashes}, upsert=True)
-		return BLOSResponse(path=disk_path, genned_hashes=missing_optional, authoritative_hashes=pregenned_hashes)
+		self.collection.update_one({"hashes": final_hashes}, upsert=True)
+		return BLOSResponse(path=disk_path, genned_hashes=missing, authoritative_hashes=final_hashes)
 
 	def delete_object(hashes: dict):
 		"""

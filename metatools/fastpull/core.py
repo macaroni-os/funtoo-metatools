@@ -125,9 +125,10 @@ class FastPullIntegrityDatabase:
 	#       The scope will use this to perform queries. Or we can provide methods here that will do the
 	#       heavy lifting.
 
-	def __init__(self, blos_path=None, spider=None):
-
+	def __init__(self, blos_path=None, spider=None, hashes: set = None):
+		assert hashes
 		mc = MongoClient()
+		self.hashes = hashes
 		self.collection = c = mc.db.fastpull
 
 		# The fastpull database uses sha512 as a 'linking mechanism' to the Base Layer Object Store (BLOS). So only
@@ -137,7 +138,7 @@ class FastPullIntegrityDatabase:
 		# fastpull by their hash. They should be retrieved by target URL (and scope).
 
 		c.create_index([("scope", pymongo.ASCENDING), ("url", pymongo.ASCENDING)], unique=True)
-		self.blos: BaseLayerObjectStore = BaseLayerObjectStore(blos_path)
+		self.blos: BaseLayerObjectStore = BaseLayerObjectStore(blos_path, hashes=self.hashes)
 		self.spider = spider
 		self.scopes = {}
 

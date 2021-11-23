@@ -50,10 +50,12 @@ class AutogenConfig(MinimalConfig):
 		self.kit_spy = None
 		self.config = yaml.safe_load(self.get_file("autogen"))
 		self.set_context()
-		self.spider = WebSpider(os.path.join(self.temp_path, "spider"))
+		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
+		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
 		self.fpos = FastPullIntegrityDatabase(
 			blos_path=self.fastpull_path,
-			spider=self.spider
+			spider=self.spider,
+			hashes=self.hashes
 		)
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
 
