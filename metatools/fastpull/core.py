@@ -1,11 +1,12 @@
 #!/usr/bin/python3
-import os
+import logging
+from datetime import datetime
 
 import pymongo
 from pymongo import MongoClient
 
-from metatools.fastpull.blos import BaseLayerObjectStore, BLOSNotFoundError, BLOSResponse, BLOSError
-from metatools.fastpull.spider import WebSpider, FetchRequest, FetchResponse
+from metatools.fastpull.blos import BaseLayerObjectStore, BLOSNotFoundError, BLOSResponse
+from metatools.fastpull.spider import FetchRequest, FetchResponse
 
 
 class FastPullError(Exception):
@@ -44,11 +45,7 @@ class IntegrityScope:
 		# First, check if we have an existing association for this URL in this scope. The URL
 		# will then be linked by sha512 hash to a specific object stored in the BLOS:
 
-		existing = self.fastpull.get(url=request.url, scope=self.scope)
-
-		# TODO: the code below needs to be fixed. get_file_by_url does not require a sha512
-		#       in the fetchrequest, and yet we are enforcing it here. If we have just a url,
-		#       we want to get the sha512 from our existing record above.
+		existing = self.fastpull.get(self.scope, request.url)
 
 		# IF expected hashes are supplied, then we expect the sha512 to be part of this set,
 		# and we will expect that any existing association with this URL to a file will have
@@ -83,29 +80,34 @@ class IntegrityScope:
 			# resource, inserting it into the BLOS, and returning the BLOSResponse from that.
 
 			try:
-
 				obj = self.fastpull.blos.get_object(hashes=blos_index)
+				logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: existing object found for {request.url}")
 				return obj
 			except BLOSNotFoundError:
 				existing = False
 
 		if not existing:
+			logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: existing not found; will spider for {request.url}")
 			# We have attempted to find the existing resource in fastpull, so we can grab it
 			# from the BLOS. That failed. So now we want to use the WebSpider to download the
 			# resource. If successful, we will insert the downloaded file into the BLOS for
 			# good measure, and return the BLOSResponse to the caller so they get the file
 			# they were after.
 
+			# TODO: record a record in our integrity scope! Also include fetch time, etc.
 			resp: FetchResponse = await self.fastpull.spider.download(request)
 			if resp.success:
+				logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: success for {request.url}")
 				# TODO: include extra info like URL, etc. maybe allow misc metadata to flow from
 				#       fetch request all the way into the BLOS.
 				# This intentionally may throw a BLOSError of some kind, and we want that:
 				blos_response = self.fastpull.blos.insert_object(resp.temp_path)
+				self.fastpull.put(self.scope, request.url, blos_response=blos_response)
 				# Tell the spider it can unlink the temporary file:
 				self.fastpull.spider.cleanup(resp)
 				return blos_response
 			else:
+				logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: failure for {request.url}")
 				raise FastPullFetchError()
 
 	def remove_record(self, authoritative_url):
@@ -145,7 +147,19 @@ class FastPullIntegrityDatabase:
 	def get_scope(self, scope_id):
 		if scope_id not in self.scopes:
 			self.scopes[scope_id] = IntegrityScope(self, scope_id)
+		logging.info(f"FastPull Integrity Scope: {scope_id}")
 		return self.scopes[scope_id]
 
-	def get(self, url, scope):
+	def get(self, scope, url):
 		return self.collection.find_one({"url": url, "scope": scope})
+
+	def put(self, scope, url, blos_response: BLOSResponse = None):
+		logging.info(f"Scope.put: scope='{scope}' url='{url}' sha512='{blos_response.authoritative_hashes['sha512']}'")
+		try:
+			self.collection.update_one(
+				{"url": url, "scope": scope},
+				{"$set": {"sha512": blos_response.authoritative_hashes['sha512'], "updated_on": datetime.utcnow()}},
+				upsert=True
+			)
+		except pymongo.errors.DuplicateKeyError:
+			raise KeyError(f"Duplicate key error when inserting {scope} {url}")

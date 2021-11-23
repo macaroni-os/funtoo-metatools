@@ -288,7 +288,7 @@ class BaseLayerObjectStore:
 		corrupt = False
 		for hash_name in common_hashes:
 			if hash_name in self.disk_verify:
-				diskhash = disk_hashes["hashes"][hash_name]
+				diskhash = disk_hashes[hash_name]
 			else:
 				diskhash = None
 			supplied = db_record["hashes"][hash_name]
@@ -322,17 +322,18 @@ class BaseLayerObjectStore:
 
 		returned_hashes = db_record['hashes']
 		if self.backfill != BackFillStrategy.NONE:
-			to_be_recorded_db_hashes = self.desired_hashes & disk_hashes
+			to_be_recorded_db_hashes = self.desired_hashes & set(disk_hashes.keys())
 			if to_be_recorded_db_hashes:
 				for hash in to_be_recorded_db_hashes:
-					returned_hashes[hash] = disk_hashes["hashes"][hash]
+					returned_hashes[hash] = disk_hashes[hash]
 				if self.backfill == BackFillStrategy.ALL and not db_record:
-					self.collection.insertOne({
+					self.collection.insert_one({
 						"hashes": returned_hashes
 					})
 				else:
-					self.collection.updateOne({"hashes.sha512": index}, {"hashes": returned_hashes})
+					self.collection.update_one({"hashes.sha512": index}, {"$set": {"hashes": returned_hashes}})
 		# All done.
+		logging.info("BLOS.get_object: found object.")
 		return BLOSResponse(path=disk_path, checked_hashes=disk_hashes, authoritative_hashes=returned_hashes)
 
 	def insert_object(self, temp_path, pregenned_hashes=None):
@@ -351,7 +352,9 @@ class BaseLayerObjectStore:
 			pregenned_hashes = {}
 		else:
 			try:
-				return self.get_object(hashes=pregenned_hashes)
+				obj = self.get_object(hashes=pregenned_hashes)
+				logging.info("BLOS.insert_object: found existing object.")
+				return obj
 			except BLOSNotFoundError:
 				pass
 
@@ -378,7 +381,8 @@ class BaseLayerObjectStore:
 			# possible race? multiple threads inserting same download shouldn't really happen
 			pass
 
-		self.collection.update_one({'hashes.sha512': final_hashes['sha512']}, {"$set" :{"hashes": final_hashes}}, upsert=True)
+		logging.info(f"BLOS.insert_object: creating record for {disk_path}: {final_hashes}")
+		self.collection.update_one({'hashes.sha512': final_hashes['sha512']}, {"$set": {"hashes": final_hashes}}, upsert=True)
 		return BLOSResponse(path=disk_path, genned_hashes=missing, authoritative_hashes=final_hashes)
 
 	def delete_object(hashes: dict):

@@ -167,7 +167,7 @@ class WebSpider:
 		We want this method to never throw an exception and just gracefully handle any underlying errors.
 		"""
 
-		logging.info(f"Fetching {request.url}...")
+		logging.info(f"Spidering {request.url}...")
 		temp_path = self._get_temp_path(request)
 
 		fd = open(temp_path, "wb")
@@ -203,6 +203,7 @@ class WebSpider:
 		final_data['size'] = filesize
 		response.temp_path = temp_path
 		response.final_data = final_data
+		logging.info(f"Spider._download: retrieved {request.url} to {temp_path}")
 		return response
 
 	async def acquire_host_semaphore(self, hostname):
