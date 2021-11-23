@@ -131,7 +131,7 @@ class FastPullIntegrityDatabase:
 		assert hashes
 		mc = MongoClient()
 		self.hashes = hashes
-		self.collection = c = mc.db.fastpull
+		self.collection = c = mc.metatools.fastpull
 
 		# The fastpull database uses sha512 as a 'linking mechanism' to the Base Layer Object Store (BLOS). So only
 		# one hash needs to be recorded, since this is not an exhaustive integrity check (that is performed by the

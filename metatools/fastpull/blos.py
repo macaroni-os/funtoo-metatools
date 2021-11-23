@@ -104,7 +104,7 @@ class BaseLayerObjectStore:
 		associated with each file store.
 		"""
 
-		self.collection = self.c = mc.db.blos
+		self.collection = self.c = mc.metatools.blos
 		self.collection.create_index([("hashes.sha512", pymongo.ASCENDING)])
 		self.blos_path = blos_path
 		self.spider = spider

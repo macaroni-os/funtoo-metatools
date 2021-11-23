@@ -22,7 +22,7 @@ class Tree:
 
 def fetch_cache():
 	mc = MongoClient()
-	fc = mc.db.fetch_cache
+	fc = mc.metatools.fetch_cache
 	fc.create_index([("method_name", pymongo.ASCENDING), ("url", pymongo.ASCENDING)])
 	fc.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {"$exists": True}})
 	return fc
