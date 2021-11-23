@@ -59,14 +59,14 @@ class Download:
 		self.request = request
 		self.waiters = []
 
-	async def add_waiter(self):
-		logging.info(f"Download.add_waiter: {self.request.url}")
-		fut = asyncio.get_running_loop()
+	async def await_existing(self):
+		logging.info(f"Download.await_existing:{threading.get_ident()} {self.request.url}")
+		fut = asyncio.get_running_loop().create_future()
 		self.waiters.append(fut)
 		return fut
 
 	def notify_waiters(self, result):
-		logging.info(f"Download.notify_waiters for {self.request.url}: result is {result}")
+		logging.info(f"Download.notify_waiters:{threading.get_ident()} for {self.request.url}: result is {result}")
 		for future in self.waiters:
 			future.set_result(result)
 
@@ -152,15 +152,18 @@ class WebSpider:
 
 		download : Download = self.get_existing_download(request)
 		if download:
-			logging.info(f"Webspider.download: waiting on existing download for {request.url}")
-			fut = download.add_waiter()
-			return await fut
+			logging.info(f"Webspider.download:{threading.get_ident()} waiting on existing download for {request.url}")
+			fut = download.await_existing()
+			result = await fut
+			logging.info(f"Webspider.download:{threading.get_ident()} existing download for {request.url} completed, got {result}")
+			return result
 		else:
-			logging.info(f"Webspider.download: starting new download for {request.url}")
+			logging.info(f"Webspider.download:{threading.get_ident()} starting new download for {request.url}")
 			download = Download(request)
 			async with self.acquire_download_slot():
 				async with self.start_download(download):
 					response = await self._download(request)
+					logging.info(f"Webspider.download:{threading.get_ident()} download complete for {request.url} -- notifying and returning {response}")
 					download.notify_waiters(response)
 					return response
 
@@ -174,7 +177,7 @@ class WebSpider:
 		We want this method to never throw an exception and just gracefully handle any underlying errors.
 		"""
 
-		logging.info(f"Spidering {request.url}...")
+		logging.info(f"WebSpider._download:{threading.get_ident()} spidering {request.url}...")
 		temp_path = self._get_temp_path(request)
 
 		fd = open(temp_path, "wb")
@@ -210,7 +213,7 @@ class WebSpider:
 		final_data['size'] = filesize
 		response.temp_path = temp_path
 		response.final_data = final_data
-		logging.info(f"Spider._download: retrieved {request.url} to {temp_path}")
+		logging.info(f"Spider._download:{threading.get_ident()} retrieved {request.url} to {temp_path}")
 		return response
 
 	async def acquire_host_semaphore(self, hostname):
@@ -413,7 +416,7 @@ class WebSpider:
 		"""
 		with self.DL_ACTIVE_LOCK:
 			if request.url in self.DL_ACTIVE:
-				logging.info(f"WebSpider.get_existing_download: found active download for {request.url}")
+				logging.info(f"WebSpider.get_existing_download:{threading.get_ident()} found active download for {request.url}")
 
 				return self.DL_ACTIVE[request.url]
 			
@@ -424,5 +427,5 @@ class WebSpider:
 			#		if mirror_url in self.DL_ACTIVE:
 			##			return self.DL_ACTIVE[mirror_url]
 			#else:
-			logging.info(f"WebSpider.get_existing_download: no active download for {request.url}")
+			logging.info(f"WebSpider.get_existing_download:{threading.get_ident()} no active download for {request.url}")
 			return None

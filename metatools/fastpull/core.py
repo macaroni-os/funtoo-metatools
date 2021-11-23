@@ -1,5 +1,6 @@
 #!/usr/bin/python3
 import logging
+import threading
 from datetime import datetime
 
 import pymongo
@@ -88,15 +89,18 @@ class IntegrityScope:
 					logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: existing object found for {request.url}")
 					return obj
 				except BLOSNotFoundError:
+					logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: not found {request.url} in BLOS, so will refetch.")
 					existing = False
 
 			if not existing:
-				logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: existing not found; will spider for {request.url}")
 				# We have attempted to find the existing resource in fastpull, so we can grab it
 				# from the BLOS. That failed. So now we want to use the WebSpider to download the
 				# resource. If successful, we will insert the downloaded file into the BLOS for
 				# good measure, and return the BLOSResponse to the caller so they get the file
 				# they were after.
+				# TODO: this is not working
+				logging.info(
+					f"IntegrityScope:{self.scope}.get_file_by_url:{threading.get_ident()} existing not found; will call spider for {request.url}")
 
 				# TODO: record a record in our integrity scope! Also include fetch time, etc.
 				resp: FetchResponse = await self.fastpull.spider.download(request)
@@ -114,7 +118,7 @@ class IntegrityScope:
 					logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: failure for {request.url}")
 					raise FastPullFetchError()
 		except Exception as e:
-			logging.error(f"IntegrityScope.get_file_by_url: Error while downloading {request.url}")
+			logging.error(f"IntegrityScope.get_file_by_url:{threading.get_ident()} Error while downloading {request.url}")
 			raise e
 
 	def remove_record(self, authoritative_url):

@@ -3,6 +3,7 @@
 import os
 import asyncio
 import sys
+import threading
 from asyncio import Task
 from subprocess import getstatusoutput
 from typing import Optional
@@ -163,7 +164,7 @@ class Artifact(Fetchable):
 				username=None,
 				password=None
 			)
-			logging.info(f'Artifact.ensure_fetched: now fetching {self.url} using FetchRequest {req}')
+			logging.info(f'Artifact.ensure_fetched:{threading.get_ident()} now fetching {self.url} using FetchRequest {req}')
 			# TODO: this used to be indexed by catpkg, and by final_name. So we are now indexing by source URL.
 			self.blos_response: BLOSResponse = await pkgtools.model.fastpull_session.get_file_by_url(req)
 		except FetchError as fe:
