@@ -59,13 +59,13 @@ class Download:
 		self.request = request
 		self.waiters = []
 
-	async def await_existing(self):
+	def get_download_future(self):
 		logging.info(f"Download.await_existing:{threading.get_ident()} {self.request.url}")
 		fut = asyncio.get_running_loop().create_future()
 		self.waiters.append(fut)
 		return fut
 
-	def notify_waiters(self, result):
+	def notify_waiters(self, result: FetchResponse):
 		logging.info(f"Download.notify_waiters:{threading.get_ident()} for {self.request.url}: result is {result}")
 		for future in self.waiters:
 			future.set_result(result)
@@ -153,9 +153,9 @@ class WebSpider:
 		download : Download = self.get_existing_download(request)
 		if download:
 			logging.info(f"Webspider.download:{threading.get_ident()} waiting on existing download for {request.url}")
-			fut = download.await_existing()
+			fut = download.get_download_future()
 			result = await fut
-			logging.info(f"Webspider.download:{threading.get_ident()} existing download for {request.url} completed, got {result}")
+			logging.info(f"Webspider.download:{threading.get_ident()} existing download for {request.url} completed, got {fut} {result}")
 			return result
 		else:
 			logging.info(f"Webspider.download:{threading.get_ident()} starting new download for {request.url}")

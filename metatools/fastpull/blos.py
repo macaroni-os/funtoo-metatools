@@ -66,7 +66,13 @@ class BLOSResponse:
 class BaseLayerObjectStore:
 	backfill = BackFillStrategy.DESIRED
 
-	def __init__(self, blos_path=None, spider=None, hashes=None, req_client_hashes=None, req_blos_hashes=None, desired_hashes=None, disk_verify=None):
+	def __init__(self, blos_path=None,
+					hashes=None,
+					req_client_hashes=None,
+					req_blos_hashes=None,
+					desired_hashes=None,
+					disk_verify=None
+				):
 
 		if hashes:
 			self.req_client_hashes = self.req_blos_hashes = self.desired_hashes = self.disk_verify = hashes
@@ -107,7 +113,6 @@ class BaseLayerObjectStore:
 		self.collection.create_index([("hashes.sha512", pymongo.ASCENDING)])
 		self.blos_path = blos_path
 		os.makedirs(self.blos_path, exist_ok=True)
-		self.spider = spider
 
 		# Always require a sha512, since it is used for indexing the files on disk.
 		self.req_client_hashes |= {'sha512'}

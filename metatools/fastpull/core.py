@@ -93,30 +93,7 @@ class IntegrityScope:
 					existing = False
 
 			if not existing:
-				# We have attempted to find the existing resource in fastpull, so we can grab it
-				# from the BLOS. That failed. So now we want to use the WebSpider to download the
-				# resource. If successful, we will insert the downloaded file into the BLOS for
-				# good measure, and return the BLOSResponse to the caller so they get the file
-				# they were after.
-				# TODO: this is not working
-				logging.info(
-					f"IntegrityScope:{self.scope}.get_file_by_url:{threading.get_ident()} existing not found; will call spider for {request.url}")
-
-				# TODO: record a record in our integrity scope! Also include fetch time, etc.
-				resp: FetchResponse = await self.fastpull.spider.download(request)
-				if resp.success:
-					logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: success for {request.url}")
-					# TODO: include extra info like URL, etc. maybe allow misc metadata to flow from
-					#       fetch request all the way into the BLOS.
-					# This intentionally may throw a BLOSError of some kind, and we want that:
-					blos_response = self.fastpull.blos.insert_object(resp.temp_path)
-					self.fastpull.put(self.scope, request.url, blos_response=blos_response)
-					# Tell the spider it can unlink the temporary file:
-					self.fastpull.spider.cleanup(resp)
-					return blos_response
-				else:
-					logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: failure for {request.url}")
-					raise FastPullFetchError()
+				return await self.fastpull.fetch_object(request)
 		except Exception as e:
 			logging.error(f"IntegrityScope.get_file_by_url:{threading.get_ident()} Error while downloading {request.url}")
 			raise e
@@ -138,9 +115,10 @@ class FastPullIntegrityDatabase:
 	#       The scope will use this to perform queries. Or we can provide methods here that will do the
 	#       heavy lifting.
 
-	def __init__(self, blos_path=None, spider=None, hashes: set = None):
+	def __init__(self, blos=None, spider=None, hashes: set = None):
 		assert hashes
 		self.hashes = hashes
+		self.blos = blos
 		self.collection = c = get_collection('fastpull')
 
 		# The fastpull database uses sha512 as a 'linking mechanism' to the Base Layer Object Store (BLOS). So only
@@ -173,3 +151,43 @@ class FastPullIntegrityDatabase:
 			)
 		except pymongo.errors.DuplicateKeyError:
 			raise KeyError(f"Duplicate key error when inserting {scope} {url}")
+
+	async def fetch_object(self, request: FetchRequest):
+
+		# TODO: the new logic should tell the spider to download the file -- we should not
+		# have the caller interact directly with the spider. We should pass the BLOS to indicate
+		# that the spider should store the file in the BLOS when complete, if possible, and
+		# return the BLOSResponse to the caller.
+
+
+		# We have attempted to find the existing resource in fastpull, so we can grab it
+		# from the BLOS. That failed. So now we want to use the WebSpider to download the
+		# resource. If successful, we will insert the downloaded file into the BLOS for
+		# good measure, and return the BLOSResponse to the caller so they get the file
+		# they were after.
+		# TODO: this is not working
+		logging.info(
+			f"IntegrityScope:{self.scope}.get_file_by_url:{threading.get_ident()} existing not found; will call spider for {request.url}")
+
+		# TODO: BAD: WE DON'T WANT TO INSERT INTO THE BLOS HERE! THE SPIDER SHOULD ALREADY TAKE CARE OF THAT FOR US.
+		#       OTHERWISE WE GET A RACE CONDITION IF WE HAVE MULTIPLE futures WAITING ON THE SAME FILE. FIRST BLOS
+		#       INSERT WILL SUCCEED BUT SECOND WILL FAIL SINCE WE ALREADY TOLD THE SPIDER TO CLEAN UP THE FILE.
+		#       So we can move the code below into the BLOS, and have the BLOS start the download, and populate the
+		#       BLOS, and then return the BLOSResponse. We should not be tyring to connect the spider and the BLOS
+		#       together ourselves.
+
+		# TODO: record a record in our integrity scope! Also include fetch time, etc.
+		resp: FetchResponse = await self.fastpull.spider.download(request)
+		if resp.success:
+			logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: success for {request.url}")
+			# TODO: include extra info like URL, etc. maybe allow misc metadata to flow from
+			#       fetch request all the way into the BLOS.
+			# This intentionally may throw a BLOSError of some kind, and we want that:
+			blos_response = self.fastpull.blos.insert_object(resp.temp_path)
+			self.fastpull.put(self.scope, request.url, blos_response=blos_response)
+			# Tell the spider it can unlink the temporary file:
+			self.fastpull.spider.cleanup(resp)
+			return blos_response
+		else:
+			logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: failure for {request.url}")
+			raise FastPullFetchError()
