@@ -7,8 +7,9 @@ import sys
 import traceback
 from datetime import timedelta
 
-from subpop.hub import Hub
 from metatools.config.autogen import AutogenConfig
+from metatools.pretty_logging import TornadoPrettyLogFormatter
+from subpop.hub import Hub
 
 
 class DoItHub(Hub):
@@ -21,8 +22,6 @@ hub = DoItHub()
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 import dyne.org.funtoo.metatools.generators as generators
-
-logging.basicConfig(level=logging.INFO)
 
 CLI_CONFIG = {
 	"start_path": {"default": os.getcwd(), "os": "AUTOGEN_START_PATH", "help": "Where to start processing"},
@@ -53,18 +52,23 @@ async def main_thread():
 	errors = await pkgtools.autogen.start()
 	return errors
 
-if __name__ == "__main__":
-	errors = hub.LOOP.run_until_complete(main_thread())
-	if len(errors):
-		sys.stderr.write("\n\n")
-		for e, exc_info in errors:
-			msg = getattr(e, "msg", None)
-			if msg is not None:
-				logging.error(f"Message: {msg}")
-			traceback.print_exception(*exc_info)
-		logging.error("\n\nErrors encountered.\n")
-		sys.exit(1)
 
+if __name__ == "__main__":
+	logger = logging.getLogger()
+	logger.setLevel(logging.INFO)
+	channel = logging.StreamHandler()
+	channel.setFormatter(TornadoPrettyLogFormatter())
+	logger.addHandler(channel)
+errors = hub.LOOP.run_until_complete(main_thread())
+if len(errors):
+	sys.stderr.write("\n\n")
+	for e, exc_info in errors:
+		msg = getattr(e, "msg", None)
+		if msg is not None:
+			logging.error(f"Message: {msg}")
+		traceback.print_exception(*exc_info)
+	logging.error("\n\nErrors encountered.\n")
+	sys.exit(1)
 
 # TODO: add after-action report (listing any failures.)
 # TODO: add mass-autogen YAML support.

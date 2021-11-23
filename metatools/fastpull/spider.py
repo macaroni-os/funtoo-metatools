@@ -413,13 +413,16 @@ class WebSpider:
 		"""
 		with self.DL_ACTIVE_LOCK:
 			if request.url in self.DL_ACTIVE:
+				logging.info(f"WebSpider.get_existing_download: found active download for {request.url}")
+
 				return self.DL_ACTIVE[request.url]
 			
 			# One man's authoritative URL is another man's mirror URL, so also see if a mirror URL is in progress...
-			
-			if request.mirror_urls:
-				for mirror_url in request.mirror_urls:
-					if mirror_url in self.DL_ACTIVE:
-						return self.DL_ACTIVE[mirror_url]
-			else:
-				return None
+			#
+			#if request.mirror_urls:
+			#	for mirror_url in request.mirror_urls:
+			#		if mirror_url in self.DL_ACTIVE:
+			##			return self.DL_ACTIVE[mirror_url]
+			#else:
+			logging.info(f"WebSpider.get_existing_download: no active download for {request.url}")
+			return None

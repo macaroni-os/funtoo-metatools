@@ -44,73 +44,78 @@ class IntegrityScope:
 
 		assert request.url is not None
 
-		# First, check if we have an existing association for this URL in this scope. The URL
-		# will then be linked by sha512 hash to a specific object stored in the BLOS:
+		try:
 
-		existing = self.fastpull.get(self.scope, request.url)
+			# First, check if we have an existing association for this URL in this scope. The URL
+			# will then be linked by sha512 hash to a specific object stored in the BLOS:
 
-		# IF expected hashes are supplied, then we expect the sha512 to be part of this set,
-		# and we will expect that any existing association with this URL to a file will have
-		# a sha512 that matches what was supplied. We will perform more detailed integrity
-		# checking later if we are OK here -- in particular when the object is pulled from the
-		# BLOS -- but this is the first, easiest and most obvious initial check to perform
-		# before we get too involved:
+			existing = self.fastpull.get(self.scope, request.url)
 
-		blos_index = None
-		if request.expected_hashes:
-			if 'sha512' not in request.expected_hashes:
-				raise FastPullInvalidRequest('Please include sha512 in expected hashes.')
-			if existing and request.expected_hashes['sha512'] != existing['sha512']:
-				raise FastPullIntegrityError(invalid_hashes={
-					'sha512': {
-						'supplied': request.expected_hashes['sha512'],
-						'recorded': existing['sha512']
-					}
-				})
-			# This will potentially supply extra hashes to for retrieval, which will be
-			# used by the BLOS to perform more exhaustive verification.
-			blos_index = request.expected_hashes
+			# IF expected hashes are supplied, then we expect the sha512 to be part of this set,
+			# and we will expect that any existing association with this URL to a file will have
+			# a sha512 that matches what was supplied. We will perform more detailed integrity
+			# checking later if we are OK here -- in particular when the object is pulled from the
+			# BLOS -- but this is the first, easiest and most obvious initial check to perform
+			# before we get too involved:
 
-		if existing:
+			blos_index = None
+			if request.expected_hashes:
+				if 'sha512' not in request.expected_hashes:
+					raise FastPullInvalidRequest('Please include sha512 in expected hashes.')
+				if existing and request.expected_hashes['sha512'] != existing['sha512']:
+					raise FastPullIntegrityError(invalid_hashes={
+						'sha512': {
+							'supplied': request.expected_hashes['sha512'],
+							'recorded': existing['sha512']
+						}
+					})
+				# This will potentially supply extra hashes to for retrieval, which will be
+				# used by the BLOS to perform more exhaustive verification.
+				blos_index = request.expected_hashes
 
-			if blos_index is None:
-				blos_index = {'sha512': existing['sha512']}
+			if existing:
 
-			# If we have gotten here, we know that any supplied sha512 hash matches the index
-			# in fastpull. Now let's attempt to retrieve the object and return the BLOSResponse
-			# as our return value. If this fails, we will fall back to downloading the
-			# resource, inserting it into the BLOS, and returning the BLOSResponse from that.
+				if blos_index is None:
+					blos_index = {'sha512': existing['sha512']}
 
-			try:
-				obj = self.fastpull.blos.get_object(hashes=blos_index)
-				logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: existing object found for {request.url}")
-				return obj
-			except BLOSNotFoundError:
-				existing = False
+				# If we have gotten here, we know that any supplied sha512 hash matches the index
+				# in fastpull. Now let's attempt to retrieve the object and return the BLOSResponse
+				# as our return value. If this fails, we will fall back to downloading the
+				# resource, inserting it into the BLOS, and returning the BLOSResponse from that.
 
-		if not existing:
-			logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: existing not found; will spider for {request.url}")
-			# We have attempted to find the existing resource in fastpull, so we can grab it
-			# from the BLOS. That failed. So now we want to use the WebSpider to download the
-			# resource. If successful, we will insert the downloaded file into the BLOS for
-			# good measure, and return the BLOSResponse to the caller so they get the file
-			# they were after.
+				try:
+					obj = self.fastpull.blos.get_object(hashes=blos_index)
+					logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: existing object found for {request.url}")
+					return obj
+				except BLOSNotFoundError:
+					existing = False
 
-			# TODO: record a record in our integrity scope! Also include fetch time, etc.
-			resp: FetchResponse = await self.fastpull.spider.download(request)
-			if resp.success:
-				logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: success for {request.url}")
-				# TODO: include extra info like URL, etc. maybe allow misc metadata to flow from
-				#       fetch request all the way into the BLOS.
-				# This intentionally may throw a BLOSError of some kind, and we want that:
-				blos_response = self.fastpull.blos.insert_object(resp.temp_path)
-				self.fastpull.put(self.scope, request.url, blos_response=blos_response)
-				# Tell the spider it can unlink the temporary file:
-				self.fastpull.spider.cleanup(resp)
-				return blos_response
-			else:
-				logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: failure for {request.url}")
-				raise FastPullFetchError()
+			if not existing:
+				logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: existing not found; will spider for {request.url}")
+				# We have attempted to find the existing resource in fastpull, so we can grab it
+				# from the BLOS. That failed. So now we want to use the WebSpider to download the
+				# resource. If successful, we will insert the downloaded file into the BLOS for
+				# good measure, and return the BLOSResponse to the caller so they get the file
+				# they were after.
+
+				# TODO: record a record in our integrity scope! Also include fetch time, etc.
+				resp: FetchResponse = await self.fastpull.spider.download(request)
+				if resp.success:
+					logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: success for {request.url}")
+					# TODO: include extra info like URL, etc. maybe allow misc metadata to flow from
+					#       fetch request all the way into the BLOS.
+					# This intentionally may throw a BLOSError of some kind, and we want that:
+					blos_response = self.fastpull.blos.insert_object(resp.temp_path)
+					self.fastpull.put(self.scope, request.url, blos_response=blos_response)
+					# Tell the spider it can unlink the temporary file:
+					self.fastpull.spider.cleanup(resp)
+					return blos_response
+				else:
+					logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: failure for {request.url}")
+					raise FastPullFetchError()
+		except Exception as e:
+			logging.error(f"IntegrityScope.get_file_by_url: Error while downloading {request.url}")
+			raise e
 
 	def remove_record(self, authoritative_url):
 		"""
