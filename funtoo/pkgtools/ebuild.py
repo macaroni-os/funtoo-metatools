@@ -13,7 +13,7 @@ import logging
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
-from metatools.fastpull.blos import BLOSResponse
+from metatools.fastpull.blos import BLOSObject
 from metatools.fastpull.spider import FetchError, FetchRequest
 from metatools.hashutils import calc_hashes
 
@@ -73,7 +73,7 @@ class Artifact(Fetchable):
 		self.breezybuilds = []
 		self.expect = expect
 		self.extra_http_headers = extra_http_headers
-		self.blos_response: Optional[BLOSResponse] = None
+		self.blos_response: Optional[BLOSObject] = None
 
 	@property
 	def final_data(self):
@@ -166,7 +166,7 @@ class Artifact(Fetchable):
 			)
 			logging.info(f'Artifact.ensure_fetched:{threading.get_ident()} now fetching {self.url} using FetchRequest {req}')
 			# TODO: this used to be indexed by catpkg, and by final_name. So we are now indexing by source URL.
-			self.blos_response: BLOSResponse = await pkgtools.model.fastpull_session.get_file_by_url(req)
+			self.blos_response: BLOSObject = await pkgtools.model.fastpull_session.get_file_by_url(req)
 		except FetchError as fe:
 			# We encountered some error retrieving the resource.
 			if throw:

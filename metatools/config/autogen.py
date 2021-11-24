@@ -10,7 +10,7 @@ import yaml
 from metatools.config.base import MinimalConfig
 from metatools.config.mongodb import get_collection
 from metatools.fastpull.blos import BaseLayerObjectStore
-from metatools.fastpull.core import FastPullIntegrityDatabase
+from metatools.fastpull.core import IntegrityDatabase
 from metatools.fastpull.spider import WebSpider
 from subpop.config import ConfigurationError
 
@@ -64,9 +64,9 @@ class AutogenConfig(MinimalConfig):
 		self.config = yaml.safe_load(self.get_file("autogen"))
 		self.set_context()
 		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
-		self.blos = BaseLayerObjectStore(self.fastpull_path)
+		self.blos = BaseLayerObjectStore(self.fastpull_path, hashes=self.hashes)
 		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
-		self.fpos = FastPullIntegrityDatabase(
+		self.fpos = IntegrityDatabase(
 			blos=self.blos,
 			spider=self.spider,
 			hashes=self.hashes

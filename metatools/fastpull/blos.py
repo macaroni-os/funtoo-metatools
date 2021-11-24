@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import logging
 import os
+from collections import Set
 from enum import Enum
 
 import pymongo
@@ -54,7 +55,7 @@ class BackFillStrategy(Enum):
 	ALL = 2
 
 
-class BLOSResponse:
+class BLOSObject:
 
 	def __init__(self, path: str = None, checked_hashes: set = None, genned_hashes: set = None, authoritative_hashes: dict = None):
 		self.path = path
@@ -64,6 +65,10 @@ class BLOSResponse:
 
 
 class BaseLayerObjectStore:
+	req_client_hashes = None
+	req_blos_hashes = None
+	desired_hashes = None
+	disk_verify = None
 	backfill = BackFillStrategy.DESIRED
 
 	def __init__(self, blos_path=None,
@@ -339,7 +344,7 @@ class BaseLayerObjectStore:
 					self.collection.update_one({"hashes.sha512": index}, {"$set": {"hashes": returned_hashes}})
 		# All done.
 		logging.info("BLOS.get_object: found object.")
-		return BLOSResponse(path=disk_path, checked_hashes=disk_hashes, authoritative_hashes=returned_hashes)
+		return BLOSObject(path=disk_path, checked_hashes=disk_hashes, authoritative_hashes=returned_hashes)
 
 	def insert_object(self, temp_path, pregenned_hashes=None):
 
@@ -350,7 +355,7 @@ class BaseLayerObjectStore:
 
 		If the object already exists, the get_object() call is used to return the object.
 
-		Returns a BLOSResponse containing the object inserted (or already inserted.)
+		Returns a BLOSObject containing the object inserted (or already inserted.)
 		"""
 
 		if pregenned_hashes is None:
@@ -389,7 +394,7 @@ class BaseLayerObjectStore:
 
 		logging.info(f"BLOS.insert_object: creating record for {disk_path}: {final_hashes}")
 		self.collection.update_one({'hashes.sha512': final_hashes['sha512']}, {"$set": {"hashes": final_hashes}}, upsert=True)
-		return BLOSResponse(path=disk_path, genned_hashes=missing, authoritative_hashes=final_hashes)
+		return BLOSObject(path=disk_path, genned_hashes=missing, authoritative_hashes=final_hashes)
 
 	def delete_object(hashes: dict):
 		"""

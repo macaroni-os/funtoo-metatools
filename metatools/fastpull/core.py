@@ -6,7 +6,7 @@ from datetime import datetime
 import pymongo
 
 from metatools.config.mongodb import get_collection
-from metatools.fastpull.blos import BaseLayerObjectStore, BLOSNotFoundError, BLOSResponse
+from metatools.fastpull.blos import BaseLayerObjectStore, BLOSNotFoundError, BLOSObject
 from metatools.fastpull.spider import FetchRequest, FetchResponse
 
 
@@ -30,18 +30,93 @@ class FastPullFetchError(FastPullError):
 
 class IntegrityScope:
 
-	# https://docs.mongodb.com/manual/core/index-multikey/
-	# ^^ perform multikey index on URL or just handle *authoritative URLS* (I think this is better.)
-
 	def __init__(self, parent, scope, validate_hashes=None):
-		# This is a link to the FastPullIntegrityDatabase
 		if validate_hashes is None:
 			validate_hashes = {"sha512"}
 		self.validate_hashes = validate_hashes
-		self.fastpull = parent
+		self.parent = parent
 		self.scope = scope
 
-	async def get_file_by_url(self, request: FetchRequest) -> BLOSResponse:
+	async def _get_file_by_url_new(self, request: FetchRequest) -> BLOSObject:
+		"""
+		This retrieves a file that has no expected hashes. We may have a record for it in our IntegrityScope,
+		in which case we can try to retrieve it from the BLOS. Otherwise, we will definitely have to start a
+		fresh download.
+		"""
+
+		existing = self.parent.get(self.scope, request.url)
+		if existing:
+			try:
+				obj = self.parent.blos.get_object(hashes={'sha512': existing['sha512']})
+				logging.info(f"IntegrityScope:{self.scope}._get_file_by_url_new: existing object found for {request.url}")
+				return obj
+			except BLOSNotFoundError:
+				logging.info(f"IntegrityScope:{self.scope}._get_file_by_url_new: not found {request.url} in BLOS, so will (re)fetch.")
+
+		obj = await self.parent.spider_and_store(request)
+		# TODO: create IntegrityScope entry.
+		#self.fastpull.put(self.scope, request.url, blos_response=blos_response)
+		# Do we return a FetchResponse on failure? probably throw in an exception.
+		return obj
+
+	async def _get_file_by_url_with_expected_hashes(self, request: FetchRequest) -> BLOSObject:
+		"""
+		This method attempts to return a reference to a file (``BLOSObject``) associated with the URL
+		in ``request.url``, and also performs additional verification to ensure that ``request.expected_hashes``
+		match the hashes we see along the way. So various additional checks are performed, making it more
+		complex than just retrieving a file for which we don't have any expected hashes.
+		"""
+		# TODO:
+		pass
+
+	async def get_file_by_url(self, request: FetchRequest) -> BLOSObject:
+
+		"""
+		This method will attempt to return a BLOSObject reference to binary data which is associated with
+		a URL, referenced by ``request.url``, in this ``IntegrityScope``. Typically, this means that a
+		tarball is being requested, and we may have this tarball already available locally, or we may
+		need to use the ``Spider`` to download it. This is the method used to retrieve ``Artifact``s
+		from the interwebs.
+
+		The ``FetchRequest`` ``request`` *may* include expected hashes for this particular object, in
+		which case these hashes will be used to verify the integrity of the result by lower layers, and
+		an exception will be raised if the expected hashes do not match the actual hashes.
+
+		If the object associated with the URL is available locally, a ``BLOSObject`` will be returned
+		that references this object (assuming hashes match, if supplied.)
+
+		In the case that the URL has not yet been retrieved and, it will be downloaded, and inserted into
+		the BLOS, and a reference to this inserted file will be returned (assuming hashes match, if
+		supplied.)
+
+		If the file is currently in the process of being downloaded, but this download has not completed
+		yet, this call will block until the download has completed, and then a reference to the resultant
+		BLOSObject will be returned (assuming hashes match, if supplied.)
+
+		The specific flow that will be followed is:
+
+		1. We will see if we have a reference for this URL in our IntegrityScope. If we do, we assume
+		   that we should be able to retrieve a BLOSObject, so we will attempt to retrieve a local copy
+		   of the object from the BLOS. If this fails, we will fall back to downloading it (following step 2, below.)
+
+	    2. If we do not have a reference to this URL in our IntegrityScope, we will see if there are
+	       any expected hashes. If there are, we will attempt to bypass starting a download and first
+	       see if we can retrieve the object from the BLOS directly. If we don't have expected hashes,
+	       then we will use the Spider to start the download of this file and retrieve the BLOSObject.
+
+	    A callback will be passed to the Spider download so that once the download has completed
+	    successfully, the temporary file will be inserted into the BLOS only once. The BLOSObject
+	    associated with this file will be returned to all active callers of this method that are waiting
+	    for the object to be retrieved. This allows the object to be requested multiple times even
+	    after a download has started without causing the file to be downloaded more than once, or
+	    inserted into the BLOS more than once.
+
+		"""
+
+		if request.expected_hashes:
+			return await self._get_file_by_url_with_expected_hashes(request)
+		else:
+			return await self._get_file_by_url_new(request)
 
 		assert request.url is not None
 
@@ -50,7 +125,7 @@ class IntegrityScope:
 			# First, check if we have an existing association for this URL in this scope. The URL
 			# will then be linked by sha512 hash to a specific object stored in the BLOS:
 
-			existing = self.fastpull.get(self.scope, request.url)
+			existing = self.parent.get(self.scope, request.url)
 
 			# IF expected hashes are supplied, then we expect the sha512 to be part of this set,
 			# and we will expect that any existing association with this URL to a file will have
@@ -85,7 +160,7 @@ class IntegrityScope:
 				# resource, inserting it into the BLOS, and returning the BLOSResponse from that.
 
 				try:
-					obj = self.fastpull.blos.get_object(hashes=blos_index)
+					obj = self.parent.blos.get_object(hashes=blos_index)
 					logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: existing object found for {request.url}")
 					return obj
 				except BLOSNotFoundError:
@@ -93,7 +168,7 @@ class IntegrityScope:
 					existing = False
 
 			if not existing:
-				return await self.fastpull.fetch_object(request)
+				return await self.parent.fetch_object(request)
 		except Exception as e:
 			logging.error(f"IntegrityScope.get_file_by_url:{threading.get_ident()} Error while downloading {request.url}")
 			raise e
@@ -109,7 +184,7 @@ class IntegrityScope:
 		pass
 
 
-class FastPullIntegrityDatabase:
+class IntegrityDatabase:
 
 	# TODO: this integrity database needs to have a DB initialized for storing references to the BLOS!
 	#       The scope will use this to perform queries. Or we can provide methods here that will do the
@@ -128,7 +203,6 @@ class FastPullIntegrityDatabase:
 		# fastpull by their hash. They should be retrieved by target URL (and scope).
 
 		c.create_index([("scope", pymongo.ASCENDING), ("url", pymongo.ASCENDING)], unique=True)
-		self.blos: BaseLayerObjectStore = BaseLayerObjectStore(blos_path, hashes=self.hashes)
 		self.spider = spider
 		self.scopes = {}
 
@@ -141,7 +215,7 @@ class FastPullIntegrityDatabase:
 	def get(self, scope, url):
 		return self.collection.find_one({"url": url, "scope": scope})
 
-	def put(self, scope, url, blos_response: BLOSResponse = None):
+	def put(self, scope, url, blos_response: BLOSObject = None):
 		logging.info(f"Scope.put: scope='{scope}' url='{url}' sha512='{blos_response.authoritative_hashes['sha512']}'")
 		try:
 			self.collection.update_one(
@@ -151,6 +225,33 @@ class FastPullIntegrityDatabase:
 			)
 		except pymongo.errors.DuplicateKeyError:
 			raise KeyError(f"Duplicate key error when inserting {scope} {url}")
+
+	def fetch_completion_callback(self, response: FetchResponse) -> None:
+		"""
+		This method is intended to be called *once* when an actual in-progress download of a tarball (by
+		the Spider) has completed. It performs several important finalization actions upon successful
+		download:
+
+		1. The downloaded file will be stored in the BLOS, and the resultant BLOSObject will be assigned to
+		``response.blos_object``.
+
+		2. The Spider will be told to clean up the temporary file, as it will not be accessed directly by
+		   anyone -- only the permanent file inserted into the BLOS will be handed back (via
+		   ``response.blos_object``.
+		"""
+		if response.success:
+			blos_response = self.blos.insert_object(response.temp_path)
+			self.spider.cleanup(response)
+
+	async def spider_and_store(self, request: FetchRequest) -> BLOSObject:
+		"""
+		If this method is called, we have already determined that we need to actually use the
+		Spider to fetch the object and store it. Upon success, we will call a hook to store
+		our result and return a ``BLOSObject`` which is a reference to our permanent storage
+		of the on-disk file.
+		"""
+		return await self.spider.download(request, completion_hook=self.fetch_completion_callback)
+		# TODO: exceptions!!!! error case.
 
 	async def fetch_object(self, request: FetchRequest):
 

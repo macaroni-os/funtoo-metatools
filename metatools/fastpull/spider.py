@@ -13,6 +13,9 @@ from urllib.parse import urlparse
 
 import aiohttp
 
+from metatools.fastpull.blos import BLOSObject
+
+
 class FetchRequest:
 
 	def __init__(self, url, retry=True, extra_headers=None, mirror_urls=None, username=None, password=None, expected_hashes=None):
@@ -41,11 +44,13 @@ class FetchResponse:
 
 	temp_path = None
 	final_data = None
+	blos_object: BLOSObject = None
 
-	def __init__(self, request: FetchRequest, success=True, failure_reason=None):
+	def __init__(self, request: FetchRequest, success=True, blos_object=None, failure_reason=None):
 		self.request = request
 		self.success = success
 		self.failure_reason = failure_reason
+		self.blos_object = blos_object
 
 
 class Download:
@@ -140,7 +145,7 @@ class WebSpider:
 				# FL-8301: address possible race condition
 				pass
 
-	async def download(self, request: FetchRequest) -> FetchResponse:
+	async def download(self, request: FetchRequest, completion_callback=None) -> FetchResponse:
 		"""
 		This method attempts to start a download. It is what users of the spider should call, and will take into
 		account any in-flight downloads for the same resource, which is most efficient and safe and will prevent
@@ -150,7 +155,7 @@ class WebSpider:
 		the fetch failed.
 		"""
 
-		download : Download = self.get_existing_download(request)
+		download: Download = self.get_existing_download(request)
 		if download:
 			logging.info(f"Webspider.download:{threading.get_ident()} waiting on existing download for {request.url}")
 			fut = download.get_download_future()
@@ -163,6 +168,9 @@ class WebSpider:
 			async with self.acquire_download_slot():
 				async with self.start_download(download):
 					response = await self._download(request)
+					# If we are given a callback, call it! This can populate response.blos_object with a ref to the inserted object.
+					if completion_callback and response.success:
+						completion_callback(response)
 					logging.info(f"Webspider.download:{threading.get_ident()} download complete for {request.url} -- notifying and returning {response}")
 					download.notify_waiters(response)
 					return response
