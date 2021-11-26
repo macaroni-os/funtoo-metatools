@@ -13,8 +13,6 @@ from urllib.parse import urlparse
 
 import aiohttp
 
-from metatools.fastpull.blos import BLOSObject
-
 
 class FetchRequest:
 
@@ -42,27 +40,42 @@ class FetchRequest:
 
 class FetchResponse:
 
+	"""
+	FetchResponse will be returned in the case of a successful download of a file. ``fetch_request``, the
+	only argument, references the original request associated with this response.
+
+	When a fetch has completed successfully, a FetchResponse will be in the following state: ``temp_path`` will
+	point to the location where the file has been downloaded. ``final_data`` will be populated to contain
+	calculated hashes and size for the downloaded file. ``completion_result`` will be set to the ultimate
+	value of the completion pipeline, if any list of functions was provided for ``completion_pipeline``
+	to the ``
+
+	in the associated ``FetchRequest`` (this is how we add some post-processing, such as storing the
+	result to the BLOS, to all successful downloads.)
+	"""
+
 	temp_path = None
-	final_data = None
-	blos_object: BLOSObject = None
-
-	def __init__(self, request: FetchRequest, success=True, blos_object=None, failure_reason=None):
-		self.request = request
-		self.success = success
-		self.failure_reason = failure_reason
-		self.blos_object = blos_object
-
-
-class Download:
-	
-	"""
-	``Download`` represents an in-progress download, and has a mechanism for recording and notifying those waiting
-	for this particular download to complete.
-	"""
 
 	def __init__(self, request: FetchRequest):
 		self.request = request
+		self.completion_result = None
+
+
+class Download:
+	"""
+	``Download`` represents an in-progress download, and has a mechanism for recording and notifying those waiting
+	for this particular download to complete. It allows the definition of a "completion pipeline", which is a list
+	of functions to call. The first function will get the result of the download as an argument.
+	"""
+
+	def __init__(self, spider, request: FetchRequest, hashes=None, completion_pipeline=None):
+		self.spider = spider
+		self.request = request
 		self.waiters = []
+		self.completion_pipeline = [] if completion_pipeline is None else completion_pipeline
+		self.hashes = hashes
+		self.final_data = None
+		self._temp_path = None
 
 	def get_download_future(self):
 		logging.info(f"Download.await_existing:{threading.get_ident()} {self.request.url}")
@@ -75,6 +88,147 @@ class Download:
 		for future in self.waiters:
 			future.set_result(result)
 
+	def throw_exception(self, ex):
+		"""
+		When a download blows up, we want to have all the waiters receive an exception too -- before we throw it ourselves.
+		"""
+		for future in self.waiters:
+			future.set_exception(ex)
+		raise ex
+
+	@property
+	def temp_path(self):
+		if self._temp_path is None:
+			# Use MD5 to create the path for the temporary file to avoid collisions.
+			temp_name = hashlib.md5(self.request.url.encode('utf-8')).hexdigest()
+			self._temp_path = os.path.join(self.spider.temp_path, temp_name)
+		return self._temp_path
+
+	async def _http_fetch_stream(self, on_chunk, chunk_size=262144):
+		"""
+		This is a low-level streaming HTTP fetcher that will call on_chunk(bytes) for each chunk. On_chunk is called with
+		literal bytes from the response body so no decoding is performed. The final_data attribute still needs
+		to be filled out (this is done by self.launch(), which calls this.)
+
+		Also note that this method will now raise FetchError if it truly fails, though it also will capture some error
+		conditions internally do to proper robustifying of downloads and handle common download failure conditions itself.
+		"""
+		hostname = self.request.hostname
+		semi = await self.spider.acquire_host_semaphore(hostname)
+		prev_rec_bytes = 0
+		rec_bytes = 0
+		attempts = 0
+		if self.request.retry:
+			max_attempts = 3
+		else:
+			max_attempts = 1
+		completed = False
+
+		async with semi:
+			while not completed and attempts < max_attempts:
+				connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await self.spider.get_resolver(), ttl_dns_cache=300)
+				try:
+					async with aiohttp.ClientSession(connector=connector, timeout=self.spider.http_timeout) as http_session:
+						headers, auth = self.spider.get_headers_and_auth(self.request)
+						if rec_bytes:
+							headers["Range"] = f"bytes={rec_bytes}-"
+							logging.warning(f"Resuming at {rec_bytes}")
+						async with http_session.get(self.request.url, headers=headers, auth=auth) as response:
+							if response.status not in [200, 206]:
+								reason = (await response.text()).strip()
+								if response.status in [400, 404, 410]:
+									# These are legitimate responses that indicate that the file does not exist. Therefore, we
+									# should not retry, as we should expect to get the same result.
+									retry = False
+								else:
+									retry = True
+								raise FetchError(self.request, f"HTTP fetch_stream Error {response.status}: {reason[:40]}", retry=retry)
+							while not completed:
+								chunk = await response.content.read(chunk_size)
+								rec_bytes += len(chunk)
+								if not chunk:
+									completed = True
+									break
+								else:
+									on_chunk(chunk)
+				except Exception as e:
+					# If we are "making progress on the download", then continue indefinitely --
+					if prev_rec_bytes < rec_bytes:
+						prev_rec_bytes = rec_bytes
+						print("Attempting to resume download...")
+						continue
+
+					if isinstance(e, FetchError):
+						if e.retry is False:
+							raise e
+
+					if attempts + 1 < max_attempts:
+						attempts += 1
+						print(f"Retrying after download failure... {e}")
+						continue
+					else:
+						raise FetchError(self.request, f"{e.__class__.__name__}: {str(e)}")
+
+	async def launch(self) -> None:
+		"""
+		This is the lower-level download method that wraps the _http_fetch_stream() call, and ensures hashes are generated.
+
+		Upon successful completion of the download, this function will set self.final_data to the final_data (hashes and
+		size) of the downloaded file. It will also execute the completion pipeline, if any. It will return None if you
+		have no completion pipeline, and will otherwise return the result of the execution of the pipeline.
+
+		This method throw a FetchError if it encounters some kind of fetching problem, though _http_fetch_stream()
+		will try to recover from many (and will catch some FetchErrors internally to do this.)
+		"""
+
+		logging.info(f"WebSpider.launch:{threading.get_ident()} spidering {self.request.url}...")
+		os.makedirs(os.path.dirname(self.temp_path), exist_ok=True)
+
+		fd = open(self.temp_path, "wb")
+		hashes = {}
+
+		for h in self.hashes:
+			hashes[h] = getattr(hashlib, h)()
+		filesize = 0
+
+		def on_chunk(chunk):
+			# See https://stackoverflow.com/questions/5218895/python-nested-functions-variable-scoping
+			nonlocal filesize
+			fd.write(chunk)
+			for hash in self.hashes:
+				hashes[hash].update(chunk)
+			filesize += len(chunk)
+			sys.stdout.write("")
+			sys.stdout.flush()
+		try:
+			await self._http_fetch_stream(on_chunk)
+		except FetchError as fe:
+			sys.stdout.write(":-(")
+			sys.stdout.flush()
+			fd.close()
+			raise fe
+
+		sys.stdout.write("x")
+		sys.stdout.flush()
+		fd.close()
+
+		final_data = {}
+		for h in self.hashes:
+			final_data[h] = hashes[h].hexdigest()
+		final_data['size'] = filesize
+		self.final_data = final_data
+
+		if self.completion_pipeline:
+			# start by handing this Download object to the start of the pipeline:
+			completion_result = self
+			for completion_fn in self.completion_pipeline:
+				logging.info(f"Calling completion function {completion_fn} with argument {completion_result}")
+				completion_result = completion_fn(completion_result)
+			self.notify_waiters(completion_result)
+			return completion_result
+		else:
+			return None
+
 
 class FetchError(Exception):
 
@@ -82,6 +236,10 @@ class FetchError(Exception):
 	When this exception is raised, we can set retry to True if the failure is something that could conceivably be
 	retried, such as a network failure. However, if we are reading from a cache, then it's just going to fail again,
 	and thus retry should have the default value of False.
+
+	This exception should be raised for *all* fetch-related errors in metatools. The ``retry`` field is used internally
+	to determine whether this is a request we should legitimately retry (like intermittent network issues) or if this
+	was a hard-fail and it's unlikely that retrying the operation is not likely to yield any benefit.
 	"""
 
 	def __init__(self, request: FetchRequest, msg, retry=False):
@@ -124,37 +282,25 @@ class WebSpider:
 		self.temp_path = temp_path
 		self.hashes = hashes - {'size'}
 
-	def _get_temp_path(self, request: FetchRequest):
-		# Use MD5 to create the path for the temporary file to avoid collisions.
-		assert request.url is not None
-		temp_name = hashlib.md5(request.url.encode('utf-8')).hexdigest()
-		temp_path = os.path.join(self.temp_path, temp_name)
-		os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-		return temp_path
+	async def download(self, request: FetchRequest, completion_pipeline=None):
 
-	def cleanup(self, response: FetchResponse):
-		"""
-		This is a utility function to clean up a temporary file provided by the spider, once the caller is done
-		with it.
-		"""
-
-		if os.path.exists(response.temp_path):
-			try:
-				os.unlink(response.temp_path)
-			except FileNotFoundError:
-				# FL-8301: address possible race condition
-				pass
-
-	async def download(self, request: FetchRequest, completion_callback=None) -> FetchResponse:
 		"""
 		This method attempts to start a download. It is what users of the spider should call, and will take into
 		account any in-flight downloads for the same resource, which is most efficient and safe and will prevent
 		multiple requests for the same file.
 
-		A FetchResponse will be returned containing information about the downloaded file or error information if
-		the fetch failed.
+		The return value of this function varies depending on the value of ``completion_pipeline``. If
+		``completion_pipeline`` is unset, the return value of this function will be ``None``.
+
+		If a ``completion_pipeline`` of functions is specified, each item in the pipeline will be called in order.
+		The first item in the pipeline will be given the ``Download`` (this object) as an argument. The second function in the
+		pipeline will receive the output of the result of the first item, etc. The ultimate result of the pipeline
+		will be returned to the caller. This allows the completion pipeline to perform actions and potentially throw
+		exceptions, and return an object of interest to the caller of this function.
 		"""
 
+		if completion_pipeline is None:
+			completion_pipeline = []
 		download: Download = self.get_existing_download(request)
 		if download:
 			logging.info(f"Webspider.download:{threading.get_ident()} waiting on existing download for {request.url}")
@@ -164,65 +310,30 @@ class WebSpider:
 			return result
 		else:
 			logging.info(f"Webspider.download:{threading.get_ident()} starting new download for {request.url}")
-			download = Download(request)
+			download = Download(self, request, hashes=self.hashes, completion_pipeline=completion_pipeline)
 			async with self.acquire_download_slot():
 				async with self.start_download(download):
-					response = await self._download(request)
-					# If we are given a callback, call it! This can populate response.blos_object with a ref to the inserted object.
-					if completion_callback and response.success:
-						completion_callback(response)
-					logging.info(f"Webspider.download:{threading.get_ident()} download complete for {request.url} -- notifying and returning {response}")
-					download.notify_waiters(response)
-					return response
+					try:
+						# This will actually fire off the download, and also handle calling the completion pipeline,
+						# and if specified we will get the result of this completion pipeline as a return value:
+						response = await download.launch()
+						return response
+					except FetchError as fe:
+						# This set the exception for any waiters, too, before throwing in the towel ourselves:
+						download.throw_exception(fe)
 
-	async def _download(self, request) -> FetchResponse:
+	def cleanup(self, response: FetchResponse):
 		"""
-		This is the lower-level download method that wraps the http_fetch_stream() call, and ensures hashes are generated.
-		It returns a FetchResponse regardless of success or failure, and you can inspect the FetchResponse.success boolean
-		to see if it succeeded or not. If success, then FetchResponse.temp_path will contain a path to the file downloaded,
-		and FetchResponse.final_data will contain the final_data (hashes and size) of the downloaded file.
-
-		We want this method to never throw an exception and just gracefully handle any underlying errors.
+		This is a utility function to clean up a temporary file provided by the spider, once the caller is done
+		with it. Typically you would call this as the very end of a completion pipeline for a successful request.
 		"""
 
-		logging.info(f"WebSpider._download:{threading.get_ident()} spidering {request.url}...")
-		temp_path = self._get_temp_path(request)
-
-		fd = open(temp_path, "wb")
-		hashes = {}
-
-		for h in self.hashes:
-			hashes[h] = getattr(hashlib, h)()
-		filesize = 0
-
-		def on_chunk(chunk):
-			# See https://stackoverflow.com/questions/5218895/python-nested-functions-variable-scoping
-			nonlocal filesize
-			fd.write(chunk)
-			for hash in self.hashes:
-				hashes[hash].update(chunk)
-			filesize += len(chunk)
-			sys.stdout.write("")
-			sys.stdout.flush()
-		response = await self.http_fetch_stream(request, on_chunk)
-		if not response.success:
-			sys.stdout.write(":-(")
-			sys.stdout.flush()
-			fd.close()
-			return response
-
-		sys.stdout.write("x")
-		sys.stdout.flush()
-		fd.close()
-
-		final_data = {}
-		for h in self.hashes:
-			final_data[h] = hashes[h].hexdigest()
-		final_data['size'] = filesize
-		response.temp_path = temp_path
-		response.final_data = final_data
-		logging.info(f"Spider._download:{threading.get_ident()} retrieved {request.url} to {temp_path}")
-		return response
+		if os.path.exists(response.temp_path):
+			try:
+				os.unlink(response.temp_path)
+			except FileNotFoundError:
+				# FL-8301: address possible race condition
+				pass
 
 	async def acquire_host_semaphore(self, hostname):
 		semaphores = getattr(self.thread_ctx, "http_semaphores", None)
@@ -304,78 +415,11 @@ class WebSpider:
 		except aiohttp.ClientConnectorError as ce:
 			raise FetchError(request, f"Could not connect to {request.url}: {repr(ce)}", retry=False)
 
-	async def http_fetch_stream(self, request: FetchRequest, on_chunk, chunk_size=262144) -> FetchResponse:
-		"""
-		This is a low-level streaming HTTP fetcher that will call on_chunk(bytes) for each chunk. On_chunk is called with literal bytes from the response
-		body so no decoding is performed. Inspect the FetchResponse.success boolean to determine success or failure. Note that if successful,
-		the temp_path and final_data fields in the FetchResponse still need to be filled out (this is done by self._download(), which calls this.)
-
-		While FetchErrors are used internally, we want this method to never throw an exception and just gracefully handle any underlying errors.
-		"""
-		hostname = request.hostname
-		semi = await self.acquire_host_semaphore(hostname)
-		prev_rec_bytes = 0
-		rec_bytes = 0
-		attempts = 0
-		if request.retry:
-			max_attempts = 3
-		else:
-			max_attempts = 1
-		completed = False
-		try:
-
-			async with semi:
-				while not completed and attempts < max_attempts:
-					connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await self.get_resolver(), ttl_dns_cache=300)
-					try:
-						async with aiohttp.ClientSession(connector=connector, timeout=self.http_timeout) as http_session:
-							headers, auth = self.get_headers_and_auth(request)
-							if rec_bytes:
-								headers["Range"] = f"bytes={rec_bytes}-"
-								logging.warning(f"Resuming at {rec_bytes}")
-							async with http_session.get(request.url, headers=headers, auth=auth) as response:
-								if response.status not in [200, 206]:
-									reason = (await response.text()).strip()
-									if response.status in [400, 404, 410]:
-										# These are legitimate responses that indicate that the file does not exist. Therefore, we
-										# should not retry, as we should expect to get the same result.
-										retry = False
-									else:
-										retry = True
-									raise FetchError(request, f"HTTP fetch_stream Error {response.status}: {reason[:40]}", retry=retry)
-								while not completed:
-									chunk = await response.content.read(chunk_size)
-									rec_bytes += len(chunk)
-									if not chunk:
-										completed = True
-										break
-									else:
-										on_chunk(chunk)
-					except Exception as e:
-						# If we are "making progress on the download", then continue indefinitely --
-						if prev_rec_bytes < rec_bytes:
-							prev_rec_bytes = rec_bytes
-							print("Attempting to resume download...")
-							continue
-
-						if isinstance(e, FetchError):
-							if e.retry is False:
-								raise e
-
-						if attempts + 1 < max_attempts:
-							attempts += 1
-							print(f"Retrying after download failure... {e}")
-							continue
-						else:
-							raise FetchError(request, f"{e.__class__.__name__}: {str(e)}")
-				# Note: This FetchResponse still needs to be augmented by the caller, to add: temp_path and final_data.
-				return FetchResponse(request, success=True)
-		except FetchError as fe:
-			return FetchResponse(request, success=False, failure_reason=fe.msg)
-
 	@asynccontextmanager
 	async def acquire_download_slot(self):
 		"""
+		If you are inside this contextmanager, then it means you *have permission to start a download*.
+
 		This code originally tried to do this, but it would deadlock::
 
 			with DOWNLOAD_SLOT:
@@ -404,6 +448,8 @@ class WebSpider:
 	@asynccontextmanager
 	async def start_download(self, download):
 		"""
+		If you are inside the contextmanager, it means that you are ready to *start a download for a specific resource*.
+
 		Automatically record the download as being active, and remove from our list when complete.
 
 		While waiting for DL_ACTIVE_LOCK will FREEZE the current thread's ioloop, this is OK because we immediately release
@@ -427,7 +473,7 @@ class WebSpider:
 				logging.info(f"WebSpider.get_existing_download:{threading.get_ident()} found active download for {request.url}")
 
 				return self.DL_ACTIVE[request.url]
-			
+			# TODO: remove this from other parts of code -- I don't think we need to do this.
 			# One man's authoritative URL is another man's mirror URL, so also see if a mirror URL is in progress...
 			#
 			#if request.mirror_urls:

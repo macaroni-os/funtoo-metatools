@@ -273,7 +273,7 @@ class BaseLayerObjectStore:
 			exists_on_disk = True
 
 		if not exists_on_disk:
-			raise BLOSNotFoundError(f"Object does not exist on disk.")
+			raise BLOSNotFoundError(f"Object does not exist on disk. You you may want to remove the ref to this object.")
 
 		db_record = self.collection.find_one({"hashes.sha512": index})
 

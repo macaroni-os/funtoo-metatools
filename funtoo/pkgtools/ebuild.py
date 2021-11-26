@@ -15,7 +15,6 @@ import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 from metatools.fastpull.blos import BLOSObject
 from metatools.fastpull.spider import FetchError, FetchRequest
-from metatools.hashutils import calc_hashes
 
 
 class DigestFailure(Exception):
@@ -73,12 +72,12 @@ class Artifact(Fetchable):
 		self.breezybuilds = []
 		self.expect = expect
 		self.extra_http_headers = extra_http_headers
-		self.blos_response: Optional[BLOSObject] = None
+		self.blos_object: Optional[BLOSObject] = None
 
 	@property
 	def final_data(self):
-		if self.blos_response:
-			return self.blos_response.authoritative_hashes
+		if self.blos_object:
+			return self.blos_object.authoritative_hashes
 		return None
 
 	@property
@@ -94,7 +93,7 @@ class Artifact(Fetchable):
 
 	@property
 	def final_path(self):
-		return self.blos_response.path
+		return self.blos_object.path
 
 	@property
 	def final_name(self):
@@ -111,14 +110,14 @@ class Artifact(Fetchable):
 
 	@property
 	def hashes(self):
-		return self.blos_response.authoritative_hashes
+		return self.blos_object.authoritative_hashes
 
 	@property
 	def size(self):
-		return self.blos_response.authoritative_hashes['size']
+		return self.blos_object.authoritative_hashes['size']
 
 	def hash(self, h):
-		return self.blos_response.authoritative_hashes[h]
+		return self.blos_object.authoritative_hashes[h]
 
 	@property
 	def src_uri(self):
@@ -150,10 +149,11 @@ class Artifact(Fetchable):
 		This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
 		calculate its hashes or extract it.
 
-		Returns a boolean with True indicating success and False failure.
+		Returns a boolean with True indicating success and False failure in the default behavior with ``throw=False``,
+		otherwise the original exception will be raised.
 		"""
 
-		if self.blos_response is not None:
+		if self.blos_object is not None:
 			return True
 		try:
 			# TODO: add extra headers, retry,
@@ -166,7 +166,8 @@ class Artifact(Fetchable):
 			)
 			logging.info(f'Artifact.ensure_fetched:{threading.get_ident()} now fetching {self.url} using FetchRequest {req}')
 			# TODO: this used to be indexed by catpkg, and by final_name. So we are now indexing by source URL.
-			self.blos_response: BLOSObject = await pkgtools.model.fastpull_session.get_file_by_url(req)
+			# TODO: what exceptions are we interested in here?
+			self.blos_object = await pkgtools.model.fastpull_session.get_file_by_url(req)
 		except FetchError as fe:
 			# We encountered some error retrieving the resource.
 			if throw:
