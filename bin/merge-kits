@@ -26,18 +26,17 @@ class MergeError(Exception):
 # TODO: drop all indy-kit-specific code to make things cleaner.
 # TODO: add a means to copy an entire kit, without listing everything in packages.yaml.
 
+
+
+class ThreadPipeline:
+	pass
+
 async def main_thread(args):
 
 	await merge.launch(MergeConfig, release=args.release, prod=args.prod, push=not args.nopush, create_branches=args.create_branches)
 
 	merge.metadata.cleanup_error_logs()
-
-	# We want to delete all locally-cloned independent kits before we start processing, so we re-clone them to get
-	# pristine copies with the latest commits (see FL-7935):
-
-	merge.kit.wipe_indy_kits()
-
-	thread_keys, thread_groups = merge.sources.get_kits_in_correct_processing_order()
+	thread_pipelines = merge.sources.get_kits_in_correct_processing_order()
 
 	# This will generate core-kit, as well as all other kits:
 	for source in thread_keys:
@@ -48,9 +47,11 @@ async def main_thread(args):
 			# Initialize sources based on the settings of the first kit in the group (they are all identical)
 			kit_dict = kit_dict_list[0]
 
-			if kit_dict["kind"] != "independent":
-				# This initializes the "source repos" that are used to grab catpkgs from to generate this kit:
-				await merge.sources.initialize_sources(kit_dict["source"])
+			if kit_dict["kind"] == "independent":
+				raise NotImplementedError()
+
+			# This initializes the "source repos" that are used to grab catpkgs from to generate this kit:
+			await merge.sources.initialize_sources(kit_dict["source"])
 
 			for kit_dict in kit_dict_list:
 				# For simplicity, set up a context variable to pass around, where ctx.kit contains the kit information:

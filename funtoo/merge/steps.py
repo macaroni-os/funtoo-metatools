@@ -1,4 +1,5 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
+
 import itertools
 import os
 import re
@@ -6,8 +7,6 @@ import shutil
 
 import dyne.org.funtoo.metatools.merge as merge
 
-# TODO: add checks for duplicate catpkgs
-# TODO: add checks for missing catpkgs
 import jinja2
 
 from metatools.tree import run_shell
@@ -319,7 +318,6 @@ class InsertFilesFromSubdir(MergeStep):
 			elif isinstance(self.skip, regextype):
 				if self.skip.match(e):
 					continue
-			real_dst = os.path.basename(os.path.join(dst, e))
 			run_shell("cp -a %s/%s %s" % (src, e, dst))
 
 
