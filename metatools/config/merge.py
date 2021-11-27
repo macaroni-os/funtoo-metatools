@@ -305,7 +305,7 @@ class MergeConfig(MinimalConfig):
 	def get_kit_items(self, ctx, section="packages"):
 		pdata = self.get_package_data(ctx)
 		if section in pdata:
-			for package_set in ctx.PDATA[section]:
+			for package_set in pdata[section]:
 				repo_name = list(package_set.keys())[0]
 				if section == "packages":
 					# for packages, allow arbitrary nesting, only capturing leaf nodes (catpkgs):
