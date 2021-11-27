@@ -35,13 +35,11 @@ async def get_page(url, encoding=None):
 	Use ``encoding`` if the HTTP resource does not have proper encoding and you have to set
 	a specific encoding. Normally, the encoding will be auto-detected and decoded for you.
 	"""
-	logging.info(f"Fetching page {url}...")
 	try:
 		request = FetchRequest(url=url)
 		set_basic_auth(request)
 		# Leverage the spider for this fetch. This bypasses the FPOS, etc:
 		result = await pkgtools.model.spider.http_fetch(request, encoding=encoding)
-		logging.info(f">>> Page fetched: {url}")
 		return result
 	except Exception as e:
 		if isinstance(e, FetchError):

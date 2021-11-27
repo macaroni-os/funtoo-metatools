@@ -183,7 +183,7 @@ class Download:
 
 		logging.debug(f"WebSpider.launch:{threading.get_ident()} spidering {self.request.url}...")
 		os.makedirs(os.path.dirname(self.temp_path), exist_ok=True)
-
+		logging.info(f"Spider download {self.request.url}")
 		fd = open(self.temp_path, "wb")
 		hashes = {}
 
@@ -198,8 +198,8 @@ class Download:
 			for hash in self.hashes:
 				hashes[hash].update(chunk)
 			filesize += len(chunk)
-			sys.stdout.write(".")
-			sys.stdout.flush()
+		#	sys.stdout.write(".")
+		#	sys.stdout.flush()
 		try:
 			await self._http_fetch_stream(on_chunk)
 		except FetchError as fe:
@@ -276,6 +276,15 @@ class WebSpider:
 	def __init__(self, temp_path, hashes):
 		self.temp_path = temp_path
 		self.hashes = hashes - {'size'}
+
+	async def status_logger_task(self):
+		while True:
+			await asyncio.sleep(5)
+			for dl in sorted(list(self.DL_ACTIVE.keys())):
+				logging.info(f"Spider downloading {self.DL_ACTIVE[dl].request.url}...")
+
+	async def start_asyncio_tasks(self):
+		asyncio.create_task(self.status_logger_task())
 
 	async def download(self, request: FetchRequest, completion_pipeline=None):
 

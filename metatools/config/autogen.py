@@ -65,6 +65,8 @@ class AutogenConfig(MinimalConfig):
 		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
 		self.blos = BaseLayerObjectStore(self.fastpull_path, hashes=self.hashes)
 		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
+		# This turns on periodic logging of active downloads (to get rid of 'dots')
+		await self.spider.start_asyncio_tasks()
 		self.fpos = IntegrityDatabase(
 			blos=self.blos,
 			spider=self.spider,
