@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 import asyncio
 import json
-import logging
+
 import re
-import sys
 
 from metatools.fastpull.spider import FetchError
 
 """
-This sub implements high-level fetching logic. Not the lower-level HTTP stuff. Things involving
+This sub implements high-level fetching pkgtools.model.log.c. Not the lower-level HTTP stuff. Things involving
 retrying, using our fetch cache, etc.
 """
 
@@ -22,7 +21,7 @@ class CacheMiss(Exception):
 async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=None, **content_kwargs):
 
 	"""
-	This method is used to execute any fetch-related method, and will handle all the logic of reading from and
+	This method is used to execute any fetch-related method, and will handle all the pkgtools.model.log.c of reading from and
 	writing to the fetch cache, as needed, based on the current fetch policy. Arguments include ``fetch_method``
 	which is the actual method used to fetch -- the function itself -- which should be a function or method that
 	accepts a single non-keyword argument of the URL to fetch, and it should return the result of the fetch
@@ -62,7 +61,7 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 					result = await pkgtools.fetch_cache.fetch_cache_read(
 						fetch_method.__name__, fetchable, content_kwargs, refresh_interval=refresh_interval
 					)
-					logging.info(f'Fetched {fetchable} (cached)')
+					pkgtools.model.log.info(f'Fetched {fetchable} (cached)')
 					return result["body"]
 				except CacheMiss:
 					# We'll continue and attempt a live fetch of the resource...
@@ -72,10 +71,10 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 			return result
 		except FetchError as e:
 			if e.retry and attempts + 1 < pkgtools.model.fetch_attempts:
-				logging.error(f"Fetch method {fetch_method.__name__}: {e.msg}; retrying...")
+				pkgtools.model.log.error(f"Fetch method {fetch_method.__name__}: {e.msg}; retrying...")
 				continue
 			# if we got here, we are on our LAST retry attempt or retry is False:
-			logging.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
+			pkgtools.model.log.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
 			# TODO: these should be logged persistently so they can be investigated.
 			try:
 				got = await pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable, content_kwargs)
@@ -106,8 +105,8 @@ async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False
 		json_data = json.loads(result)
 		return json_data
 	except json.JSONDecodeError as e:
-		logging.warning(repr(e))
-		logging.warning("JSON appears corrupt -- trying to get cached version of resource...")
+		pkgtools.model.log.warning(repr(e))
+		pkgtools.model.log.warning("JSON appears corrupt -- trying to get cached version of resource...")
 		try:
 			result = await pkgtools.fetch_cache.fetch_cache_read("get_page", fetchable, max_age=max_age)
 			return json.loads(result)

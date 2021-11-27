@@ -11,6 +11,7 @@ from metatools.config.mongodb import get_collection
 from metatools.fastpull.blos import BaseLayerObjectStore
 from metatools.fastpull.core import IntegrityDatabase
 from metatools.fastpull.spider import WebSpider
+from metatools.pretty_logging import TornadoPrettyLogFormatter
 from subpop.config import ConfigurationError
 
 
@@ -72,8 +73,14 @@ class AutogenConfig(MinimalConfig):
 			spider=self.spider,
 			hashes=self.hashes
 		)
+		self.log = logging.getLogger('metatools.autogen')
+		self.log.propagate = False
+		self.log.setLevel(logging.INFO)
+		channel = logging.StreamHandler()
+		channel.setFormatter(TornadoPrettyLogFormatter())
+		self.log.addHandler(channel)
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
-		logging.debug(f"Fetch cache interval set to {self.fetch_cache_interval}")
+		self.log.debug(f"Fetch cache interval set to {self.fetch_cache_interval}")
 
 	def repository_of(self, start_path):
 		root_path = start_path

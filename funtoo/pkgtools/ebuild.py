@@ -11,26 +11,32 @@ from typing import Optional
 import jinja2
 import logging
 
+log = logging.getLogger('metatools.autogen')
+
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 from metatools.fastpull.blos import BLOSObject
 from metatools.fastpull.spider import FetchError, FetchRequest
 
-
-class DigestFailure(Exception):
-	def __init__(self, artifact=None, kind=None, expected=None, actual=None):
-		self.artifact = artifact
-		self.kind = kind
-		self.expected = expected
-		self.actual = actual
-
-	@property
-	def message(self):
-		out = f"Digest Failure for {self.artifact.final_name}:\n"
-		out += f"    Kind: {self.kind}\n"
-		out += f"Expected: {self.expected}\n"
-		out += f"  Actual: {self.actual}"
-		return out
+# This is not currently used, as what the Spider downloads at any given moment is considered to
+# be authoritative. This may be used for tools that repopulate the the BLOS, but is not otherwise
+# needed.
+#
+# class DigestFailure(Exception):
+# 	def __init__(self, artifact=None, kind=None, expected=None, actual=None):
+# 		self.artifact = artifact
+# 		self.kind = kind
+# 		self.expected = expected
+# 		self.actual = actual
+#
+# 	@property
+# 	def message(self):
+# 		out = f"Digest Failure for {self.artifact.final_name}:\n"
+# 		out += f"    Kind: {self.kind}\n"
+# 		out += f"Expected: {self.expected}\n"
+# 		out += f"  Actual: {self.actual}"
+# 		return out
+#
 
 
 class BreezyError(Exception):
@@ -43,7 +49,7 @@ class Fetchable:
 		self.url = url
 		assert self.url is not None
 		try:
-			assert self.url.split(':')[0] in [ 'http', 'https', 'ftp' ]
+			assert self.url.split(':')[0] in ['http', 'https', 'ftp']
 		except (IndexError, AssertionError):
 			raise ValueError(f"url= argument of Artifact is '{url}', which appears invalid.")
 
@@ -66,12 +72,11 @@ class Artifact(Fetchable):
 	When an artifact is used in a stand-alone fashion
 
 	"""
-	def __init__(self, url=None, key=None, final_name=None, expect=None, extra_http_headers=None, **kwargs):
+	def __init__(self, url=None, key=None, final_name=None, extra_http_headers=None, **kwargs):
 		super().__init__(url=url, **kwargs)
 		self.key = key
 		self._final_name = final_name
 		self.breezybuilds = []
-		self.expect = expect
 		self.extra_http_headers = extra_http_headers
 		self.blos_object: Optional[BLOSObject] = None
 
@@ -159,13 +164,12 @@ class Artifact(Fetchable):
 		try:
 			# TODO: add extra headers, retry,
 			req = FetchRequest(self.url,
-				expected_hashes=self.expect,
 				extra_headers=self.extra_http_headers,
 				# TODO: we currently don't support authenticating to retrieve an Artifact (just HTTP requests for API)
 				username=None,
 				password=None
 			)
-			logging.debug(f'Artifact.ensure_fetched:{threading.get_ident()} now fetching {self.url} using FetchRequest {req}')
+			log.debug(f'Artifact.ensure_fetched:{threading.get_ident()} now fetching {self.url} using FetchRequest {req}')
 			# TODO: this used to be indexed by catpkg, and by final_name. So we are now indexing by source URL.
 			# TODO: what exceptions are we interested in here?
 			self.blos_object = await pkgtools.model.fastpull_session.get_file_by_url(req)
@@ -173,7 +177,7 @@ class Artifact(Fetchable):
 			# We encountered some error retrieving the resource.
 			if throw:
 				raise fe
-			logging.error(f"Fetch error: {fe}")
+			log.error(f"Fetch error: {fe}")
 			return False
 		return True
 
@@ -311,7 +315,7 @@ class BreezyBuild:
 		completion_list = aggregate(results)
 		for artifact, status in completion_list:
 			if status is False:
-				logging.error(f"Artifact for url {artifact.url} referenced in {artifact.catpkgs} could not be fetched.")
+				log.error(f"Artifact for url {artifact.url} referenced in {artifact.catpkgs} could not be fetched.")
 				sys.exit(1)
 
 	def push(self):
@@ -416,7 +420,7 @@ class BreezyBuild:
 					except Exception as te:
 						raise BreezyError(f"Unknown error processing {template_file}: {repr(te)}")
 			except FileNotFoundError as e:
-				logging.error(f"Could not find template: {template_file}")
+				log.error(f"Could not find template: {template_file}")
 				raise BreezyError(f"Template file not found: {template_file}")
 		else:
 			template = jinja2.Template(self.template_text)
@@ -426,7 +430,7 @@ class BreezyBuild:
 				myf.write(template.render(**self.template_args).encode("utf-8"))
 			except Exception as te:
 				raise BreezyError(f"Error rendering template: {repr(te)}")
-		logging.info("Created: " + os.path.relpath(self.output_ebuild_path))
+		log.info("Created: " + os.path.relpath(self.output_ebuild_path))
 
 	async def generate(self):
 		"""

@@ -54,21 +54,16 @@ async def main_thread():
 
 
 if __name__ == "__main__":
-	logger = logging.getLogger()
-	logger.setLevel(logging.INFO)
-	channel = logging.StreamHandler()
-	channel.setFormatter(TornadoPrettyLogFormatter())
-	logger.addHandler(channel)
-errors = hub.LOOP.run_until_complete(main_thread())
-if len(errors):
-	sys.stderr.write("\n\n")
-	for e, exc_info in errors:
-		msg = getattr(e, "msg", None)
-		if msg is not None:
-			logging.error(f"Message: {msg}")
-		traceback.print_exception(*exc_info)
-	logging.error("\n\nErrors encountered.\n")
-	sys.exit(1)
+	errors = hub.LOOP.run_until_complete(main_thread())
+	if len(errors):
+		sys.stderr.write("\n\n")
+		for e, exc_info in errors:
+			msg = getattr(e, "msg", None)
+			if msg is not None:
+				logging.error(f"Message: {msg}")
+			traceback.print_exception(*exc_info)
+		logging.error("\n\nErrors encountered.\n")
+		sys.exit(1)
 
 # TODO: add after-action report (listing any failures.)
 # TODO: add mass-autogen YAML support.

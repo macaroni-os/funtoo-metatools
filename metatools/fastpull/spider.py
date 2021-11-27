@@ -2,17 +2,16 @@ import asyncio
 import hashlib
 import logging
 import os
-import sys
 import socket
 import threading
+from asyncio import Semaphore
 from collections import defaultdict
 from contextlib import asynccontextmanager
-
-from asyncio import Semaphore
 from urllib.parse import urlparse
 
 import aiohttp
 
+log = logging.getLogger('metatools.autogen')
 
 class FetchRequest:
 
@@ -78,13 +77,13 @@ class Download:
 		self._temp_path = None
 
 	def get_download_future(self):
-		logging.debug(f"Download.await_existing:{threading.get_ident()} {self.request.url}")
+		log.debug(f"Download.await_existing:{threading.get_ident()} {self.request.url}")
 		fut = asyncio.get_running_loop().create_future()
 		self.waiters.append(fut)
 		return fut
 
 	def notify_waiters(self, result: FetchResponse):
-		logging.debug(f"Download.notify_waiters:{threading.get_ident()} for {self.request.url}: result is {result}")
+		log.debug(f"Download.notify_waiters:{threading.get_ident()} for {self.request.url}: result is {result}")
 		for future in self.waiters:
 			future.set_result(result)
 
@@ -132,7 +131,7 @@ class Download:
 						headers, auth = self.spider.get_headers_and_auth(self.request)
 						if rec_bytes:
 							headers["Range"] = f"bytes={rec_bytes}-"
-							logging.warning(f"Resuming at {rec_bytes}")
+							log.warning(f"Resuming at {rec_bytes}")
 						async with http_session.get(self.request.url, headers=headers, auth=auth) as response:
 							if response.status not in [200, 206]:
 								reason = (await response.text()).strip()
@@ -155,7 +154,7 @@ class Download:
 					# If we are "making progress on the download", then continue indefinitely --
 					if prev_rec_bytes < rec_bytes:
 						prev_rec_bytes = rec_bytes
-						logging.warning("Attempting to resume download...")
+						log.warning("Attempting to resume download...")
 						continue
 
 					if isinstance(e, FetchError):
@@ -164,7 +163,7 @@ class Download:
 
 					if attempts + 1 < max_attempts:
 						attempts += 1
-						logging.warning(f"Retrying after download failure... {e}")
+						log.warning(f"Retrying after download failure... {e}")
 						continue
 					else:
 						raise FetchError(self.request, f"{e.__class__.__name__}: {str(e)}")
@@ -181,9 +180,9 @@ class Download:
 		will try to recover from many (and will catch some FetchErrors internally to do this.)
 		"""
 
-		logging.debug(f"WebSpider.launch:{threading.get_ident()} spidering {self.request.url}...")
+		log.debug(f"WebSpider.launch:{threading.get_ident()} spidering {self.request.url}...")
 		os.makedirs(os.path.dirname(self.temp_path), exist_ok=True)
-		logging.info(f"Spider download {self.request.url}")
+		log.info(f"Spider download {self.request.url}")
 		fd = open(self.temp_path, "wb")
 		hashes = {}
 
@@ -217,7 +216,7 @@ class Download:
 			# start by handing this Download object to the start of the pipeline:
 			completion_result = self
 			for completion_fn in self.completion_pipeline:
-				logging.debug(f"Calling completion function {completion_fn} with argument {completion_result}")
+				log.debug(f"Calling completion function {completion_fn} with argument {completion_result}")
 				completion_result = completion_fn(completion_result)
 			self.notify_waiters(completion_result)
 			return completion_result
@@ -281,7 +280,7 @@ class WebSpider:
 		while True:
 			await asyncio.sleep(5)
 			for dl in sorted(list(self.DL_ACTIVE.keys())):
-				logging.info(f"Spider downloading {self.DL_ACTIVE[dl].request.url}...")
+				log.info(f"Spider downloading {self.DL_ACTIVE[dl].request.url}...")
 
 	async def start_asyncio_tasks(self):
 		asyncio.create_task(self.status_logger_task())
@@ -307,13 +306,13 @@ class WebSpider:
 			completion_pipeline = []
 		download: Download = self.get_existing_download(request)
 		if download:
-			logging.debug(f"Webspider.download:{threading.get_ident()} waiting on existing download for {request.url}")
+			log.debug(f"Webspider.download:{threading.get_ident()} waiting on existing download for {request.url}")
 			fut = download.get_download_future()
 			result = await fut
-			logging.debug(f"Webspider.download:{threading.get_ident()} existing download for {request.url} completed, got {fut} {result}")
+			log.debug(f"Webspider.download:{threading.get_ident()} existing download for {request.url} completed, got {fut} {result}")
 			return result
 		else:
-			logging.debug(f"Webspider.download:{threading.get_ident()} starting new download for {request.url}")
+			log.debug(f"Webspider.download:{threading.get_ident()} starting new download for {request.url}")
 			download = Download(self, request, hashes=self.hashes, completion_pipeline=completion_pipeline)
 			async with self.acquire_download_slot():
 				async with self.start_download(download):
@@ -395,7 +394,7 @@ class WebSpider:
 					# but I *think* it was locking up here when GitHub had some HTTP issues so I want to keep it looking this nasty.
 					sess_fut = http_session.__aenter__()
 					await asyncio.wait_for(sess_fut, timeout=3.0)
-					logging.debug(f'Fetching data from {request.url}')
+					log.debug(f'Fetching data from {request.url}')
 					headers, auth = self.get_headers_and_auth(request)
 					async with http_session.get(request.url, headers=headers, auth=auth) as response:
 						if response.status != 200:
@@ -405,10 +404,10 @@ class WebSpider:
 								retry = False
 							else:
 								retry = True
-							logging.error(f"Fetch failure for {request.url}: {response.status} {reason[:40]}")
+							log.error(f"Fetch failure for {request.url}: {response.status} {reason[:40]}")
 							raise FetchError(request, f"HTTP fetch Error: {request.url}: {response.status}: {reason[:40]}", retry=retry)
 						result = await response.text(encoding=encoding)
-						logging.info(f'Fetched {request.url} {len(result)} bytes')
+						log.info(f'Fetched {request.url} {len(result)} bytes')
 						return result
 				except asyncio.TimeoutError:
 					raise FetchError(request, f"aiohttp clientsession timeout: {request.url}")
@@ -472,7 +471,7 @@ class WebSpider:
 		"""
 		with self.DL_ACTIVE_LOCK:
 			if request.url in self.DL_ACTIVE:
-				logging.debug(f"WebSpider.get_existing_download:{threading.get_ident()} found active download for {request.url}")
+				log.debug(f"WebSpider.get_existing_download:{threading.get_ident()} found active download for {request.url}")
 
 				return self.DL_ACTIVE[request.url]
 			# TODO: remove this from other parts of code -- I don't think we need to do this.
@@ -483,5 +482,5 @@ class WebSpider:
 			#		if mirror_url in self.DL_ACTIVE:
 			##			return self.DL_ACTIVE[mirror_url]
 			#else:
-			logging.debug(f"WebSpider.get_existing_download:{threading.get_ident()} no active download for {request.url}")
+			log.debug(f"WebSpider.get_existing_download:{threading.get_ident()} no active download for {request.url}")
 			return None

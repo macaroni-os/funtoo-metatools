@@ -1,4 +1,3 @@
-import logging
 import os
 from collections import OrderedDict, defaultdict
 from configparser import ConfigParser
@@ -9,7 +8,6 @@ import yaml
 from metatools.config.base import MinimalConfig
 from metatools.tree import AutoCreatedGitTree, GitTree
 from subpop.config import ConfigurationError
-
 
 class MergeConfig(MinimalConfig):
 	"""

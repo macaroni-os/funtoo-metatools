@@ -1,7 +1,6 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 import logging
 import os
-from collections import Set
 from enum import Enum
 
 import pymongo
@@ -9,6 +8,7 @@ import pymongo
 from metatools.config.mongodb import get_collection
 from metatools.hashutils import calc_hashes
 
+log = logging.getLogger('metatools.autogen')
 
 class BLOSError(Exception):
 	pass
@@ -343,7 +343,7 @@ class BaseLayerObjectStore:
 				else:
 					self.collection.update_one({"hashes.sha512": index}, {"$set": {"hashes": returned_hashes}})
 		# All done.
-		logging.debug("BLOS.get_object: found object.")
+		log.debug("BLOS.get_object: found object.")
 		return BLOSObject(path=disk_path, checked_hashes=disk_hashes, authoritative_hashes=returned_hashes)
 
 	def insert_object(self, temp_path, pregenned_hashes=None):
@@ -363,7 +363,7 @@ class BaseLayerObjectStore:
 		else:
 			try:
 				obj = self.get_object(hashes=pregenned_hashes)
-				logging.debug("BLOS.insert_object: found existing object.")
+				log.debug("BLOS.insert_object: found existing object.")
 				return obj
 			except BLOSNotFoundError:
 				pass
@@ -382,7 +382,7 @@ class BaseLayerObjectStore:
 		disk_path = self.get_disk_path(index)
 
 		if os.path.exists(disk_path):
-			logging.debug(f"no mongo db record but disk file already exists: {disk_path}")
+			log.debug(f"no mongo db record but disk file already exists: {disk_path}")
 		try:
 			os.makedirs(os.path.dirname(disk_path), exist_ok=True)
 			os.link(temp_path, disk_path)
@@ -392,7 +392,7 @@ class BaseLayerObjectStore:
 			# possible race? multiple threads inserting same download shouldn't really happen
 			pass
 
-		logging.debug(f"BLOS.insert_object: creating record for {disk_path}: {final_hashes}")
+		log.debug(f"BLOS.insert_object: creating record for {disk_path}: {final_hashes}")
 		self.collection.update_one({'hashes.sha512': final_hashes['sha512']}, {"$set": {"hashes": final_hashes}}, upsert=True)
 		return BLOSObject(path=disk_path, genned_hashes=missing, authoritative_hashes=final_hashes)
 
