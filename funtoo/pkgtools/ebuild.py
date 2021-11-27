@@ -47,6 +47,7 @@ class Fetchable:
 		except (IndexError, AssertionError):
 			raise ValueError(f"url= argument of Artifact is '{url}', which appears invalid.")
 
+
 class Artifact(Fetchable):
 	"""
 	An artifact is a tarball or other archive that is used by a BreezyBuild, and ultimately referenced in an ebuild. It's also
@@ -316,6 +317,11 @@ class BreezyBuild:
 	def push(self):
 		#
 		# https://stackoverflow.com/questions/1408171/thread-local-storage-in-python
+
+		if self.output_ebuild_path in hub.THREAD_CTX.genned_breezybuilds:
+			raise BreezyError(f"{self.output_ebuild_path} has already been generated -- you may have duplicate .push() calls or duplicate entries in your YAML.")
+		else:
+			hub.THREAD_CTX.genned_breezybuilds.add(self.output_ebuild_path)
 
 		async def wrapper(self):
 			await self.generate()

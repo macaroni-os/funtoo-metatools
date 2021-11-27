@@ -216,6 +216,7 @@ async def execute_generator(
 		hub.THREAD_CTX.sub = generator_sub
 		hub.THREAD_CTX.running_autogens = []
 		hub.THREAD_CTX.running_breezybuilds = []
+		hub.THREAD_CTX.genned_breezybuilds = set()
 
 		# Do our own internal processing to get pkginfo_list ready for generate().
 
