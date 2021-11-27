@@ -165,7 +165,7 @@ class Artifact(Fetchable):
 				username=None,
 				password=None
 			)
-			logging.info(f'Artifact.ensure_fetched:{threading.get_ident()} now fetching {self.url} using FetchRequest {req}')
+			logging.debug(f'Artifact.ensure_fetched:{threading.get_ident()} now fetching {self.url} using FetchRequest {req}')
 			# TODO: this used to be indexed by catpkg, and by final_name. So we are now indexing by source URL.
 			# TODO: what exceptions are we interested in here?
 			self.blos_object = await pkgtools.model.fastpull_session.get_file_by_url(req)

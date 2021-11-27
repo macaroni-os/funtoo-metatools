@@ -1,6 +1,5 @@
 import logging
 import os
-import sys
 from collections import defaultdict
 from datetime import timedelta
 
@@ -72,7 +71,7 @@ class AutogenConfig(MinimalConfig):
 			hashes=self.hashes
 		)
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
-		sys.stdout.write(f"fetch cache interval set to {self.fetch_cache_interval}\n")
+		logging.debug(f"Fetch cache interval set to {self.fetch_cache_interval}")
 
 	def repository_of(self, start_path):
 		root_path = start_path

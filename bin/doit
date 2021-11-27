@@ -55,7 +55,7 @@ async def main_thread():
 
 if __name__ == "__main__":
 	logger = logging.getLogger()
-	logger.setLevel(logging.WARNING)
+	logger.setLevel(logging.INFO)
 	channel = logging.StreamHandler()
 	channel.setFormatter(TornadoPrettyLogFormatter())
 	logger.addHandler(channel)

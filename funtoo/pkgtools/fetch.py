@@ -62,7 +62,7 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 					result = await pkgtools.fetch_cache.fetch_cache_read(
 						fetch_method.__name__, fetchable, content_kwargs, refresh_interval=refresh_interval
 					)
-					sys.stdout.write(f'>{fetchable} (cached)\n')
+					logging.info(f'Fetched {fetchable} (cached)')
 					return result["body"]
 				except CacheMiss:
 					# We'll continue and attempt a live fetch of the resource...

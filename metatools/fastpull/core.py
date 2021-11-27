@@ -51,7 +51,7 @@ class IntegrityScope:
 		if existing_ref:
 			try:
 				obj = self.parent.blos.get_object(hashes={'sha512': existing_ref['sha512']})
-				logging.info(f"IntegrityScope:{self.scope}._get_file_by_url_new: existing object found for ref {request.url}")
+				logging.debug(f"IntegrityScope:{self.scope}._get_file_by_url_new: existing object found for ref {request.url}")
 				return obj
 			except BLOSNotFoundError as bnfe:
 				logging.error(f"IntegrityScope:{self.scope}._get_file_by_url_new: ref {request.url} (sha512: {existing_ref['sha512']} NOT FOUND in BLOS. This can indicate a BLOS problem or corruption, so aborting rather than fixing.")
@@ -169,10 +169,10 @@ class IntegrityScope:
 		#
 		# 		try:
 		# 			obj = self.parent.blos.get_object(hashes=blos_index)
-		# 			logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: existing object found for {request.url}")
+		# 			logging.debug(f"IntegrityScope:{self.scope}.get_file_by_url: existing object found for {request.url}")
 		# 			return obj
 		# 		except BLOSNotFoundError:
-		# 			logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: not found {request.url} in BLOS, so will refetch.")
+		# 			logging.debug(f"IntegrityScope:{self.scope}.get_file_by_url: not found {request.url} in BLOS, so will refetch.")
 		# 			existing = False
 		#
 		# 	if not existing:
@@ -217,14 +217,14 @@ class IntegrityDatabase:
 	def get_scope(self, scope_id):
 		if scope_id not in self.scopes:
 			self.scopes[scope_id] = IntegrityScope(self, scope_id)
-		logging.info(f"FastPull Integrity Scope: {scope_id}")
+		logging.debug(f"FastPull Integrity Scope: {scope_id}")
 		return self.scopes[scope_id]
 
 	def get(self, scope, url):
 		return self.collection.find_one({"url": url, "scope": scope})
 
 	def put(self, scope, url, blos_object: BLOSObject = None):
-		logging.info(f"Scope.put: scope='{scope}' url='{url}' sha512='{blos_object.authoritative_hashes['sha512']}'")
+		logging.debug(f"Scope.put: scope='{scope}' url='{url}' sha512='{blos_object.authoritative_hashes['sha512']}'")
 		try:
 			self.collection.update_one(
 				{"url": url, "scope": scope},
@@ -266,7 +266,7 @@ class IntegrityDatabase:
 	# 	# good measure, and return the BLOSResponse to the caller so they get the file
 	# 	# they were after.
 	# 	# TODO: this is not working
-	# 	logging.info(
+	# 	logging.debug(
 	# 		f"IntegrityScope:{self.scope}.get_file_by_url:{threading.get_ident()} existing not found; will call spider for {request.url}")
 	#
 	# 	# TODO: BAD: WE DON'T WANT TO INSERT INTO THE BLOS HERE! THE SPIDER SHOULD ALREADY TAKE CARE OF THAT FOR US.
@@ -279,7 +279,7 @@ class IntegrityDatabase:
 	# 	# TODO: record a record in our integrity scope! Also include fetch time, etc.
 	# 	resp: FetchResponse = await self.fastpull.spider.download(request)
 	# 	if resp.success:
-	# 		logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: success for {request.url}")
+	# 		logging.debug(f"IntegrityScope:{self.scope}.get_file_by_url: success for {request.url}")
 	# 		# TODO: include extra info like URL, etc. maybe allow misc metadata to flow from
 	# 		#       fetch request all the way into the BLOS.
 	# 		# This intentionally may throw a BLOSError of some kind, and we want that:
@@ -289,5 +289,5 @@ class IntegrityDatabase:
 	# 		self.fastpull.spider.cleanup(resp)
 	# 		return blos_object
 	# 	else:
-	# 		logging.info(f"IntegrityScope:{self.scope}.get_file_by_url: failure for {request.url}")
+	# 		logging.debug(f"IntegrityScope:{self.scope}.get_file_by_url: failure for {request.url}")
 	# 		raise FastPullFetchError()

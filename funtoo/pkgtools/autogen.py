@@ -240,9 +240,9 @@ async def execute_generator(
 		for pkginfo in pkginfo_list:
 			try:
 				if "version" in pkginfo and pkginfo["version"] != "latest":
-					logging.info(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
+					logging.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
 				else:
-					logging.info(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+					logging.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
 			except KeyError as ke:
 				raise pkgtools.ebuild.BreezyError(
 					f"{generator_sub_name} encountered a key error: missing value. pkginfo is {pkginfo}. Missing in pkginfo: {ke}"

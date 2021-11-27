@@ -114,8 +114,9 @@ class TornadoPrettyLogFormatter(logging.Formatter):
 	   signature to be compatible with `logging.config.dictConfig`.
 	"""
 
-	DEFAULT_FORMAT = "%(color)s[%(levelname)1.1s %(asctime)s %(module)s:%(lineno)d]%(end_color)s %(message)s"  # noqa: E501
-	DEFAULT_DATE_FORMAT = "%y%m%d %H:%M:%S"
+	#DEFAULT_FORMAT = "%(color)s[%(levelname)5.5s %(asctime)s %(module)s:%(lineno)d]%(end_color)s %(message)s"  # noqa: E501
+	DEFAULT_FORMAT = "%(color)s[%(levelname)s %(asctime)s]%(end_color)s %(message)s"  # noqa: E501
+	DEFAULT_DATE_FORMAT = "%H:%M:%S"
 	DEFAULT_COLORS = {
 		logging.DEBUG: 4,  # Blue
 		logging.INFO: 2,  # Green
