@@ -19,7 +19,8 @@ being shared between releases. Instead, they can be moved to 'source kits' and t
 
 To drop independent kits, I would also need/want to add a feature to packages.yaml so
 that I can say "grab all the things from this source repository." So this creates the
-need for defining a new packages.yaml format. Maybe rename this to kit.yaml?
+need for defining a new packages.yaml format. Maybe rename this to kit.yaml? THIS CAN
+BE DONE BY CREATING A DIRECT MAPPING BETWEEN steps.py FUNCTIONS AND YAML in packages.yaml.
 
 There is also a need for 'collections' of packages to be defined in packages.yaml.
 This file (in theory) is supposed to define what stuff gets copied into a kit from
