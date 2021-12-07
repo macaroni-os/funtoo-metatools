@@ -6,8 +6,6 @@ import sys
 from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 
-from dict_tools.data import NamespaceDict
-
 from metatools.config.merge import MergeConfig
 from subpop.hub import Hub
 
@@ -30,6 +28,7 @@ class MergeError(Exception):
 class MetaRepo:
 	# TODO: have this hold kit sha1's?
 	pass
+
 
 class ParallelJobSet:
 	pass
