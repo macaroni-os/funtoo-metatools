@@ -88,6 +88,17 @@ class SourceRepository:
 
 class ReleaseYAML(YAMLReader):
 
+	source_collections = None
+	filename = None
+
+	def start(self):
+		self.source_collections = self._source_collections()
+
+	def __init__(self, filename):
+		self.filename = filename
+		with open(filename, 'r') as f:
+			super().__init__(f)
+
 	def _repositories(self):
 		"""
 		This is an internal helper method to return the master list of repositories. It should not be used by other parts
@@ -102,7 +113,7 @@ class ReleaseYAML(YAMLReader):
 			repos[name] = kwargs
 		return repos
 
-	def source_collections(self):
+	def _source_collections(self):
 		"""
 		A kit's packages.yaml file can be used to reference catpkgs in external overlays, as well as eclasses,
 		that should be copied into the kit when it is generated. This group of source repositories is called a

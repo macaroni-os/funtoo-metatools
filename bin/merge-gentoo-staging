@@ -15,7 +15,7 @@ async def gentoo_staging_update():
 	gentoo_staging_w = GitTree(
 		"gentoo-staging",
 		"master",
-		url=merge.MERGE_CONFIG.gentoo_staging,
+		url="ssh://git@code.funtoo.org:7999/auto/gentoo-staging.git",
 		root=merge.MERGE_CONFIG.dest_trees + "/gentoo-staging",
 	)
 	gentoo_staging_w.initialize()

@@ -85,9 +85,22 @@ release:
     perl-kit-legacy:
       - perl-kit-legacy
 
+  # Have all of our remote configurations defined in one place for ease of maintenance
+  remotes:
+    dev:
+      # should be overridden via config if a user needs to:
+      kit-fixups: https://code.funtoo.org/bitbucket/scm/core/kit-fixups
+      meta-repo: https://code.funtoo.org/bitbucket/scm/core/meta-repo
+      kits: https://code.funtoo.org/bitbucket/scm/auto/{kit_name}
+    prod:
+      meta-repo: ssh://git@code.funtoo.org:7999/core/meta-repo.git
+      kit-fixups: ssh://git@code.funtoo.org:7999/core/kit-fixups.git
+      kits: ssh://git@code.funtoo.org:7999/auto/{kit_name}
+      mirror:
+        - https://github.com/funtoo/{repo_name}
+
   kit-definitions:
     defaults:
-      sync_url: https://github.com/funtoo/{kit_name}
       source: funtoo_next
       stability: prime
       branch: next

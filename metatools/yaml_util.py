@@ -6,8 +6,15 @@ import yaml
 
 class YAMLReader:
 
+	def start(self):
+		"""
+		Override this method in subclasses to easily add any initialization.
+		"""
+		pass
+
 	def __init__(self, stream):
 		self.yaml = yaml.safe_load(stream)
+		self.start()
 
 	def get_elem(self, el_path):
 		"""

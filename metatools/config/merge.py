@@ -6,8 +6,10 @@ from datetime import datetime
 import yaml
 
 from metatools.config.base import MinimalConfig
+from metatools.files.release import ReleaseYAML
 from metatools.tree import AutoCreatedGitTree, GitTree
 from subpop.config import ConfigurationError
+
 
 class MergeConfig(MinimalConfig):
 	"""
@@ -24,19 +26,16 @@ class MergeConfig(MinimalConfig):
 	create_branches = False
 
 	fastpull = None
-	_foundation_data = None
-	_kit_groups = None
-	_package_data_dict = {}
 	_third_party_mirrors = None
 
 	mirror_repos = False
 	nest_kits = True
 	git_class = AutoCreatedGitTree
 
-	source_repos = {}
 	metadata_error_stats = []
 	processing_error_stats = []
 
+	# TODO: need new variables for this since we do this differently with llvm-kit in the mix:
 	# This is used to grab a reference to the eclasses in core kit during regen:
 	eclass_root = None
 	eclass_hashes = None
@@ -55,24 +54,32 @@ class MergeConfig(MinimalConfig):
 		self.release = release
 		self.create_branches = create_branches
 
-		self.config = ConfigParser()
-		self.config.read_string(self.get_file("merge"))
+		# Catch-22 -- where do we get kit-fixups from? Maybe we clone it and run inside kit-fixups like doit.
+		# Would make life a lot easier and also more consistent.
+
+		self.kit_fixups = GitTree(
+			name="kit-fixups",
+			branch=self.branch("kit-fixups"),
+			url=self.kit_fixups_url,
+			root=self.source_trees + "/kit-fixups",
+			checkout_all_branches=False,
+			model=self
+		)
+
+		# Next, find release.yaml in the proper directory in kit-fixups. Pass it here:
+
+		self.release_yaml = ReleaseYAML()
+
+		# Next, grab remotes from the release YAML, getting either dev or prod remotes based on
+		# value of 'prod', and then we know what we're doing.
+
+
+		#self.config = ConfigParser()
+		#self.config.read_string(self.get_file("merge"))
 
 		if not self.prod:
 			# The ``push`` keyword argument only makes sense in prod mode. If not in prod mode, we don't push.
 			self.push = False
-			self.defaults = {
-				"urls": {
-					"auto": "https://code.funtoo.org/bitbucket/scm/auto",
-					"indy": "https://code.funtoo.org/bitbucket/scm/indy",
-					"mirror": "",
-				},
-				"sources": {
-					"flora": "https://code.funtoo.org/bitbucket/scm/co/flora.git",
-					"kit-fixups": "https://code.funtoo.org/bitbucket/scm/core/kit-fixups.git",
-					"gentoo-staging": "https://code.funtoo.org/bitbucket/scm/auto/gentoo-staging.git",
-				},
-			}
 		else:
 
 			# In this mode, we're actually wanting to update real kits, and likely are going to push our updates to remotes (unless
@@ -83,18 +90,6 @@ class MergeConfig(MinimalConfig):
 			self.push = push
 			self.mirror_repos = push
 			self.git_class = GitTree
-			self.defaults = {
-				"urls": {
-					"auto": "ssh://git@code.funtoo.org:7999/auto",
-					"indy": "ssh://git@code.funtoo.org:7999/indy",
-					"mirror": "git@github.com:funtoo",
-				},
-				"sources": {
-					"flora": "ssh://git@code.funtoo.org:7999/co/flora.git",
-					"kit-fixups": "ssh://git@code.funtoo.org:7999/core/kit-fixups.git",
-					"gentoo-staging": "ssh://git@code.funtoo.org:7999/auto/gentoo-staging.git",
-				},
-			}
 
 		valids = {
 			"main": ["features"],
@@ -129,14 +124,6 @@ class MergeConfig(MinimalConfig):
 
 		self.start_time = datetime.utcnow()
 
-		self.kit_fixups = GitTree(
-			name="kit-fixups",
-			branch=self.branch("kit-fixups"),
-			url=self.kit_fixups_url,
-			root=self.source_trees + "/kit-fixups",
-			checkout_all_branches=False,
-			model=self
-		)
 
 		self.meta_repo.initialize()
 		self.kit_fixups.initialize()
@@ -155,127 +142,6 @@ class MergeConfig(MinimalConfig):
 					mirr_dict[ls[0]] = ls[1:]
 			self._third_party_mirrors = mirr_dict
 		return self._third_party_mirrors
-
-	@property
-	def foundation_data(self):
-		if self._foundation_data is None:
-			with open(os.path.join(self.kit_fixups.root, "foundations.yaml"), "r") as f:
-				self._foundation_data = yaml.safe_load(f)
-		return self._foundation_data
-
-	def release_exists(self, release):
-		for release_dict in self.foundation_data["kit-groups"]["releases"]:
-			cur_release = list(release_dict.keys())[0]
-			if cur_release == release:
-				return True
-		return False
-
-	@property
-	def release_info(self):
-		release_out = {}
-		fdata = self.foundation_data
-		for release_dict in fdata["metadata"]:
-			release = list(release_dict.keys())[0]
-			if release != self.release:
-				continue
-			release_info = release_dict[release]
-			# We now need to de-listify any lists
-			for key, val in release_info.items():
-				if not isinstance(val, list):
-					release_out[key] = val
-				else:
-					release_out[key] = val[0]
-			break
-		return release_out
-
-	@property
-	def kit_groups(self):
-		if self._kit_groups is None:
-			self._kit_groups = list(self._gen_kit_groups())
-		return self._kit_groups
-
-	def _gen_kit_groups(self):
-		fdata = self.foundation_data
-		defaults = fdata["kit-groups"]["defaults"] if "defaults" in fdata["kit-groups"] else {}
-		for release_dict in fdata["kit-groups"]["releases"]:
-
-			# unbundle from singleton dict:
-			release = list(release_dict.keys())[0]
-			release_data = release_dict[release]
-
-			if release != self.release:
-				continue
-
-			for kg in release_data:
-				out = defaults.copy()
-				if isinstance(kg, str):
-					out["name"] = kg
-				elif isinstance(kg, dict):
-					out["name"] = list(kg.keys())[0]
-					out.update(list(kg.values())[0])
-				yield out
-			break
-
-	def source_defs(self, name):
-		for sdef in self.foundation_data["source-defs"]:
-			sdef_name = list(sdef.keys())[0]
-			if sdef_name != name:
-				continue
-			sdef_data = list(sdef.values())[0]
-			for sdef_entry in sdef_data:
-				yield sdef_entry
-
-	def get_overlay(self, name):
-		"""
-		Gets data on a specific overlay
-		"""
-		for ov_dict in self.foundation_data["overlays"]:
-
-			if isinstance(ov_dict, str):
-				ov_name = ov_dict
-				ov_data = {"name": ov_name}
-			else:
-				ov_name = list(ov_dict.keys())[0]
-				if ov_name != name:
-					continue
-				ov_data = list(ov_dict.values())[0]
-				ov_data["name"] = ov_name
-
-			if ov_name != name:
-				continue
-
-			url = self.get_option("sources", ov_name)
-			if url is not None:
-				ov_data["url"] = url
-
-			if "url" not in ov_data:
-				raise IndexError(f"No url found for overlay {name}")
-
-			return ov_data
-		raise IndexError(f"overlay not found: {name}")
-
-	def get_repos(self, source_name):
-		"""
-		Given a source definition, return a list of repositories with all data included (like urls
-		from the source definitions, etc.)
-		"""
-
-		sdefs = self.source_defs(source_name)
-
-		for repo_dict in sdefs:
-			if isinstance(repo_dict, str):
-				repo_dict = {"repo": repo_dict}
-			ov_name = repo_dict["repo"]
-			ov_data = self.get_overlay(ov_name)
-			repo_dict.update(ov_data)
-
-			if "src_sha1" not in repo_dict:
-				branch = self.get_option("branches", ov_name)
-				if branch is not None:
-					repo_dict["branch"] = branch
-				else:
-					repo_dict["branch"] = "master"
-			yield repo_dict
 
 	def get_package_data(self, ctx):
 		key = f"{ctx.kit.name}/{ctx.kit.branch}"
@@ -319,12 +185,8 @@ class MergeConfig(MinimalConfig):
 		return self.get_kit_items(ctx)
 
 	def python_kit_settings(self):
-		for section in self.foundation_data["python-settings"]:
-			release = list(section.keys())[0]
-			if release != self.release:
-				continue
-			return section[release][0]
-		return None
+		# TODO: rework
+		pass
 
 	def get_excludes(self, ctx):
 		"""
@@ -355,27 +217,6 @@ class MergeConfig(MinimalConfig):
 			for copy_dict in copyfiles:
 				copy_tuple_dict[src_repo].append((copy_dict["src"], copy_dict["dest"] if "dest" in copy_dict else copy_dict["src"]))
 		return copy_tuple_dict
-
-	def get_option(self, section, key, default=None):
-		if self.config.has_section(section) and key in self.config[section]:
-			my_path = self.config[section][key]
-		elif section in self.defaults and key in self.defaults[section]:
-			my_path = self.defaults[section][key]
-		else:
-			my_path = default
-		return my_path
-
-	@property
-	def flora(self):
-		return self.get_option("sources", "flora")
-
-	@property
-	def kit_fixups_url(self):
-		return self.get_option("sources", "kit-fixups")
-
-	@property
-	def meta_repo_url(self):
-		return self.url("meta-repo")
 
 	@property
 	def mirror_url(self):
