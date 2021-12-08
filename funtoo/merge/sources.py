@@ -11,57 +11,6 @@ from dict_tools.data import NamespaceDict
 from metatools.tree import GitTree
 
 
-class Kit:
-	def __init__(self, kind=None, name=None):
-		self.kind = kind
-		self.name = name
-
-
-class SourceRepository:
-
-	def __init__(self, name=None, url=None, branch="master", src_sha1=None):
-		logging.warning(f"Going to initialize/git fetch for {name}")
-		self.name = name
-		self.url = url
-		self.branch = branch
-		self.src_sha1 = src_sha1
-		#if repo_key in merge.model.source_repos:
-		#	repo_obj = merge.model.source_repos[repo_key]
-		#	if repo_sha1:
-		#		repo_obj.gitCheckout(sha1=repo_sha1)
-		#	elif repo_branch:
-		#		repo_obj.gitCheckout(branch=repo_branch)
-		#else:
-
-		repo_obj = GitTree(
-			name,
-			url=url,
-			root="%s/%s" % (merge.model.source_trees, name),
-			branch=branch,
-			commit_sha1=src_sha1,
-			origin_check=False,
-			reclone=False,
-			model=merge.model
-		)
-		repo_obj.initialize()
-
-
-class SourceRepositoryCollection:
-	# TODO: complete this and fix constructor
-	def __init__(self, source):
-		repos = list(merge.model.get_repos(source))
-		repo_futures = []
-		with ThreadPoolExecutor(max_workers=1) as executor:
-			for repo_dict in repos:
-				# TODO: this should create a new SourceRepository object:
-				fut = executor.submit(initialize_repo, repo_dict)
-				repo_futures.append(fut)
-			for repo_fut in as_completed(repo_futures):
-				# Getting .result() will also cause any exception to be thrown:
-				repo_dict = repo_fut.result()
-				continue
-		merge.model.current_source_def = source
-
 
 def get_kit_preferred_branches():
 	"""
