@@ -221,8 +221,8 @@ class BreezyBuild:
 		template_path: str = None,
 		**kwargs,
 	):
-		self.source_tree = pkgtools.model.context
-		self.output_tree = pkgtools.model.output_context
+		self.source_tree = pkgtools.model.locator.context
+		self.output_tree = pkgtools.model.locator.output_context
 		self._pkgdir = None
 		self.template_args = kwargs
 		for kwarg in ["cat", "name", "version", "path"]:
@@ -342,14 +342,14 @@ class BreezyBuild:
 	@property
 	def pkgdir(self):
 		if self._pkgdir is None:
-			self._pkgdir = os.path.join(self.source_tree.root, self.cat, self.name)
+			self._pkgdir = os.path.join(self.source_tree, self.cat, self.name)
 			os.makedirs(self._pkgdir, exist_ok=True)
 		return self._pkgdir
 
 	@property
 	def output_pkgdir(self):
 		if self._pkgdir is None:
-			self._pkgdir = os.path.join(self.output_tree.root, self.cat, self.name)
+			self._pkgdir = os.path.join(self.output_tree, self.cat, self.name)
 			os.makedirs(self._pkgdir, exist_ok=True)
 		return self._pkgdir
 
@@ -386,7 +386,7 @@ class BreezyBuild:
 	def template_path(self):
 		if self._template_path:
 			return self._template_path
-		tpath = os.path.join(self.source_tree.root, self.cat, self.name, "templates")
+		tpath = os.path.join(self.source_tree, self.cat, self.name, "templates")
 		return tpath
 
 	async def record_manifest_lines(self):

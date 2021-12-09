@@ -8,17 +8,11 @@ import yaml
 
 from metatools.config.base import MinimalConfig
 from metatools.config.mongodb import get_collection
+from metatools.context import Locator
 from metatools.fastpull.blos import BaseLayerObjectStore
 from metatools.fastpull.core import IntegrityDatabase
 from metatools.fastpull.spider import WebSpider
 from metatools.pretty_logging import TornadoPrettyLogFormatter
-from subpop.config import ConfigurationError
-
-
-class Tree:
-	def __init__(self, root=None, start=None):
-		self.root = root
-		self.start = start
 
 
 def fetch_cache():
@@ -32,15 +26,12 @@ class AutogenConfig(MinimalConfig):
 	"""
 	This class is used for the autogen workflow -- i.e. the 'doit' command.
 	"""
+	locator = None
 	fetch_cache = fetch_cache()
 	fetch_cache_interval = timedelta(minutes=15)
 	check_disk_hashes = False
 	manifest_lines = defaultdict(set)
 	fetch_attempts = 3
-	context = None
-	output_context = None
-	start_path = None
-	out_path = None
 	config = None
 	kit_spy = None
 	spider = None
@@ -60,9 +51,14 @@ class AutogenConfig(MinimalConfig):
 			self.fetch_cache_interval = fetch_cache_interval
 		self.start_path = start_path
 		self.out_path = out_path
-		self.kit_spy = None
+		# kit_spy is used for creating an autogen ID:
+		# 			task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base)+1:]}"
+		# The autogen_id is intended to be used in the distfile integrity database, to tell use which autogen
+		# referenced the artifact, in the situation where we don't have a specific BreezyBuild. This was a recent
+		# add and may not be fully implemented or make sense based on our current architecture -- needs review
+		# so TODO
+		#self.kit_spy = None
 		self.config = yaml.safe_load(self.get_file("autogen"))
-		self.set_context()
 		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
 		self.blos = BaseLayerObjectStore(self.fastpull_path, hashes=self.hashes)
 		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
@@ -81,20 +77,10 @@ class AutogenConfig(MinimalConfig):
 		self.log.addHandler(channel)
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
 		self.log.debug(f"Fetch cache interval set to {self.fetch_cache_interval}")
-
-	def repository_of(self, start_path):
-		root_path = start_path
-		while (
-				root_path != "/"
-				and not os.path.exists(os.path.join(root_path, "profiles/repo_name"))
-				and not os.path.exists(os.path.join(root_path, "metadata/layout.conf"))
-		):
-			root_path = os.path.dirname(root_path)
-		if root_path == "/":
-			return None
+		self.locator = Locator(start_path, out_path=out_path)
 
 		repo_name = None
-		repo_name_path = os.path.join(root_path, "profiles/repo_name")
+		repo_name_path = os.path.join(self.locator.context, "profiles/repo_name")
 		if os.path.exists(repo_name_path):
 			with open(repo_name_path, "r") as repof:
 				repo_name = repof.read().strip()
@@ -102,29 +88,3 @@ class AutogenConfig(MinimalConfig):
 		if repo_name is None:
 			logging.warning("Unable to find %s." % repo_name_path)
 
-		return Tree(root=root_path, start=start_path)
-
-	def set_context(self):
-		self.context = self.repository_of(self.start_path)
-		if self.out_path is None or self.start_path == self.out_path:
-			self.output_context = self.context
-		else:
-			self.output_context = self.repository_of(self.out_path)
-		if self.context is None:
-			raise ConfigurationError(
-				"Could not determine repo context: %s -- please create a profiles/repo_name file in your repository." % self.start_path
-			)
-		elif self.output_context is None:
-			raise ConfigurationError(
-				"Could not determine output repo context: %s -- please create a profiles/repo_name file in your repository."
-				% self.out_path
-			)
-		self.kit_spy = "/".join(self.context.root.split("/")[-2:])
-		logging.debug("Set source context to %s." % self.context.root)
-		logging.debug("Set output context to %s." % self.output_context.root)
-
-	#model.CHECK_DISK_HASHES = False
-	#model.AUTOGEN_CONFIG = load_autogen_config()
-	#model.MANIFEST_LINES = defaultdict(set)
-	# This is used to limit simultaneous connections to a particular hostname to a reasonable value.
-	#model.FETCH_ATTEMPTS = 3
