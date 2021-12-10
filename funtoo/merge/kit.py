@@ -184,7 +184,6 @@ class KitJob:
 		fixup_dirs = ["global", "curated", self.kit.branch]
 		for fixup_dir in fixup_dirs:
 			fixup_path = self.kit.name + "/" + fixup_dir
-			# TODO: is merge.model.kit_fixups defined?
 			if os.path.exists(self.kit.kit_fixups.context + "/" + fixup_path):
 				if os.path.exists(self.kit.kit_fixups.context + "/" + fixup_path + "/eclass"):
 					steps += [
@@ -218,7 +217,7 @@ class KitJob:
 				]
 		return steps
 
-
+# TODO: integrate this into the workflow
 def generate_metarepo_metadata(self):
 	"""
 	Generates the metadata in /var/git/meta-repo/metadata/...
@@ -267,6 +266,7 @@ def generate_metarepo_metadata(self):
 		a.write(json.dumps(rel_info, sort_keys=True, indent=4, ensure_ascii=False))
 
 
+#TODO: does this need to be upgraded to handle multiple remotes?
 def mirror_repository(repo_obj, base_path):
 	"""
 	Mirror a repository to its mirror location, ie. GitHub.
