@@ -2,242 +2,212 @@
 
 import json
 import os
-import sys
 from collections import defaultdict
 from concurrent.futures._base import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 
 import dyne.org.funtoo.metatools.merge as merge
 
+from metatools.files.release import Kit
 from metatools.tree import run_shell
 
 
-def copy_from_fixups_steps(ctx):
-
-	# Phase 3: copy eclasses, licenses, profile info, and ebuild/eclass fixups from the kit-fixups repository.
-
-	# First, we are going to process the kit-fixups repository and look for ebuilds and eclasses to replace. Eclasses can be
-	# overridden by using the following paths inside kit-fixups:
-
-	# kit-fixups/eclass/1.2-release <--------- global eclasses, get installed to all kits unconditionally for release (overrides those above)
-	# kit-fixups/<kit>/global/eclass <-------- global eclasses for a particular kit, goes in all branches (overrides those above)
-	# kit-fixups/<kit>/global/profiles <------ global profile info for a particular kit, goes in all branches (overrides those above)
-	# kit-fixups/<kit>/<branch>/eclass <------ eclasses to install in just a specific branch of a specific kit (overrides those above)
-	# kit-fixups/<kit>/<branch>/profiles <---- profile info to install in just a specific branch of a specific kit (overrides those above)
-
-	# Note that profile repo_name and categories files are excluded from any copying.
-
-	# Ebuilds can be installed to kits by putting them in the following location(s):
-
-	# kit-fixups/<kit>/global/cat/pkg <------- install cat/pkg into all branches of a particular kit
-	# kit-fixups/<kit>/<branch>/cat/pkg <----- install cat/pkg into a particular branch of a kit
-
-	# Remember that at this point, we may be missing a lot of eclasses and licenses from Gentoo. We will then perform a final sweep
-	# of all catpkgs in the dest_kit and auto-detect missing eclasses from Gentoo and copy them to our dest_kit. Remember that if you
-	# need a custom eclass from a third-party overlay, you will need to specify it in the overlay's overlays["ov_name"]["eclasses"]
-	# list. Or alternatively you can copy the eclasses you need to kit-fixups and maintain them there :)
-
-	steps = []
-	# Here is the core logic that copies all the fix-ups from kit-fixups (eclasses and ebuilds) into place:
-	eclass_release_path = "eclass/%s" % merge.model.release
-	if os.path.exists(os.path.join(merge.model.kit_fixups.root, eclass_release_path)):
-		steps += [merge.steps.SyncDir(merge.model.kit_fixups.root, eclass_release_path, "eclass")]
-	fixup_dirs = ["global", "curated", ctx.kit.branch]
-	for fixup_dir in fixup_dirs:
-		fixup_path = ctx.kit.name + "/" + fixup_dir
-		if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path):
-			if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/eclass"):
-				steps += [
-					merge.steps.InsertFilesFromSubdir(
-						merge.model.kit_fixups, "eclass", ".eclass", select="all", skip=None, src_offset=fixup_path
-					)
-				]
-			if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/licenses"):
-				steps += [
-					merge.steps.InsertFilesFromSubdir(
-						merge.model.kit_fixups, "licenses", None, select="all", skip=None, src_offset=fixup_path
-					)
-				]
-			if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/profiles"):
-				steps += [
-					merge.steps.InsertFilesFromSubdir(
-						merge.model.kit_fixups, "profiles", None, select="all", skip=["repo_name", "categories"], src_offset=fixup_path
-					)
-				]
-			# copy appropriate kit readme into place:
-			readme_path = fixup_path + "/README.rst"
-			if os.path.exists(merge.model.kit_fixups.root + "/" + readme_path):
-				steps += [merge.steps.SyncFiles(merge.model.kit_fixups.root, {readme_path: "README.rst"})]
-
-			# We now add a step to insert the fixups, and we want to record them as being copied so successive kits
-			# don't get this particular catpkg. Assume we may not have all these catpkgs listed in our package-set
-			# file...
-
-			steps += [
-				merge.steps.InsertEbuilds(merge.model.kit_fixups, ebuildloc=fixup_path, select="all", skip=None, replace=True)
-			]
-	return steps
-
-
-async def get_deepdive_kit_items(ctx):
-
+class KitJob:
 	"""
-	This function will read on-disk metadata for a particular kit, and process it, splitting it into individual
-	records for performing a bulk insert into MongoDB, for example. It will return a big collection of dicts
-	in a list, ready for insertion. As part of this scan, Manifest data will be read from disk and hashes will
-	be added to each record.
-
-	We use this after a kit has been generated. We then grab the JSON of the metadata cache and prep it for
-	writing into MongoDB.
+	This class holds all info relevant to the creation of a specific kit branch from kit.yaml. It contains a
+	reference to the definition information in kit-fixups relevant to the kit, as well as the output Git tree
+	which will contain our results.
 	"""
-
-	repo_obj = await checkout_kit(ctx, pull=False)
-
-	# load on-disk JSON metadata cache into memory:
-	merge.metadata.fetch_kit(repo_obj)
-
-	bulk_insert = []
-	head_sha1 = merge.tree.headSHA1(repo_obj.root)
-	# Grab our fancy JSON record containing lots of kit information and prep it for insertion into MongoDB:
-	try:
-		for atom, json_data in repo_obj.KIT_CACHE.items():
-			json_data["commit"] = head_sha1
-			sys.stdout.write(".")
-			sys.stdout.flush()
-			bulk_insert.append(json_data)
-	except KeyError as ke:
-		print(f"Encountered error when processing {ctx.kit.name} {ctx.kit.branch}")
-		raise ke
-	merge.metadata.flush_kit(repo_obj, save=False)
-	print(f"Got {len(bulk_insert)} items to bulk insert for {ctx.kit.name} branch {ctx.kit.branch}.")
-	return ctx, bulk_insert
-
-
-async def checkout_kit(ctx, pull=None):
-
-	# For Sabayon, if ctx.kit has a URL, we use that. This allows us to checkout anything as a "kit"
-	# for leveraging our kit-cache pipeline.
-
-	branch = ctx.kit.branch
-	kwargs = {}
-	git_class = merge.model.git_class
-	kwargs["url"] = merge.model.url(ctx.kit.name, kind="auto")
-	kwargs["create_branches"] = merge.model.create_branches
-	# Allow overriding of pull behavior.
-	if pull is not None:
-		kwargs["pull"] = pull
-
-	try:
-		if merge.model.mirror:
-			kwargs["mirror"] = merge.model.mirror_url.rstrip("/") + "/" + ctx.kit.name
-	except AttributeError:
-		pass
-
-	root = get_kit_root(ctx.kit.name)
-
-	out_tree = git_class(ctx.kit.name, branch=branch, root=root, model=merge.model, **kwargs)
-	out_tree.initialize()
-	return out_tree
-
-
-def get_kit_root(kit_name):
-	if merge.model.nest_kits:
-		return os.path.join(merge.model.dest_trees, "meta-repo/kits", kit_name)
-	else:
-		return os.path.join(merge.model.dest_trees, kit_name)
-
-
-async def generate_kit(ctx):
-
-	"""
-
-	This function will auto-generate a single 'autogenerated' kit by checking out the current version, wiping the
-	contents of the git repo, and copying everything over again, updating metadata cache, etc. and then committing (and
-	possibly pushing) the result.
-
-	'ctx' is a NamespaceDict which contains the kit dictionary at `ctx.kit`.
-
-	"""
-
-	out_tree = await checkout_kit(ctx)
-
-	# load on-disk JSON metadata cache into memory:
-	merge.metadata.fetch_kit(out_tree)
-
-	steps = []
+	kit_sha1 = None
+	out_tree = None
 	active_repos = set()
 
-	steps += [merge.steps.CleanTree()]
+	def __init__(self,
+	             kit: Kit = None,
+	             ):
+		self.kit = kit
 
-	pre_steps, post_steps = merge.foundations.get_kit_pre_post_steps(ctx)
+		git_class = merge.model.git_class
 
-	if pre_steps is not None:
-		steps += pre_steps
+		if merge.model.nest_kits:
+			root = os.path.join(merge.model.dest_trees, "meta-repo/kits", kit.name)
+		else:
+			root = os.path.join(merge.model.dest_trees, kit.name)
+		self.out_tree = git_class(kit.name, branch=kit.branch, root=root, model=merge.model)
+		self.out_tree.initialize()
 
-	# Copy files specified in 'eclasses' and 'copyfiles' sections in the kit's YAML:
-	for repo_name, copyfile_tuples in merge.model.get_copyfiles(ctx).items():
-		steps += [merge.steps.CopyFiles(merge.model.source_repos[repo_name], copyfile_tuples)]
+	async def generate(self):
 
-	# Copy over catpkgs listed in 'packages' section:
+		"""
+		This function will auto-generate a single 'autogenerated' kit by checking out the current version, wiping the
+		contents of the git repo, and copying everything over again, updating metadata cache, etc. and then committing (and
+		possibly pushing) the result.
+		"""
 
-	for repo_name, packages in merge.model.get_kit_packages(ctx):
-		active_repos.add(repo_name)
-		from_tree = merge.model.source_repos[repo_name]
-		# TODO: add move maps below
-		steps += [merge.steps.InsertEbuilds(from_tree, skip=None, replace=True, move_maps=None, select=packages)]
+		# load on-disk JSON metadata cache into memory:
+		merge.metadata.fetch_kit(self.out_tree)
 
-	# If an autogenerated kit, we also want to copy various things (catpkgs, eclasses, profiles) from kit-fixups:
-	steps += copy_from_fixups_steps(ctx)
-	steps += [
-		merge.steps.RemoveFiles(merge.model.get_excludes(ctx)),
-		merge.steps.FindAndRemove(["__pycache__"]),
-	] + post_steps
+		steps = [
+			merge.steps.CleanTree(),
+			merge.steps.GenerateRepoMetadata(self.kit.name, aliases=self.kit.aliases, masters=self.kit.masters, priority=self.kit.priority),
+		] + self.package_yaml_steps() + self.copy_from_fixups_steps() + [
+			merge.steps.RemoveFiles(merge.model.get_excludes(self.kit)),
+			merge.steps.FindAndRemove(["__pycache__"]),
+			merge.steps.FindAndRemove(["COPYRIGHT.txt"]), # replaced with COPYRIGHT.rst
+			merge.steps.GenerateLicensingFile(sorted(list(self.active_repos))),
+			merge.steps.Minify(),
+			merge.steps.ELTSymlinkWorkaround(),
+			merge.steps.CreateCategories(),
+			# TODO: move this to a post-step and only include active licenses.
+			merge.steps.SyncDir(merge.model.source_repos["gentoo-staging"].root, "licenses"),
+		]
 
-	steps += [
-		merge.steps.FindAndRemove(["COPYRIGHT.txt"]),  # replaced with COPYRIGHT.rst and may be in indy kits
-		merge.steps.GenerateLicensingFile(sorted(list(active_repos))),
-		merge.steps.Minify(),
-		merge.steps.ELTSymlinkWorkaround(),
-		merge.steps.CreateCategories(),
-		merge.steps.SyncDir(merge.model.source_repos["gentoo-staging"].root, "licenses"),
-	]
+		await self.out_tree.run(steps)
 
-	await out_tree.run(steps)
+		############################################################################################################
+		# We now want to store the md5 digests for the eclasses in the kit at this point and also abort if we have
+		# a duplicate eclass:
+		############################################################################################################
 
-	# Now, if we are core-kit, get hashes of all the eclasses so that we can generate metadata cache and use
-	# it as needed. core-kit gets processed by itself as the first item in the pipeline. So these vars will
-	# be available for all successive metadata gen runs:
+		merge.model.eclass_hashes.add_eclasses(self.out_tree.root)
 
-	if ctx.kit.name == "core-kit":
-		merge.model.eclass_root = out_tree.root
-		merge.model.eclass_hashes = merge.metadata.get_eclass_hashes(merge.model.eclass_root)
+		############################################################################################################
+		# We will now generate the cached ebuild metadata for this kit, now that all ebuilds and eclasses are in
+		# place:
+		############################################################################################################
 
-	# We will execute all the steps that we have queued up to this point, which will result in out_tree.KIT_CACHE
-	# being populated with all the metadata from the kit. Which will allow the next steps to run successfully.
+		await self.out_tree.run([merge.steps.GenCache()])
 
-	await out_tree.run([merge.steps.GenCache()])
+		############################################################################################################
+		# Python USE settings auto-generation and other finalization steps:
+		############################################################################################################
 
-	meta_steps = [merge.steps.PruneLicenses()]
-
-	python_settings = merge.model.python_kit_settings()
-
-	for py_branch, py_settings in python_settings.items():
-		meta_steps += [merge.steps.GenPythonUse(py_settings, "funtoo/kits/python-kit/%s" % py_branch)]
-
-	# We can now run all the steps that require access to metadata:
-
-	await out_tree.run(meta_steps)
-
-	update_msg = "Autogenerated tree updates."
-	out_tree.gitCommit(message=update_msg, push=merge.model.push)
-
-	# save in-memory metadata cache to JSON:
-	merge.metadata.flush_kit(out_tree)
-
-	return ctx, out_tree, out_tree.head()
+		post_steps = [
+			merge.steps.PruneLicenses()
+		] + self.python_auto_use_steps()
 
 
-def generate_metarepo_metadata(output_sha1s):
+		# We can now run all the steps that require access to metadata:
+
+		await self.out_tree.run(post_steps)
+
+		update_msg = "Autogenerated tree updates."
+		self.out_tree.gitCommit(message=update_msg, push=merge.model.push)
+
+		# save in-memory metadata cache to JSON:
+		merge.metadata.flush_kit(self.out_tree)
+		self.kit_sha1 = self.out_tree.head()
+
+	def get_kit_pre_post_steps(self):
+		# unhandled steps:
+		# TODO: do some forking of profiles to fix this:
+		# core/"post": [
+		# 					merge.steps.ThirdPartyMirrors(),
+		# 					merge.steps.RunSed(["profiles/base/make.defaults"], ["/^PYTHON_TARGETS=/d", "/^PYTHON_SINGLE_TARGET=/d"]),
+		# 				],
+		# core/pre: merge.steps.SyncDir(merge.model.source_repos["gentoo-staging"].root, "eclass"),
+		# merge.steps.SyncFiles(
+		# 						merge.model.kit_fixups.root,
+		# 						{
+		# 							"LICENSE.txt": "LICENSE.txt",
+		# 						},
+		# 					),
+		pass
+
+	def python_auto_use_steps(self):
+		steps = []
+		python_settings = self.kit.settings
+
+		# TODO: This is run for all python kit branches, not just one -- for each kit. SO this is why there is a FOR loop
+
+		for py_branch, py_settings in python_settings.items():
+			steps += [merge.steps.GenPythonUse(self.kit.settings, "funtoo/kits/python-kit/%s" % py_branch)]
+		return steps
+
+	def package_yaml_steps(self):
+		# Copy files specified in 'eclasses' and 'copyfiles' sections in the kit's YAML:
+		steps = []
+		for repo_name, copyfile_tuples in merge.model.get_copyfiles(self.kit).items():
+			steps += [merge.steps.CopyFiles(merge.model.source_repos[repo_name], copyfile_tuples)]
+
+		# Copy over catpkgs listed in 'packages' section:
+
+		for repo_name, packages in merge.model.get_kit_packages(self.kit):
+			self.active_repos.add(repo_name)
+			from_tree = merge.model.source_repos[repo_name]
+			# TODO: add move maps below
+			steps += [merge.steps.InsertEbuilds(from_tree, skip=None, replace=True, move_maps=None, select=packages)]
+		return steps
+
+	def copy_from_fixups_steps(self):
+
+		# Phase 3: copy eclasses, licenses, profile info, and ebuild/eclass fixups from the kit-fixups repository.
+
+		# First, we are going to process the kit-fixups repository and look for ebuilds and eclasses to replace. Eclasses can be
+		# overridden by using the following paths inside kit-fixups:
+
+		# kit-fixups/eclass/1.2-release <--------- global eclasses, get installed to all kits unconditionally for release (overrides those above)
+		# kit-fixups/<kit>/global/eclass <-------- global eclasses for a particular kit, goes in all branches (overrides those above)
+		# kit-fixups/<kit>/global/profiles <------ global profile info for a particular kit, goes in all branches (overrides those above)
+		# kit-fixups/<kit>/<branch>/eclass <------ eclasses to install in just a specific branch of a specific kit (overrides those above)
+		# kit-fixups/<kit>/<branch>/profiles <---- profile info to install in just a specific branch of a specific kit (overrides those above)
+
+		# Note that profile repo_name and categories files are excluded from any copying.
+
+		# Ebuilds can be installed to kits by putting them in the following location(s):
+
+		# kit-fixups/<kit>/global/cat/pkg <------- install cat/pkg into all branches of a particular kit
+		# kit-fixups/<kit>/<branch>/cat/pkg <----- install cat/pkg into a particular branch of a kit
+
+		# Remember that at this point, we may be missing a lot of eclasses and licenses from Gentoo. We will then perform a final sweep
+		# of all catpkgs in the dest_kit and auto-detect missing eclasses from Gentoo and copy them to our dest_kit. Remember that if you
+		# need a custom eclass from a third-party overlay, you will need to specify it in the overlay's overlays["ov_name"]["eclasses"]
+		# list. Or alternatively you can copy the eclasses you need to kit-fixups and maintain them there :)
+
+		steps = []
+		# Here is the core logic that copies all the fix-ups from kit-fixups (eclasses and ebuilds) into place:
+		eclass_release_path = "eclass/%s" % merge.model.release
+		if os.path.exists(os.path.join(merge.model.kit_fixups.root, eclass_release_path)):
+			steps += [merge.steps.SyncDir(merge.model.kit_fixups.root, eclass_release_path, "eclass")]
+		fixup_dirs = ["global", "curated", self.kit.branch]
+		for fixup_dir in fixup_dirs:
+			fixup_path = self.kit.name + "/" + fixup_dir
+			# TODO: is merge.model.kit_fixups defined?
+			if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path):
+				if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/eclass"):
+					steps += [
+						merge.steps.InsertFilesFromSubdir(
+							merge.model.kit_fixups, "eclass", ".eclass", select="all", skip=None, src_offset=fixup_path
+						)
+					]
+				if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/licenses"):
+					steps += [
+						merge.steps.InsertFilesFromSubdir(
+							merge.model.kit_fixups, "licenses", None, select="all", skip=None, src_offset=fixup_path
+						)
+					]
+				if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/profiles"):
+					steps += [
+						merge.steps.InsertFilesFromSubdir(
+							merge.model.kit_fixups, "profiles", None, select="all", skip=["repo_name", "categories"], src_offset=fixup_path
+						)
+					]
+				# copy appropriate kit readme into place:
+				readme_path = fixup_path + "/README.rst"
+				if os.path.exists(merge.model.kit_fixups.root + "/" + readme_path):
+					steps += [merge.steps.SyncFiles(merge.model.kit_fixups.root, {readme_path: "README.rst"})]
+
+				# We now add a step to insert the fixups, and we want to record them as being copied so successive kits
+				# don't get this particular catpkg. Assume we may not have all these catpkgs listed in our package-set
+				# file...
+
+				steps += [
+					merge.steps.InsertEbuilds(merge.model.kit_fixups, ebuildloc=fixup_path, select="all", skip=None, replace=True)
+				]
+		return steps
+
+
+def generate_metarepo_metadata(self):
 	"""
 	Generates the metadata in /var/git/meta-repo/metadata/...
 	:param release: the release string, like "1.3-release".
@@ -275,11 +245,11 @@ def generate_metarepo_metadata(output_sha1s):
 			):
 				rdefs[kit_name].append(def_kit["branch"])
 
-		rel_info = merge.model.release_info()
+	rel_info = merge.model.release_info()
 
-		k_info["release_defs"] = rdefs
-		k_info["release_info"] = rel_info
-		a.write(json.dumps(k_info, sort_keys=True, indent=4, ensure_ascii=False))
+	k_info["release_defs"] = rdefs
+	k_info["release_info"] = rel_info
+	a.write(json.dumps(k_info, sort_keys=True, indent=4, ensure_ascii=False))
 
 	with open(merge.model.meta_repo.root + "/metadata/version.json", "w") as a:
 		a.write(json.dumps(rel_info, sort_keys=True, indent=4, ensure_ascii=False))

@@ -78,7 +78,7 @@ def queue_all_indy_autogens():
 	"""
 	This will find all independent autogens and queue them up in the pending queue.
 	"""
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % pkgtools.model.locator.start_path)
+	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % pkgtools.model.context)
 	files = o.split("\n")
 	for file in files:
 		file = file.strip()
@@ -165,7 +165,7 @@ def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=Non
 	# for all our generate() calls to complete, outside this for loop.
 
 	# This is the path where the autogen lives. Either the autogen.py or the autogen.yaml:
-	common_prefix = os.path.commonprefix([pkgtools.model.locator.context, gen_path])
+	common_prefix = os.path.commonprefix([pkgtools.model.context, gen_path])
 	path_from_root = gen_path[len(common_prefix):].lstrip("/")
 	pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
 	return pkginfo
@@ -381,7 +381,7 @@ def queue_all_yaml_autogens():
 	to `parse_yaml_rule`.) This queues up all generators to execute.
 	"""
 
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % pkgtools.model.locator.start_path)
+	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % pkgtools.model.context)
 	files = o.split("\n")
 
 	for file in files:
@@ -390,7 +390,7 @@ def queue_all_yaml_autogens():
 			continue
 		yaml_base_path = os.path.dirname(file)
 		# This will be [ "category", "pkgname" ] or [ "category" ] if it's nestled inside a category dir:
-		yaml_base_path_split = yaml_base_path[len(pkgtools.model.locator.context)+1:].split("/")
+		yaml_base_path_split = yaml_base_path[len(pkgtools.model.context) + 1:].split("/")
 		if len(yaml_base_path_split):
 			cat = yaml_base_path_split[0]
 		else:
@@ -450,7 +450,7 @@ async def execute_all_queued_generators():
 			# The "autogen_id" entry here is going to be used like an ID for distfile integrity Artifacts that aren't
 			# attached to a specific BreezyBuild.
 
-			base = os.path.commonprefix([task_args["gen_path"], pkgtools.model.locator.context])
+			base = os.path.commonprefix([task_args["gen_path"], pkgtools.model.context])
 			task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base)+1:]}"
 
 			async_func, pkginfo_list = await execute_generator(**task_args)

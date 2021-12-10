@@ -20,3 +20,13 @@ def calc_hashes(fn, hashes: set):
 	final_data['size'] = filesize
 	return final_data
 
+
+def get_md5(filename):
+	"""
+	Simple function to get an md5 hex digest of a file.
+	"""
+
+	h = hashlib.md5()
+	with open(filename, "rb") as f:
+		h.update(f.read())
+	return h.hexdigest()

@@ -221,8 +221,7 @@ class BreezyBuild:
 		template_path: str = None,
 		**kwargs,
 	):
-		self.source_tree = pkgtools.model.locator.context
-		self.output_tree = pkgtools.model.locator.output_context
+		self.source_tree = self.output_tree = pkgtools.model.context
 		self._pkgdir = None
 		self.template_args = kwargs
 		for kwarg in ["cat", "name", "version", "path"]:

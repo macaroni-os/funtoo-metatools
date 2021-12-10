@@ -1,14 +1,54 @@
 import os
-from collections import OrderedDict, defaultdict
-from configparser import ConfigParser
+import threading
+from collections import defaultdict
 from datetime import datetime
 
 import yaml
 
 from metatools.config.base import MinimalConfig
+from metatools.context import GitRepositoryLocator
 from metatools.files.release import ReleaseYAML
+from metatools.hashutils import get_md5
 from metatools.tree import AutoCreatedGitTree, GitTree
 from subpop.config import ConfigurationError
+
+
+class EClassHashCollector:
+
+	LOCK = threading.Lock()
+	# mapping eclass to source location:
+	eclass_loc_dict = {}
+	# mapping eclass to hash:
+	eclass_hash_dict = {}
+
+	"""
+	When we are doing a merge run, we need to collect the hashes for all the eclasses in each kit. We also
+	need to ensure that eclasses only appear once and are not duplicated (best practice, and not doing so
+	creates problems with inconsistent behavior.) This class implements a cross-thread storage that can be
+	used to record this information and identify when we have a duplicate eclass situation so we can print
+	an informative error message.
+	"""
+
+	def add_eclasses(self, eclass_sourcedir: str):
+		"""
+
+		For generating metadata, we need md5 hashes of all eclasses for writing out into the metadata.
+
+		This function grabs all the md5sums for all eclasses.
+		"""
+
+		ecrap = os.path.join(eclass_sourcedir, "eclass")
+		if os.path.isdir(ecrap):
+			for eclass in os.listdir(ecrap):
+				if not eclass.endswith(".eclass"):
+					continue
+				eclass_path = os.path.join(ecrap, eclass)
+				eclass_name = eclass[:-7]
+				with self.LOCK:
+					if eclass_name in self.eclass_loc_dict:
+						raise KeyError(f"Eclass {eclass_name} in {eclass_path} is duplicated by {self.eclass_loc_dict[eclass_name]}. This should be fixed.")
+					self.eclass_loc_dict[eclass_name] = eclass_path
+					self.eclass_hash_dict[eclass_name] = get_md5(eclass_path)
 
 
 class MergeConfig(MinimalConfig):
@@ -16,10 +56,9 @@ class MergeConfig(MinimalConfig):
 	This configuration is used for tree regen, also known as 'merge-kits'.
 	"""
 
-	config_files = {
-		"merge": "~/.merge"
-	}
-
+	release_yaml = None
+	context = None
+	meta_repo = None
 	prod = False
 	release = None
 	push = False
@@ -36,15 +75,10 @@ class MergeConfig(MinimalConfig):
 	processing_error_stats = []
 
 	# TODO: need new variables for this since we do this differently with llvm-kit in the mix:
-	# This is used to grab a reference to the eclasses in core kit during regen:
-	eclass_root = None
-	eclass_hashes = None
-
-	kit_results = OrderedDict()
-	kit_sha1s = defaultdict(dict)
-	current_source_def = None
-
-	config: ConfigParser = None
+	#       This is used to grab a reference to the eclasses in core kit during regen:
+	#eclass_root = None
+	#eclass_hashes = None
+	eclass_hashes = EClassHashCollector()
 	start_time: datetime = None
 
 	async def initialize(self, prod=False, push=False, release=None, create_branches=False):
@@ -54,28 +88,19 @@ class MergeConfig(MinimalConfig):
 		self.release = release
 		self.create_branches = create_branches
 
-		# Catch-22 -- where do we get kit-fixups from? Maybe we clone it and run inside kit-fixups like doit.
-		# Would make life a lot easier and also more consistent.
-
-		self.kit_fixups = GitTree(
-			name="kit-fixups",
-			branch=self.branch("kit-fixups"),
-			url=self.kit_fixups_url,
-			root=self.source_trees + "/kit-fixups",
-			checkout_all_branches=False,
-			model=self
-		)
+		# Locate the root of the git repository we're currently in. We assume this is kit-fixups:
+		self.context = GitRepositoryLocator().context
 
 		# Next, find release.yaml in the proper directory in kit-fixups. Pass it here:
 
-		self.release_yaml = ReleaseYAML()
+		release_yaml_fn = os.path.join(self.context, release, "release.yaml")
+		if not os.path.exists(release_yaml_fn):
+			raise ConfigurationError(f"Cannot find expected {release_yaml_fn}")
 
-		# Next, grab remotes from the release YAML, getting either dev or prod remotes based on
-		# value of 'prod', and then we know what we're doing.
+		self.release_yaml = ReleaseYAML(release_yaml_fn, mode="prod" if prod else "dev")
 
-
-		#self.config = ConfigParser()
-		#self.config.read_string(self.get_file("merge"))
+		# TODO: add a means to override the remotes in the release.yaml using a local config file.
+		# TODO: where do we specify branches in release.yaml... need to add.
 
 		if not self.prod:
 			# The ``push`` keyword argument only makes sense in prod mode. If not in prod mode, we don't push.
@@ -91,57 +116,19 @@ class MergeConfig(MinimalConfig):
 			self.mirror_repos = push
 			self.git_class = GitTree
 
-		valids = {
-			"main": ["features"],
-			"paths": ["fastpull"],
-			"sources": ["flora", "kit-fixups", "gentoo-staging"],
-			"destinations": ["base_url", "mirror", "indy_url"],
-			"branches": ["flora", "kit-fixups", "meta-repo"],
-			"work": ["source", "destination", "metadata-cache"],
-		}
-
-		for section, my_valids in valids.items():
-			if self.config.has_section(section):
-				if section == "database":
-					continue
-				for opt in self.config[section]:
-					if opt not in my_valids:
-						raise ConfigurationError(f"Error: ~/.merge [{section}] option {opt} is invalid.")
-
-		await self.initial_repo_setup()
-
-	async def initial_repo_setup(self):
-		self.meta_repo =self.git_class(
+		meta_repo_config = self.release_yaml.get_meta_repo_config()
+		self.meta_repo = self.git_class(
 			name="meta-repo",
-			branch=self.release,
-			url=self.meta_repo_url if self.prod else None,
+			branch=release,
+			url=meta_repo_config['url'],
 			root=self.dest_trees + "/meta-repo",
 			origin_check=True if self.prod else None,
-			mirror=self.mirror_url.rstrip("/") + "/meta-repo" if self.mirror_repos else False,
+			mirrors=meta_repo_config['mirrors'],
 			create_branches=self.create_branches,
 			model=self
 		)
-
 		self.start_time = datetime.utcnow()
-
-
 		self.meta_repo.initialize()
-		self.kit_fixups.initialize()
-
-		if not self.release_exists(self.release):
-			raise ConfigurationError(f"Release not found: {self.release}")
-
-	@property
-	def third_party_mirrors(self):
-		if not self._third_party_mirrors:
-			mirr_dict = {}
-			with open(os.path.join(self.meta_repo.root, "profiles/core-kit/curated/thirdpartymirrors"), "r") as f:
-				lines = f.readlines()
-				for line in lines:
-					ls = line.split()
-					mirr_dict[ls[0]] = ls[1:]
-			self._third_party_mirrors = mirr_dict
-		return self._third_party_mirrors
 
 	def get_package_data(self, ctx):
 		key = f"{ctx.kit.name}/{ctx.kit.branch}"
@@ -183,10 +170,6 @@ class MergeConfig(MinimalConfig):
 
 	def get_kit_packages(self, ctx):
 		return self.get_kit_items(ctx)
-
-	def python_kit_settings(self):
-		# TODO: rework
-		pass
 
 	def get_excludes(self, ctx):
 		"""
@@ -249,13 +232,4 @@ class MergeConfig(MinimalConfig):
 	def dest_trees(self):
 		return os.path.join(self.work_path, "dest-trees")
 
-	@property
-	def kit_dest(self):
-		if self.prod:
-			return self.dest_trees
-		else:
-			return os.path.join(self.dest_trees, "meta-repo/kits")
 
-	@property
-	def fastpull_enabled(self):
-		return True

@@ -648,10 +648,10 @@ class Minify(MergeStep):
 
 
 class GenPythonUse(MergeStep):
-	def __init__(self, py_settings, out_subpath):
-		self.def_python = py_settings["primary"]
-		self.bk_python = py_settings["alternate"]
-		self.mask = py_settings["mask"]
+	def __init__(self, out_subpath, primary=None, alternate=None, mask=None):
+		self.def_python = primary
+		self.bk_python = alternate
+		self.mask = mask
 		self.out_subpath = out_subpath
 
 	async def run(self, cur_overlay):

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import glob
-import hashlib
 import json
 import logging
 import os
@@ -17,36 +16,10 @@ import dyne.org.funtoo.metatools.merge as merge
 
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
 # version, we'll consider the kit cache stale and regenerate it.
+from metatools.hashutils import get_md5
 from metatools.tree import run
 
 CACHE_DATA_VERSION = "1.0.6"
-
-
-def cleanup_error_logs():
-	# This should be explicitly called at the beginning of every command that generates metadata for kits:
-
-	for file in glob.glob(os.path.join(merge.model.temp_path, "metadata-errors*.log")):
-		os.unlink(file)
-
-
-def display_error_summary():
-	for stat_list, name, shortname in [
-		(merge.model.metadata_error_stats, "metadata extraction errors", "errors"),
-		(merge.model.processing_warning_stats, "warnings", "warnings"),
-	]:
-		if len(stat_list):
-			for stat_info in stat_list:
-				stat_info = NamespaceDict(stat_info)
-				logging.warning(f"The following kits had {name}:")
-				branch_info = f"{stat_info.name} branch {stat_info.branch}".ljust(30)
-				logging.warning(f"* {branch_info} -- {stat_info.count} {shortname}.")
-			logging.warning(f"{name} errors logged to {merge.model.temp_path}.")
-
-
-
-
-
-
 
 METADATA_LINES = [
 	"DEPEND",
@@ -92,15 +65,25 @@ AUXDB_LINES = sorted(
 )
 
 
-def get_md5(filename):
-	"""
-	Simple function to get an md5 hex digest of a file.
-	"""
+def cleanup_error_logs():
+	# This should be explicitly called at the beginning of every command that generates metadata for kits:
 
-	h = hashlib.md5()
-	with open(filename, "rb") as f:
-		h.update(f.read())
-	return h.hexdigest()
+	for file in glob.glob(os.path.join(merge.model.temp_path, "metadata-errors*.log")):
+		os.unlink(file)
+
+
+def display_error_summary():
+	for stat_list, name, shortname in [
+		(merge.model.metadata_error_stats, "metadata extraction errors", "errors"),
+		(merge.model.processing_warning_stats, "warnings", "warnings"),
+	]:
+		if len(stat_list):
+			for stat_info in stat_list:
+				stat_info = NamespaceDict(stat_info)
+				logging.warning(f"The following kits had {name}:")
+				branch_info = f"{stat_info.name} branch {stat_info.branch}".ljust(30)
+				logging.warning(f"* {branch_info} -- {stat_info.count} {shortname}.")
+			logging.warning(f"{name} errors logged to {merge.model.temp_path}.")
 
 
 def strip_rev(s):
@@ -302,21 +285,6 @@ def get_catpkg_relations_from_depstring(depstring):
 		catpkgs.add(part)
 	return catpkgs
 
-
-class EclassHashCollection:
-	"""
-	This is just a simple class for storing the path where we grabbed all the eclasses from plus
-	the mapping from eclass name (ie. 'eutils') to the hexdigest of the generated hash.
-	"""
-
-	def __init__(self, path):
-		self.path = path
-		self.hashes = {}
-
-	def copy(self):
-		new_obj = EclassHashCollection(self.path)
-		new_obj.hashes = self.hashes.copy()
-		return new_obj
 
 
 def extract_ebuild_metadata(repo_obj, atom, ebuild_path=None, env=None, eclass_paths=None):
@@ -597,24 +565,7 @@ def ebuild_generator(ebuild_src=None):
 					yield os.path.join(pkgpath, ebfile)
 
 
-def get_eclass_hashes(eclass_sourcedir):
-	"""
 
-	For generating metadata, we need md5 hashes of all eclasses for writing out into the metadata.
-
-	This function grabs all the md5sums for all eclasses.
-	"""
-
-	eclass_hashes = EclassHashCollection(eclass_sourcedir)
-	ecrap = os.path.join(eclass_sourcedir, "eclass")
-	if os.path.isdir(ecrap):
-		for eclass in os.listdir(ecrap):
-			if not eclass.endswith(".eclass"):
-				continue
-			eclass_path = os.path.join(ecrap, eclass)
-			eclass_name = eclass[:-7]
-			eclass_hashes.hashes[eclass_name] = get_md5(eclass_path)
-	return eclass_hashes
 
 
 # TODO: maybe change this name to post_actions(). And integrate Manifest generation here. We want
@@ -644,12 +595,14 @@ def gen_cache(repo):
 		futures = []
 		fut_map = {}
 
+		# TODO: refactor
 		# core-kit's eclass hashes are cached here:
 		eclass_hashes = merge.model.eclass_hashes.hashes.copy()
 		eclass_paths = [merge.model.eclass_hashes.path]
 
 		if repo.name != "core-kit":
 			# Add in any eclasses that exist local to the kit.
+			# TODO: this needs a refactor because core-kit isn't the only special one anymore.
 			local_eclass_hashes = get_eclass_hashes(repo.root)
 			eclass_hashes.update(local_eclass_hashes.hashes)
 			eclass_paths = [local_eclass_hashes.path] + eclass_paths  # give local eclasses priority

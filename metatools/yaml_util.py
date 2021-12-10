@@ -26,8 +26,6 @@ class YAMLReader:
 		for item in el_split:
 			if item not in yaml_root:
 				return
-			print()
-			print('root was', repr(yaml_root))
 			yaml_root = yaml_root[item]
 		return yaml_root
 

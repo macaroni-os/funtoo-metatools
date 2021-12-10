@@ -53,7 +53,6 @@ class Tree:
 		self.name = None
 		self.merged = []
 		self.forcepush = "--no-force"
-		self.mirror = False
 		self.url = None
 		self.model = model
 		assert model is not None
@@ -254,7 +253,7 @@ class GitTree(Tree):
 		commit_sha1: str = None,
 		root: str = None,
 		reponame: str = None,
-		mirror: str = None,
+		mirrors: list = None,
 		forcepush: bool = False,
 		origin_check: bool = False,
 		create_branches: bool = False,
@@ -276,7 +275,7 @@ class GitTree(Tree):
 		self.reponame = reponame
 		self.has_cleaned = False
 		self.initialized = False
-		self.mirror = mirror
+		self.mirrors = mirrors if mirrors else []
 		self.origin_check = origin_check
 		self.create_branches = create_branches
 		self.destfix = destfix

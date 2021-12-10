@@ -9,7 +9,6 @@ release:
     | Copyright 1999-{{cur_year}} Gentoo Foundation, Gentoo Authors, and
     | many independent contributors/authors as documented in the source code commit history.
     | Copyright 2017-{{cur_year}} Sony Interactive Entertainment, Inc.
-
   repositories:
     - deadbeef:
         copyright: |
@@ -88,19 +87,25 @@ release:
   # Have all of our remote configurations defined in one place for ease of maintenance
   remotes:
     dev:
-      # should be overridden via config if a user needs to:
-      kit-fixups: https://code.funtoo.org/bitbucket/scm/core/kit-fixups
-      meta-repo: https://code.funtoo.org/bitbucket/scm/core/meta-repo
-      kits: https://code.funtoo.org/bitbucket/scm/auto/{kit_name}
+      kits:
+        url: https://code.funtoo.org/bitbucket/scm/auto/{kit_name}
+      meta-repo:
+        url: https://code.funtoo.org/bitbucket/scm/core/meta-repo
     prod:
-      meta-repo: ssh://git@code.funtoo.org:7999/core/meta-repo.git
-      kit-fixups: ssh://git@code.funtoo.org:7999/core/kit-fixups.git
-      kits: ssh://git@code.funtoo.org:7999/auto/{kit_name}
-      mirror:
-        - https://github.com/funtoo/{repo_name}
+      kits:
+        url: ssh://git@code.funtoo.org:7999/auto/{kit_name}
+        mirrors:
+          - https://github.com/funtoo/{kit_name}
+      meta-repo:
+        url: ssh://git@code.funtoo.org:7999/core/meta-repo.git
+        mirrors:
+          - ssh://git@github.com/funtoo/meta-repo
 
   kit-definitions:
     defaults:
+      masters:
+        - core-kit
+        - llvm-kit
       source: funtoo_next
       stability: prime
       branch: next
@@ -111,6 +116,7 @@ release:
       priority: 500
     kits:
       - core-kit:
+          masters: []
           aliases:
             - gentoo
           priority: 1000
@@ -132,6 +138,8 @@ release:
               - llvm
               - llvm.org
       - llvm-kit:
+          masters:
+            - core-kit
           priority: 900
           source: funtoo_late_2020
       - core-hw-kit

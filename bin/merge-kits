@@ -25,13 +25,6 @@ class MergeError(Exception):
 # TODO: add a means to copy an entire kit, without listing everything in packages.yaml.
 
 
-class MetaRepo:
-	# TODO: have this hold kit sha1's?
-	pass
-
-
-class ParallelJobSet:
-	pass
 
 
 async def main_thread(args):
