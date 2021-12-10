@@ -86,7 +86,6 @@ class KitJob:
 			merge.steps.PruneLicenses()
 		] + self.python_auto_use_steps()
 
-
 		# We can now run all the steps that require access to metadata:
 
 		await self.out_tree.run(post_steps)
@@ -107,7 +106,7 @@ class KitJob:
 		# 				],
 		# core/pre: merge.steps.SyncDir(merge.model.source_repos["gentoo-staging"].root, "eclass"),
 		# merge.steps.SyncFiles(
-		# 						merge.model.kit_fixups.root,
+		# 						self.kit.kit_fixups.context,
 		# 						{
 		# 							"LICENSE.txt": "LICENSE.txt",
 		# 						},
@@ -115,24 +114,37 @@ class KitJob:
 		pass
 
 	def python_auto_use_steps(self):
+		"""
+		Funtoo and metatools has a feature where we will look at the configured Python kits for the release,
+		and auto-generate optimal Python USE settings for each kit in the release. This ensures that things
+		can be easily merged without weird Python USE errors. These settings are stored in the following
+		location in each kit in the release::
+
+			profiles/funtoo/kits/python-kit/<python-kit-branch>
+
+		When 'ego sync' runs, it will ensure that these settings are automatically enabled based upon what
+		your currently-active python-kit is. This means that even if you have multiple python-kit branches
+		defined in your release, switching between them is seamless and Python USE settings for all packages
+		in the repository will auto-adapt to whatever Python kit is currently enabled.
+		"""
 		steps = []
-		python_settings = self.kit.settings
-
-		# TODO: This is run for all python kit branches, not just one -- for each kit. SO this is why there is a FOR loop
-
-		for py_branch, py_settings in python_settings.items():
-			steps += [merge.steps.GenPythonUse(self.kit.settings, "funtoo/kits/python-kit/%s" % py_branch)]
+		for kit in merge.model.release_yaml.iter_kits(name="python-kit"):
+			steps += [merge.steps.GenPythonUse(self.kit.settings, "funtoo/kits/python-kit/%s" % kit.branch)]
 		return steps
 
 	def package_yaml_steps(self):
-		# Copy files specified in 'eclasses' and 'copyfiles' sections in the kit's YAML:
+		"""
+		This method returns steps required to copy over all 'eclasses' and 'copyfiles' entries in the
+		packages.yaml file for the kit, as well as all packages referenced in the 'packages' section
+		(from the appropriate source repository.)
+		"""
+
 		steps = []
-		for repo_name, copyfile_tuples in merge.model.get_copyfiles(self.kit).items():
+		for repo_name, copyfile_tuples in merge.model.get_individual_files_to_copy(self.kit).items():
 			steps += [merge.steps.CopyFiles(merge.model.source_repos[repo_name], copyfile_tuples)]
 
 		# Copy over catpkgs listed in 'packages' section:
-
-		for repo_name, packages in merge.model.get_kit_packages(self.kit):
+		for repo_name, packages in self.kit.get_kit_packages():
 			self.active_repos.add(repo_name)
 			from_tree = merge.model.source_repos[repo_name]
 			# TODO: add move maps below
@@ -167,26 +179,26 @@ class KitJob:
 		steps = []
 		# Here is the core logic that copies all the fix-ups from kit-fixups (eclasses and ebuilds) into place:
 		eclass_release_path = "eclass/%s" % merge.model.release
-		if os.path.exists(os.path.join(merge.model.kit_fixups.root, eclass_release_path)):
-			steps += [merge.steps.SyncDir(merge.model.kit_fixups.root, eclass_release_path, "eclass")]
+		if os.path.exists(os.path.join(self.kit.kit_fixups.context, eclass_release_path)):
+			steps += [merge.steps.SyncDir(self.kit.kit_fixups.context, eclass_release_path, "eclass")]
 		fixup_dirs = ["global", "curated", self.kit.branch]
 		for fixup_dir in fixup_dirs:
 			fixup_path = self.kit.name + "/" + fixup_dir
 			# TODO: is merge.model.kit_fixups defined?
-			if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path):
-				if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/eclass"):
+			if os.path.exists(self.kit.kit_fixups.context + "/" + fixup_path):
+				if os.path.exists(self.kit.kit_fixups.context + "/" + fixup_path + "/eclass"):
 					steps += [
 						merge.steps.InsertFilesFromSubdir(
 							merge.model.kit_fixups, "eclass", ".eclass", select="all", skip=None, src_offset=fixup_path
 						)
 					]
-				if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/licenses"):
+				if os.path.exists(self.kit.kit_fixups.context + "/" + fixup_path + "/licenses"):
 					steps += [
 						merge.steps.InsertFilesFromSubdir(
 							merge.model.kit_fixups, "licenses", None, select="all", skip=None, src_offset=fixup_path
 						)
 					]
-				if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/profiles"):
+				if os.path.exists(self.kit.kit_fixups.context + "/" + fixup_path + "/profiles"):
 					steps += [
 						merge.steps.InsertFilesFromSubdir(
 							merge.model.kit_fixups, "profiles", None, select="all", skip=["repo_name", "categories"], src_offset=fixup_path
@@ -194,8 +206,8 @@ class KitJob:
 					]
 				# copy appropriate kit readme into place:
 				readme_path = fixup_path + "/README.rst"
-				if os.path.exists(merge.model.kit_fixups.root + "/" + readme_path):
-					steps += [merge.steps.SyncFiles(merge.model.kit_fixups.root, {readme_path: "README.rst"})]
+				if os.path.exists(self.kit.kit_fixups.context + "/" + readme_path):
+					steps += [merge.steps.SyncFiles(self.kit.kit_fixups.context, {readme_path: "README.rst"})]
 
 				# We now add a step to insert the fixups, and we want to record them as being copied so successive kits
 				# don't get this particular catpkg. Assume we may not have all these catpkgs listed in our package-set

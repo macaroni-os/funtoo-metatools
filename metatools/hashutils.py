@@ -1,5 +1,6 @@
 import hashlib
 
+
 def calc_hashes(fn, hashes: set):
 	hashes = hashes - {"size"}
 	hash_objs = {}

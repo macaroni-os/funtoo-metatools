@@ -1,5 +1,9 @@
-from collections import OrderedDict
+import os
+from collections import OrderedDict, defaultdict
 
+import yaml
+
+from metatools.context import GitRepositoryLocator
 from metatools.yaml_util import YAMLReader
 from subpop.config import ConfigurationError
 
@@ -23,8 +27,8 @@ class SourceCollection:
 
 
 class Kit:
-	# TODO: convert source kwarg to a SourceCollection reference.
-	def __init__(self, name=None, source=None, stability=None, branch=None, eclasses=None, priority=None, aliases=None, masters=None, sync_url=None, settings=None):
+	def __init__(self, locator, name=None, source=None, stability=None, branch=None, eclasses=None, priority=None, aliases=None, masters=None, sync_url=None, settings=None):
+		self.kit_fixups: GitRepositoryLocator = locator
 		self.name = name
 		self.source = source
 		self.stability = stability
@@ -35,6 +39,80 @@ class Kit:
 		self.masters = masters if masters else []
 		self.sync_url = sync_url.format(kit_name=name)
 		self.settings = settings if settings is not None else {}
+		self._package_data = None
+
+	@property
+	def package_data(self):
+		if self._package_data is None:
+			self._package_data = self._get_package_data()
+		return self._package_data
+
+	def _get_package_data(self):
+		fn = f"{self.kit_fixups.context}/{self.name}/{self.branch}/packages.yaml"
+		if not os.path.exists(fn):
+			fn = f"{self.kit_fixups.context}/{self.name}/packages.yaml"
+		with open(fn, "r") as f:
+			return yaml.safe_load(f)
+
+	def yaml_walk(self, yaml_dict):
+		"""
+		This method will scan a section of loaded YAML and return all list elements -- the leaf items.
+		"""
+		retval = []
+		for key, item in yaml_dict.items():
+			if isinstance(item, dict):
+				retval += self.yaml_walk(item)
+			elif isinstance(item, list):
+				retval += item
+			else:
+				raise TypeError(f"yaml_walk: unrecognized: {repr(item)}")
+		return retval
+
+	def get_kit_items(self, section="packages"):
+		if section in self.package_data:
+			for package_set in self.package_data[section]:
+				repo_name = list(package_set.keys())[0]
+				if section == "packages":
+					# for packages, allow arbitrary nesting, only capturing leaf nodes (catpkgs):
+					yield repo_name, self.yaml_walk(package_set)
+				else:
+					# not a packages section, and just return the raw YAML subsection for further parsing:
+					packages = package_set[repo_name]
+					yield repo_name, packages
+
+	def get_kit_packages(self):
+		return self.get_kit_items()
+
+	def get_excludes(self):
+		"""
+		Grabs the excludes: section from packages.yaml, which is used to remove stuff from the resultant
+		kit that accidentally got copied by merge scripts (due to a directory looking like an ebuild
+		directory, for example.)
+		"""
+		if "exclude" in self.package_data:
+			return self.package_data["exclude"]
+		else:
+			return []
+
+	def get_individual_files_to_copy(self):
+		"""
+		Parses the 'eclasses' and 'copyfiles' sections in a kit's YAML and returns a list of files to
+		copy from each source repository in a tuple format.
+		"""
+		#TODO: upgrade ability to specify eclass items in packages.yaml.
+
+		eclass_items = list(self.get_kit_items(section="eclasses"))
+		copyfile_items = list(self.get_kit_items(section="copyfiles"))
+		copy_tuple_dict = defaultdict(list)
+
+		for src_repo, eclasses in eclass_items:
+			for eclass in eclasses:
+				copy_tuple_dict[src_repo].append((f"eclass/{eclass}.eclass", f"eclass/{eclass}.eclass"))
+
+		for src_repo, copyfiles in copyfile_items:
+			for copy_dict in copyfiles:
+				copy_tuple_dict[src_repo].append((copy_dict["src"], copy_dict["dest"] if "dest" in copy_dict else copy_dict["src"]))
+		return copy_tuple_dict
 
 
 class SourceRepository:
@@ -112,6 +190,7 @@ class ReleaseYAML(YAMLReader):
 	kits = None
 	filename = None
 	remotes = None
+	locator = None
 
 	def start(self):
 		self.kits = self._kits()
@@ -154,7 +233,11 @@ class ReleaseYAML(YAMLReader):
 			"mirrors": mirrs
 		}
 
-	def __init__(self, filename, mode="dev"):
+	def __init__(self, locator: GitRepositoryLocator, release=None, mode="dev"):
+		self.locator = locator
+		filename = os.path.join(locator.context, release, "release.yaml")
+		if not os.path.exists(filename):
+			raise ConfigurationError(f"Cannot find expected {filename}")
 		self.mode = mode
 		self.filename = filename
 		with open(filename, 'r') as f:
@@ -234,12 +317,22 @@ class ReleaseYAML(YAMLReader):
 					kit_insides['source'] = collections[sdef_name]
 				except KeyError:
 					raise KeyError(f"Source collection '{sdef_name}' not found in source-definitions section of release.yaml.")
-			kits[kit_name] = Kit(name=kit_name, **kit_insides)
+			kits[kit_name] = Kit(self.locator, name=kit_name, **kit_insides)
 		return kits
+
+	def iter_kits(self, name=None):
+		"""
+		This is a handy way to iterate over all kits that meet certain criteria (currently supporting kit
+		name.) This is used to get all python-kit kits for auto-USE-flag generation.
+		"""
+		for kit in self.kits:
+			if kit.name == name:
+				yield kit
 
 
 if __name__ == "__main__":
-	ryaml = ReleaseYAML("release.yaml", mode="prod")
+	locator = GitRepositoryLocator()
+	ryaml = ReleaseYAML(locator, mode="prod")
 	print("REMOTES", ryaml.remotes)
 	print(ryaml.get_kit_remote("core-kit"))
 
