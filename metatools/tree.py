@@ -94,7 +94,7 @@ class Tree:
 
 	def cleanTree(self):
 		print("Cleaning tree %s" % self.root)
-		run_shell("(cd %s &&  git reset --hard && git clean -fd )" % self.root)
+		run_shell("(cd %s &&  git reset --hard && git clean -fdx )" % self.root)
 		self.autogenned = False
 
 	def getDepthOfCommit(self, sha1):
@@ -228,7 +228,7 @@ class AutoCreatedGitTree(Tree):
 				self.gitCheckout(self.branch, from_init=True)
 
 		if not self.has_cleaned:
-			run_shell("(cd %s &&  git reset --hard && git clean -fd )" % self.root)
+			run_shell("(cd %s &&  git reset --hard && git clean -fdx )" % self.root)
 			self.has_cleaned = True
 
 		# point to specified sha1:
