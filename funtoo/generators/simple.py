@@ -2,11 +2,9 @@
 
 GLOBAL_DEFAULTS = {}
 
-import dyne.org.funtoo.metatools.pkgtools as pkgtools
-
 
 async def generate(hub, **pkginfo):
-	ebuild = pkgtools.ebuild.BreezyBuild(**pkginfo)
+	ebuild = hub.pkgtools.ebuild.BreezyBuild(**pkginfo)
 	ebuild.push()
 
 
