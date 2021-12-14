@@ -26,7 +26,6 @@ class AutogenConfig(MinimalConfig):
 	"""
 	This class is used for the autogen workflow -- i.e. the 'doit' command.
 	"""
-	context: str = None
 	fetch_cache = fetch_cache()
 	fetch_cache_interval = timedelta(minutes=15)
 	check_disk_hashes = False
@@ -54,7 +53,7 @@ class AutogenConfig(MinimalConfig):
 		add and may not be fully implemented or make sense based on our current architecture -- needs review
 		so TODO
 		"""
-		return "/".join(self.context.split("/")[-2:])
+		return "/".join(self.locator.root.split("/")[-2:])
 
 	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None):
 		self.fastpull_scope = fastpull_scope
@@ -81,10 +80,10 @@ class AutogenConfig(MinimalConfig):
 		self.log.addHandler(channel)
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
 		self.log.debug(f"Fetch cache interval set to {self.fetch_cache_interval}")
-		self.context = OverlayLocator().context
+		self.locator = OverlayLocator()
 
 		repo_name = None
-		repo_name_path = os.path.join(self.context, "profiles/repo_name")
+		repo_name_path = os.path.join(self.locator.root, "profiles/repo_name")
 		if os.path.exists(repo_name_path):
 			with open(repo_name_path, "r") as repof:
 				repo_name = repof.read().strip()

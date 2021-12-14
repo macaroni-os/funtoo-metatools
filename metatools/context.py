@@ -6,7 +6,7 @@ from subpop.config import ConfigurationError
 
 class Locator:
 	start_path = None
-	context: str = None
+	root: str = None
 	expected_files = []
 	"""
 	This method will look, from the current directory, and find the 'context' of where
@@ -20,7 +20,7 @@ class Locator:
 				return False
 		return True
 
-	def find_context(self):
+	def find_root(self):
 		"""
 		This method starts from ``start_path`` and looks backwards in the path structure until it
 		gets to the point where it finds a 'profiles/repo_name' and/or 'metadata/layout.conf' file,
@@ -42,13 +42,13 @@ class Locator:
 
 	def __init__(self, start_path=None):
 		self.start_path = start_path if start_path else os.getcwd()
-		self.context = self.find_context()
-		if self.context is None:
+		self.root = self.find_root()
+		if self.root is None:
 			raise ConfigurationError(f"Could not determine context in {self.start_path}. Trying to find these marker files: {self.expected_files}")
 
 
 class OverlayLocator(Locator):
-	expected_files = ["profiles/repo_name", "metadata/layout.conf"]
+	expected_files = ["metadata/layout.conf"]
 
 
 class GitRepositoryLocator(Locator):

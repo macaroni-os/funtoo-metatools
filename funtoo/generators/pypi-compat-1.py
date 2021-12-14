@@ -13,6 +13,7 @@
 
 import json
 import os
+import pkgutil
 from collections import OrderedDict
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
@@ -59,7 +60,7 @@ async def add_ebuild(json_dict=None, compat_ebuild=False, has_compat_ebuild=Fals
 	assert (
 		artifact_url is not None
 	), f"Artifact URL could not be found in {pkginfo['name']} {local_pkginfo['version']}. This can indicate a PyPi package without a 'source' distribution."
-	local_pkginfo["template_path"] = os.path.normpath(os.path.join(os.path.dirname(__file__), "../../templates"))
+	local_pkginfo["template_path"] = os.path.normpath(os.path.join(os.path.dirname(__file__), "templates"))
 
 	pkgtools.pyhelper.pypi_normalize_version(local_pkginfo)
 
@@ -68,8 +69,7 @@ async def add_ebuild(json_dict=None, compat_ebuild=False, has_compat_ebuild=Fals
 		cargo_artifacts = await pkgtools.rust.generate_crates_from_artifact(artifacts[0], "*/src/rust")
 		local_pkginfo["crates"] = cargo_artifacts["crates"]
 		artifacts = [*artifacts, *cargo_artifacts["crates_artifacts"]]
-
-	ebuild = pkgtools.ebuild.BreezyBuild(**local_pkginfo, artifacts=artifacts, template="pypi-compat-1.tmpl")
+	ebuild = pkgtools.ebuild.BreezyBuild(**local_pkginfo, artifacts=artifacts, template_text=pkgutil.get_data('funtoo.generators', "templates/pypi-compat-1.tmpl").decode('utf-8'))
 	ebuild.push()
 
 

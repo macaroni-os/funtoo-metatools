@@ -86,7 +86,7 @@ class MergeConfig(MinimalConfig):
 
 		# Locate the root of the git repository we're currently in. We assume this is kit-fixups:
 		self.locator = GitRepositoryLocator()
-		self.context = self.locator.context
+		self.context = self.locator.root
 
 		# Next, find release.yaml in the proper directory in kit-fixups.
 

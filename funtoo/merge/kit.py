@@ -179,25 +179,25 @@ class KitJob:
 		steps = []
 		# Here is the core logic that copies all the fix-ups from kit-fixups (eclasses and ebuilds) into place:
 		eclass_release_path = "eclass/%s" % merge.model.release
-		if os.path.exists(os.path.join(self.kit.kit_fixups.context, eclass_release_path)):
-			steps += [merge.steps.SyncDir(self.kit.kit_fixups.context, eclass_release_path, "eclass")]
+		if os.path.exists(os.path.join(self.kit.kit_fixups.root, eclass_release_path)):
+			steps += [merge.steps.SyncDir(self.kit.kit_fixups.root, eclass_release_path, "eclass")]
 		fixup_dirs = ["global", "curated", self.kit.branch]
 		for fixup_dir in fixup_dirs:
 			fixup_path = self.kit.name + "/" + fixup_dir
-			if os.path.exists(self.kit.kit_fixups.context + "/" + fixup_path):
-				if os.path.exists(self.kit.kit_fixups.context + "/" + fixup_path + "/eclass"):
+			if os.path.exists(self.kit.kit_fixups.root + "/" + fixup_path):
+				if os.path.exists(self.kit.kit_fixups.root + "/" + fixup_path + "/eclass"):
 					steps += [
 						merge.steps.InsertFilesFromSubdir(
 							merge.model.kit_fixups, "eclass", ".eclass", select="all", skip=None, src_offset=fixup_path
 						)
 					]
-				if os.path.exists(self.kit.kit_fixups.context + "/" + fixup_path + "/licenses"):
+				if os.path.exists(self.kit.kit_fixups.root + "/" + fixup_path + "/licenses"):
 					steps += [
 						merge.steps.InsertFilesFromSubdir(
 							merge.model.kit_fixups, "licenses", None, select="all", skip=None, src_offset=fixup_path
 						)
 					]
-				if os.path.exists(self.kit.kit_fixups.context + "/" + fixup_path + "/profiles"):
+				if os.path.exists(self.kit.kit_fixups.root + "/" + fixup_path + "/profiles"):
 					steps += [
 						merge.steps.InsertFilesFromSubdir(
 							merge.model.kit_fixups, "profiles", None, select="all", skip=["repo_name", "categories"], src_offset=fixup_path
@@ -205,8 +205,8 @@ class KitJob:
 					]
 				# copy appropriate kit readme into place:
 				readme_path = fixup_path + "/README.rst"
-				if os.path.exists(self.kit.kit_fixups.context + "/" + readme_path):
-					steps += [merge.steps.SyncFiles(self.kit.kit_fixups.context, {readme_path: "README.rst"})]
+				if os.path.exists(self.kit.kit_fixups.root + "/" + readme_path):
+					steps += [merge.steps.SyncFiles(self.kit.kit_fixups.root, {readme_path: "README.rst"})]
 
 				# We now add a step to insert the fixups, and we want to record them as being copied so successive kits
 				# don't get this particular catpkg. Assume we may not have all these catpkgs listed in our package-set

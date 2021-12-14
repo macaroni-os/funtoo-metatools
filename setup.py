@@ -1,11 +1,14 @@
 import setuptools
+from subpop.pkg import Packager, SubPopSetupInstall
+
+pkgr = Packager()
 
 with open("README.rst", "r") as fh:
 	long_description = fh.read()
 
 setuptools.setup(
 	name="funtoo-metatools",
-	version="0.9.5",
+	version="1.0.0",
 	author="Daniel Robbins",
 	author_email="drobbins@funtoo.org",
 	description="Funtoo framework for auto-creation of ebuilds.",
@@ -20,7 +23,7 @@ setuptools.setup(
 	],
 	python_requires=">=3.7",
 	install_requires=[
-		"subpop >= 0.4.2",
+		"subpop >= 1.0.0",
 		"aiodns",
 		"aiofiles",
 		"aiohttp",
@@ -34,18 +37,10 @@ setuptools.setup(
 		"toml",
 		"xmltodict",
 	],
-	#   320  sudo emerge -av dict-toolbox
-	#   322  sudo emerge -av aiofiles
-	#   333  sudo emerge -av pymongo
-	#   335  sudo emerge -av aiohttp
-	#   337  sudo emerge -av tornado
-	#   338  sudo emerge -av www-servers/tornado
-	#   339  sudo emerge -av beautifulsoup
-	#   341  sudo emerge -av xmltodict
-	#   344  sudo emerge -av jinja
-	#   346  sudo emerge -av aiodns
 	packages=setuptools.find_packages(),
 	package_data={"": ["*.tmpl"]},
+	data_files=pkgr.generate_data_files(),
+	cmdclass={"install": SubPopSetupInstall},
 )
 
 # vim: ts=4 sw=4 noet

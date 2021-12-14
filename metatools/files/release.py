@@ -48,9 +48,9 @@ class Kit:
 		return self._package_data
 
 	def _get_package_data(self):
-		fn = f"{self.kit_fixups.context}/{self.name}/{self.branch}/packages.yaml"
+		fn = f"{self.kit_fixups.root}/{self.name}/{self.branch}/packages.yaml"
 		if not os.path.exists(fn):
-			fn = f"{self.kit_fixups.context}/{self.name}/packages.yaml"
+			fn = f"{self.kit_fixups.root}/{self.name}/packages.yaml"
 		with open(fn, "r") as f:
 			return yaml.safe_load(f)
 
@@ -235,7 +235,7 @@ class ReleaseYAML(YAMLReader):
 
 	def __init__(self, locator: GitRepositoryLocator, release=None, mode="dev"):
 		self.locator = locator
-		filename = os.path.join(locator.context, release, "release.yaml")
+		filename = os.path.join(locator.root, release, "release.yaml")
 		if not os.path.exists(filename):
 			raise ConfigurationError(f"Cannot find expected {filename}")
 		self.mode = mode
