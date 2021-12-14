@@ -38,7 +38,6 @@ setuptools.setup(
 		"xmltodict",
 	],
 	packages=setuptools.find_packages(),
-	package_data={"": ["*.tmpl"]},
 	data_files=pkgr.generate_data_files(),
 	cmdclass={"install": SubPopSetupInstall},
 )
