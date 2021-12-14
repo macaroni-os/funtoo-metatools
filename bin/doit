@@ -18,7 +18,7 @@ class DoItHub(Hub):
 
 hub = DoItHub()
 
-import funtoo.metatools.pkgtools as pkgtools
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 CLI_CONFIG = {
 	"immediate": {"default": False, "action": "store_true", "help": "Never cache HTTP(s) fetches (default 15 mins)"},
