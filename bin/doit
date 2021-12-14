@@ -19,7 +19,6 @@ class DoItHub(Hub):
 hub = DoItHub()
 
 import funtoo.metatools.pkgtools as pkgtools
-import funtoo.metatools.generators as generators
 
 CLI_CONFIG = {
 	"immediate": {"default": False, "action": "store_true", "help": "Never cache HTTP(s) fetches (default 15 mins)"},
@@ -44,7 +43,6 @@ async def main_thread():
 	if hub.OPT.immediate:
 		kwargs['fetch_cache_interval'] = timedelta(seconds=0)
 	await pkgtools.launch(AutogenConfig, **kwargs)
-	await generators.launch()
 	errors = await pkgtools.autogen.start()
 	return errors
 

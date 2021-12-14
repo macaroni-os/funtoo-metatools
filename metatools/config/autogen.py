@@ -8,7 +8,7 @@ import yaml
 
 from metatools.config.base import MinimalConfig
 from metatools.config.mongodb import get_collection
-from metatools.context import OverlayLocator
+from metatools.context import OverlayLocator, GitRepositoryLocator
 from metatools.fastpull.blos import BaseLayerObjectStore
 from metatools.fastpull.core import IntegrityDatabase
 from metatools.fastpull.spider import WebSpider
@@ -81,7 +81,7 @@ class AutogenConfig(MinimalConfig):
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
 		self.log.debug(f"Fetch cache interval set to {self.fetch_cache_interval}")
 		self.locator = OverlayLocator()
-
+		self.kit_fixups_repo = GitRepositoryLocator()
 		repo_name = None
 		repo_name_path = os.path.join(self.locator.root, "profiles/repo_name")
 		if os.path.exists(repo_name_path):

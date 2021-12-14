@@ -13,7 +13,6 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from yaml import safe_load
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
-import dyne.org.funtoo.metatools.generators as generators
 
 from subpop.util import load_plugin
 
@@ -197,19 +196,11 @@ async def execute_generator(
 	performance and allowing the use of thread-local storage to keep track of things specific to this autogen
 	run.
 	"""
-
-	if generator_sub_path:
-		# This is an individual autogen.py. First grab the "base sub" (map the path), and then grab the actual sub-
-		# module we want by name.
-		generator_sub = load_plugin(f"{generator_sub_path}/{generator_sub_name}.py", generator_sub_name)
-		# Do hub injection:
-		generator_sub.hub = hub
-	else:
-		# This is an official generator that is built-in to pkgtools:
-		generator_sub = getattr(generators, generator_sub_name)
-
-	# The generate_wrapper wraps the call to `generate()` (in autogen.py or the generator) and performs setup
-	# and post-tasks:
+	if not generator_sub_path:
+		raise TypeError("generator_sub_path not set to a path.")
+	generator_sub = load_plugin(f"{generator_sub_path}/{generator_sub_name}.py", generator_sub_name)
+	# Do hub injection:
+	generator_sub.hub = hub
 
 	async def generator_thread_task(pkginfo_list):
 
@@ -413,9 +404,8 @@ def queue_all_yaml_autogens():
 						# generator.
 						logging.debug(f"Found generator {sub_name} in local tree.")
 					else:
-
-						sub_path = None
-						logging.debug(f"Using built-in generator {sub_name}.")
+						# Use a generator globally defined in the root of kit-fixups.
+						sub_path = os.path.join(pkgtools.model.kit_fixups_repo.root, "generators")
 				else:
 					# Fallback: Use an ad-hoc 'generator.py' generator in the same dir as autogen.yaml:
 					sub_name = "generator"
