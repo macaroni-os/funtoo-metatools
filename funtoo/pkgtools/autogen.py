@@ -135,7 +135,7 @@ async def gather_pending_tasks(task_list, throw=True):
 	return results, exceptions
 
 
-def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=None, gen_path=None):
+def init_pkginfo_for_package(generator_sub, defaults=None, base_pkginfo=None, template_path=None, gen_path=None):
 	"""
 	This function generates the final pkginfo that is passed to the generate() function in the generator sub
 	for each catpkg being generated.
@@ -152,7 +152,7 @@ def init_pkginfo_for_package(defaults=None, base_pkginfo=None, template_path=Non
 	   come from the package-specific part of the `autogen.yaml` are added on top. (`base_pkginfo`, below.),
 	   plus any non-'version' sections from the package-specific section.
 	"""
-	glob_defs = getattr(hub.THREAD_CTX.sub, "GLOBAL_DEFAULTS", {})
+	glob_defs = getattr(generator_sub, "GLOBAL_DEFAULTS", {})
 	pkginfo = glob_defs.copy()
 	if defaults is not None:
 		pkginfo.update(defaults)
@@ -204,7 +204,6 @@ async def execute_generator(
 
 	async def generator_thread_task(pkginfo_list):
 
-		hub.THREAD_CTX.sub = generator_sub
 		hub.THREAD_CTX.running_autogens = []
 		hub.THREAD_CTX.running_breezybuilds = []
 		hub.THREAD_CTX.genned_breezybuilds = set()
@@ -215,6 +214,7 @@ async def execute_generator(
 		for base_pkginfo in pkginfo_list:
 			new_pkginfo_list.append(
 				init_pkginfo_for_package(
+					generator_sub,
 					defaults=defaults, base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
 				)
 			)
@@ -224,7 +224,7 @@ async def execute_generator(
 		# Packages can be dropped or added, or their pkginfo arbitrarily modified using Python code.
 		# See if ``preprocess_packages()`` exists in the generator -- and if it does, run it.
 
-		preprocess_func = getattr(hub.THREAD_CTX.sub, "preprocess_packages", None)
+		preprocess_func = getattr(generator_sub, "preprocess_packages", None)
 		if preprocess_func is not None:
 			pkginfo_list = [i async for i in preprocess_func(hub, pkginfo_list)]
 
@@ -244,7 +244,7 @@ async def execute_generator(
 			# Any .push() calls on BreezyBuilds will cause new tasks for those to be appended to
 			# hub.THREAD_CTX.running_breezybuilds. This will happen during this task execution:
 
-			async def gen_wrapper(pkginfo):
+			async def gen_wrapper(pkginfo, generator_sub):
 
 				# AutoHub is an evolution of the Hub. The hub is becoming less and less important
 				# in subpop but has a purpose as a convenient thing in metatools autogens. We want
@@ -270,7 +270,7 @@ async def execute_generator(
 					def BreezyError(self, **kwargs):
 						return self.pkgtools.ebuild.BreezyError(**kwargs)
 
-				generate = getattr(hub.THREAD_CTX.sub, "generate", None)
+				generate = getattr(generator_sub, "generate", None)
 				if generate is None:
 					raise AttributeError(f"generate() not found in {generator_sub}")
 				try:
@@ -282,7 +282,7 @@ async def execute_generator(
 						raise te
 				return pkginfo
 
-			task = Task(gen_wrapper(pkginfo))
+			task = Task(gen_wrapper(pkginfo, generator_sub))
 			task.add_done_callback(_handle_task_result)
 			hub.THREAD_CTX.running_autogens.append(task)
 
