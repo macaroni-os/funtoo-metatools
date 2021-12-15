@@ -11,6 +11,16 @@ class Tree:
 		self.name = name
 		self.start = start
 
+def gitrepo_path(start_path):
+	root_path = start_path
+	while (
+			root_path != "/"
+			and not os.path.exists(os.path.join(root_path, ".git"))
+	):
+		root_path = os.path.dirname(root_path)
+	if root_path == "/":
+		return None
+	return root_path
 
 def repository_of(start_path, name=None):
 	root_path = start_path
@@ -37,6 +47,7 @@ def repository_of(start_path, name=None):
 
 def set_context(start_path=None, out_path=None, name=None):
 	hub.CONTEXT = repository_of(start_path, name=name)
+	hub.GITREPO = gitrepo_path(start_path)
 	if out_path is None or start_path == out_path:
 		hub.OUTPUT_CONTEXT = hub.CONTEXT
 	else:
