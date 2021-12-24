@@ -434,14 +434,10 @@ def get_filedata(src_uri, manifest_path):
 	return outdata
 
 
-def get_ebuild_metadata(repo, ebuild_path, eclass_hashes=None, eclass_paths=None, write_cache=False):
+def get_ebuild_metadata(repo, ebuild_path, eclass_hashes=None, eclass_paths=None):
 	"""
 	This function will grab metadata from a single ebuild pointed to by `ebuild_path` and
 	return it as a dictionary.
-
-	If `write_cache` is True, a `metadata/md5-cache/cat/pvr` file will be written out to the
-	repository as well. If `write_cache` is True, then `eclass_paths` and `eclass_hashes`
-	must be supplied.
 
 	This function sets up a clean environment and spawns a bash process which runs `ebuild.sh`,
 	which is a file from Portage that processes the ebuild and eclasses and outputs the metadata
@@ -473,13 +469,22 @@ def get_ebuild_metadata(repo, ebuild_path, eclass_hashes=None, eclass_paths=None
 
 	# Try to see if we already have this metadata in our kit metadata cache.
 	existing = get_atom(repo, atom, ebuild_md5, manifest_md5, eclass_hashes)
-	repo.KIT_CACHE_RETRIEVED_ATOMS.add(atom)
+
+	infos = None
+	metadata_out = None
 
 	if existing:
-		infos = existing["metadata"]
-		metadata_out = existing["metadata_out"]
-	# TODO: Note - this may be a 'dud' existing entry where there was a metadata failure previously.
-	else:
+		if "status" in existing:
+			# The result of a 'status' field indicates a failure reason.
+			# This was a failed metadata gen, and we will avoid using it.
+			pass
+		else:
+			infos = existing["metadata"]
+			metadata_out = existing["metadata_out"]
+			repo.KIT_CACHE_RETRIEVED_ATOMS.add(atom)
+
+	# We don't have anything valid in our metadata cache so extract metadata for ebuild.
+	if infos is None:
 		sys.stdout.write("*")
 		sys.stdout.flush()
 		repo.KIT_CACHE_MISSES.add(atom)
@@ -499,7 +504,12 @@ def get_ebuild_metadata(repo, ebuild_path, eclass_hashes=None, eclass_paths=None
 		env["PN"] = pkg_only
 		env["PVR"] = env["PF"][len(env["PN"]) + 1 :]
 
+		# This will return None on failure, and set repo_obj.METADATA_ERRORS to contain the badness:
 		infos = extract_ebuild_metadata(repo, atom, ebuild_path, env, eclass_paths)
+
+		if infos is None:
+			# We failed to extract ebuild metadata. The ThreadPool will emit a "!" when the result is empty.
+			return
 
 		eclass_out = ""
 		eclass_tuples = []
@@ -510,7 +520,7 @@ def get_ebuild_metadata(repo, ebuild_path, eclass_hashes=None, eclass_paths=None
 		# with the ebuild md5 to tell if we should attempt to retry the extraction. Or we could keep retrying every
 		# time. Maybe?
 
-		if infos and infos["INHERITED"]:
+		if infos["INHERITED"]:
 
 			# Do common pre-processing for eclasses:
 
@@ -525,24 +535,23 @@ def get_ebuild_metadata(repo, ebuild_path, eclass_hashes=None, eclass_paths=None
 					repo.PROCESSING_WARNINGS.append({"msg": f"Can't find eclass {eclass_name}", "atom": atom})
 
 		metadata_out = ""
-		if infos:
-			# if metdata extraction successful...
-			for key in AUXDB_LINES:
-				if infos[key] != "":
-					metadata_out += key + "=" + infos[key] + "\n"
-			if len(eclass_out):
-				metadata_out += "_eclasses_=" + eclass_out[1:] + "\n"
-			metadata_out += "_md5_=" + ebuild_md5 + "\n"
+
+		# if metadata extraction successful...
+		for key in AUXDB_LINES:
+			if infos[key] != "":
+				metadata_out += key + "=" + infos[key] + "\n"
+		if len(eclass_out):
+			metadata_out += "_eclasses_=" + eclass_out[1:] + "\n"
+		metadata_out += "_md5_=" + ebuild_md5 + "\n"
 
 		# Extended metadata calculation:
 
 		td_out = {}
 		relations = defaultdict(set)
-		if infos:
-			# if metadata extraction successful...
-			for key in ["DEPEND", "RDEPEND", "PDEPEND", "BDEPEND", "HDEPEND"]:
-				if infos[key]:
-					relations[key] = get_catpkg_relations_from_depstring(infos[key])
+
+		for key in ["DEPEND", "RDEPEND", "PDEPEND", "BDEPEND", "HDEPEND"]:
+			if infos[key]:
+				relations[key] = get_catpkg_relations_from_depstring(infos[key])
 		all_relations = set()
 		relations_by_kind = dict()
 
@@ -564,17 +573,16 @@ def get_ebuild_metadata(repo, ebuild_path, eclass_hashes=None, eclass_paths=None
 		td_out["md5"] = ebuild_md5
 		td_out["metadata_out"] = metadata_out
 		td_out["manifest_md5"] = manifest_md5
-		if infos and manifest_md5 is not None and "SRC_URI" in infos:
+		if manifest_md5 is not None and "SRC_URI" in infos:
 			td_out["files"] = get_filedata(infos["SRC_URI"], manifest_path)
 		update_atom(repo, td_out)
 
-	if infos and write_cache:
-		# if we successfully extracted metadata and we are told to write cache, write the cache entry:
-		metadata_outpath = os.path.join(repo.root, "metadata/md5-cache")
-		final_md5_outpath = os.path.join(metadata_outpath, atom)
-		os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
-		with open(os.path.join(metadata_outpath, atom), "w") as f:
-			f.write(metadata_out)
+	# if we successfully extracted metadata and we are told to write cache, write the cache entry:
+	metadata_outpath = os.path.join(repo.root, "metadata/md5-cache")
+	final_md5_outpath = os.path.join(metadata_outpath, atom)
+	os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
+	with open(os.path.join(metadata_outpath, atom), "w") as f:
+		f.write(metadata_out)
 
 	return infos
 
@@ -688,7 +696,6 @@ def gen_cache(repo):
 				ebpath,
 				eclass_hashes=eclass_hashes,
 				eclass_paths=eclass_paths,
-				write_cache=True,
 			)
 			fut_map[future] = ebpath
 			futures.append(future)
@@ -843,6 +850,8 @@ def flush_kit(repo_obj, save=True, prune=True):
 		all_keys = set(repo_obj.KIT_CACHE.keys())
 		remove_keys = all_keys - (repo_obj.KIT_CACHE_RETRIEVED_ATOMS | repo_obj.KIT_CACHE_WRITES)
 		extra_atoms = repo_obj.KIT_CACHE_RETRIEVED_ATOMS - all_keys
+		# This is basically saying that anything we didn't access or update this round, we want to drop (to remove stale entries.) We explicitly delete
+		# these:
 		for key in remove_keys:
 			del repo_obj.KIT_CACHE[key]
 		if len(extra_atoms):
@@ -894,7 +903,7 @@ def get_atom(repo_obj, atom, md5, manifest_md5, eclass_hashes):
 	Otherwise we treat this as a cache miss.
 	"""
 	existing = None
-	if atom in repo_obj.KIT_CACHE and repo_obj.KIT_CACHE[atom]["md5"] == md5:
+	if atom in repo_obj.KIT_CACHE and repo_obj.KIT_CACHE[atom].get("md5", None) and repo_obj.KIT_CACHE[atom]["md5"] == md5:
 		existing = repo_obj.KIT_CACHE[atom]
 		bad = False
 		if "manifest_md5" not in existing:
