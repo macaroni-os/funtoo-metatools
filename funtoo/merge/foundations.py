@@ -113,7 +113,6 @@ def yaml_walk(yaml_dict):
 			retval += item
 		else:
 			raise TypeError(f"yaml_walk: unrecognized: {repr(item)}")
-	print("RETURNING", retval)
 	return retval
 
 
