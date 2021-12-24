@@ -62,6 +62,9 @@ class AutogenConfig(MinimalConfig):
 			self.fetch_cache_interval = fetch_cache_interval
 
 		self.config = yaml.safe_load(self.get_file("autogen"))
+		# Set to empty values if non-existent:
+		if self.config is None:
+			self.config = {}
 		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
 		self.blos = BaseLayerObjectStore(self.fastpull_path, hashes=self.hashes)
 		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
