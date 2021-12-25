@@ -5,7 +5,7 @@ import packaging.version
 # augmenting the pkginfo dict, and thus easy to integrate into yaml-based autogens.
 
 
-async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None):
+async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, **kwargs):
 	"""
 	This method will query the GitHub API for releases for a specific project, find the most recent
 	release, and then return a dictionary containing the keys "version", "artifacts" and "sha", which
@@ -100,7 +100,7 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, selec
 		return max(versions_and_tag_elements, key=lambda v: packaging.version.parse(v[0]))
 
 
-async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None):
+async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, **kwargs):
 	"""
 	Similar to ``release_gen``, this will query the GitHub API for the latest tagged version of a project,
 	and return a dictionary that can be added to pkginfo containing the version, artifacts and commit sha.
