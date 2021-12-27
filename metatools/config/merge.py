@@ -1,16 +1,14 @@
+import logging
 import os
 import threading
-from collections import defaultdict
 from datetime import datetime
-
-import yaml
 
 from metatools.config.base import MinimalConfig
 from metatools.context import GitRepositoryLocator
 from metatools.files.release import ReleaseYAML
 from metatools.hashutils import get_md5
+from metatools.pretty_logging import TornadoPrettyLogFormatter
 from metatools.tree import AutoCreatedGitTree, GitTree
-from subpop.config import ConfigurationError
 
 
 class EClassHashCollector:
@@ -56,6 +54,8 @@ class MergeConfig(MinimalConfig):
 	This configuration is used for tree regen, also known as 'merge-kits'.
 	"""
 
+	# Configuration bits:
+
 	release_yaml = None
 	context = None
 	locator = None
@@ -64,20 +64,30 @@ class MergeConfig(MinimalConfig):
 	release = None
 	push = False
 	create_branches = False
-
-	fastpull = None
-	_third_party_mirrors = None
-
 	mirror_repos = False
 	nest_kits = True
 	git_class = AutoCreatedGitTree
 
+	# Not sure if this is used:
+	_third_party_mirrors = None
+
+	# Things used during runtime processing:
+	kit_fixups: GitTree = None
 	metadata_error_stats = []
 	processing_error_stats = []
 	eclass_hashes = EClassHashCollector()
 	start_time: datetime = None
+	current_source_def = None
+	log = None
 
 	async def initialize(self, prod=False, push=False, release=None, create_branches=False):
+
+		self.log = logging.getLogger('metatools.merge')
+		self.log.propagate = False
+		self.log.setLevel(logging.INFO)
+		channel = logging.StreamHandler()
+		channel.setFormatter(TornadoPrettyLogFormatter())
+		self.log.addHandler(channel)
 
 		self.prod = prod
 		self.push = push
@@ -90,7 +100,8 @@ class MergeConfig(MinimalConfig):
 
 		# Next, find release.yaml in the proper directory in kit-fixups.
 
-		self.release_yaml = ReleaseYAML(self.locator, mode="prod" if prod else "dev")
+		self.release_yaml = ReleaseYAML(self.locator, mode="prod" if prod else "dev", release=release)
+		self.kit_fixups = GitTree(name='kit-fixups', root=self.release_yaml.locator.root, model=self)
 
 		# TODO: add a means to override the remotes in the release.yaml using a local config file.
 
@@ -107,20 +118,6 @@ class MergeConfig(MinimalConfig):
 			self.push = push
 			self.mirror_repos = push
 			self.git_class = GitTree
-
-		meta_repo_config = self.release_yaml.get_meta_repo_config()
-		self.meta_repo = self.git_class(
-			name="meta-repo",
-			branch=release,
-			url=meta_repo_config['url'],
-			root=self.dest_trees + "/meta-repo",
-			origin_check=True if self.prod else None,
-			mirrors=meta_repo_config['mirrors'],
-			create_branches=self.create_branches,
-			model=self
-		)
-		self.start_time = datetime.utcnow()
-		self.meta_repo.initialize()
 
 	@property
 	def metadata_cache(self):

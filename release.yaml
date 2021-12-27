@@ -50,7 +50,6 @@ release:
   source-collections:
     funtoo_next:
       - flora
-      - fusion809
       - faustoo
       - fusion809
       - deadbeef

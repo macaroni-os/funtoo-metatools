@@ -85,7 +85,7 @@ class Tree:
 		print(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
 		# use subprocess.call so we can see the output of autogen:
 		retcode = subprocess.call(
-			f"cd {autogen_path} && doit --fastpull_scope={self.model.fastpull_scope}",
+			f"cd {autogen_path} && doit --fastpull_scope={self.model.release}",
 			shell=True,
 		)
 		if retcode != 0:
@@ -93,7 +93,7 @@ class Tree:
 		self.autogenned = src_offset
 
 	def cleanTree(self):
-		print("Cleaning tree %s" % self.root)
+		self.model.log.info("Cleaning tree %s" % self.root)
 		run_shell("(cd %s &&  git reset --hard && git clean -fdx )" % self.root)
 		self.autogenned = False
 

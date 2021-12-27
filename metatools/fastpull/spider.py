@@ -75,6 +75,7 @@ class Download:
 		self.hashes = hashes
 		self.final_data = None
 		self._temp_path = None
+		self.filesize = 0
 
 	def get_download_future(self):
 		log.debug(f"Download.await_existing:{threading.get_ident()} {self.request.url}")
@@ -141,7 +142,7 @@ class Download:
 									retry = False
 								else:
 									retry = True
-								raise FetchError(self.request, f"HTTP fetch_stream Error {response.status}: {reason[:40]}", retry=retry)
+								raise FetchError(self.request, f"HTTP fetch_stream Error {response.status}: {reason[:120]}", retry=retry)
 							while not completed:
 								chunk = await response.content.read(chunk_size)
 								rec_bytes += len(chunk)
@@ -182,23 +183,19 @@ class Download:
 
 		log.debug(f"WebSpider.launch:{threading.get_ident()} spidering {self.request.url}...")
 		os.makedirs(os.path.dirname(self.temp_path), exist_ok=True)
-		log.info(f"Spider download {self.request.url}")
+		log.info(f"Spidering {self.request.url}")
 		fd = open(self.temp_path, "wb")
 		hashes = {}
 
 		for h in self.hashes:
 			hashes[h] = getattr(hashlib, h)()
-		filesize = 0
 
 		def on_chunk(chunk):
-			# See https://stackoverflow.com/questions/5218895/python-nested-functions-variable-scoping
-			nonlocal filesize
 			fd.write(chunk)
 			for hash in self.hashes:
 				hashes[hash].update(chunk)
-			filesize += len(chunk)
-		#	sys.stdout.write(".")
-		#	sys.stdout.flush()
+			self.filesize += len(chunk)
+
 		try:
 			await self._http_fetch_stream(on_chunk)
 		except FetchError as fe:
@@ -209,7 +206,7 @@ class Download:
 		final_data = {}
 		for h in self.hashes:
 			final_data[h] = hashes[h].hexdigest()
-		final_data['size'] = filesize
+		final_data['size'] = self.filesize
 		self.final_data = final_data
 
 		if self.completion_pipeline:
@@ -267,7 +264,7 @@ class WebSpider:
 
 	DL_ACTIVE_LOCK = threading.Lock()
 	DL_ACTIVE = dict()
-	DOWNLOAD_SLOT = threading.Semaphore(value=200)
+	DOWNLOAD_SLOT = threading.Semaphore(value=20)
 	http_timeout = aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)
 	thread_ctx = threading.local()
 	fetch_headers = {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
@@ -279,8 +276,11 @@ class WebSpider:
 	async def status_logger_task(self):
 		while True:
 			await asyncio.sleep(5)
-			for dl in sorted(list(self.DL_ACTIVE.keys())):
-				log.info(f"Spider downloading {self.DL_ACTIVE[dl].request.url}...")
+			dl_count = len(self.DL_ACTIVE)
+			if dl_count > 1:
+				log.info(f"Spider active downloads: {len(self.DL_ACTIVE)}")
+			elif dl_count == 1:
+				log.info(f"Spider active download: {list(self.DL_ACTIVE.keys())[0]}")
 
 	async def start_asyncio_tasks(self):
 		asyncio.create_task(self.status_logger_task())

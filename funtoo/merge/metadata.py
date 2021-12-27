@@ -564,10 +564,6 @@ def ebuild_generator(ebuild_src=None):
 				if ebfile.endswith(".ebuild"):
 					yield os.path.join(pkgpath, ebfile)
 
-
-
-
-
 # TODO: maybe change this name to post_actions(). And integrate Manifest generation here. We want
 #       to avoiding having MANIFEST_LINES or integrate MANIFEST_LINES better into the kit-cache.
 #       This is not ABSOLUTELY necessary but may make things a bit simpler. MANIFEST_LINES was
@@ -603,7 +599,7 @@ def gen_cache(repo):
 		if repo.name != "core-kit":
 			# Add in any eclasses that exist local to the kit.
 			# TODO: this needs a refactor because core-kit isn't the only special one anymore.
-			local_eclass_hashes = get_eclass_hashes(repo.root)
+			local_eclass_hashes = merge.model.eclass_hashes.get_hashes()
 			eclass_hashes.update(local_eclass_hashes.hashes)
 			eclass_paths = [local_eclass_hashes.path] + eclass_paths  # give local eclasses priority
 

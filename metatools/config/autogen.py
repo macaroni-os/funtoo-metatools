@@ -90,7 +90,6 @@ class AutogenConfig(MinimalConfig):
 		if os.path.exists(repo_name_path):
 			with open(repo_name_path, "r") as repof:
 				repo_name = repof.read().strip()
-
 		if repo_name is None:
-			logging.warning("Unable to find %s." % repo_name_path)
+			self.log.warning("Unable to find %s." % repo_name_path)
 

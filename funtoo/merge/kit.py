@@ -3,28 +3,39 @@
 import json
 import os
 from collections import defaultdict
-from concurrent.futures._base import as_completed
+from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
 
 import dyne.org.funtoo.metatools.merge as merge
 
-from metatools.files.release import Kit
-from metatools.tree import run_shell
+from metatools.files.release import Kit, SourceCollection, SourceRepository
+from metatools.tree import run_shell, GitTree
+
+"""
+This file exists to define objects related to the processing of kits and releases. It uses settings defined in 
+``merge.model``, and in particular will use ``merge.model.release_yaml`` to access the object hierarchy created
+from a release's YAML data.
+"""
 
 
-class KitJob:
+class KitGenerator:
+
 	"""
-	This class holds all info relevant to the creation of a specific kit branch from kit.yaml. It contains a
-	reference to the definition information in kit-fixups relevant to the kit, as well as the output Git tree
-	which will contain our results.
+	This class represents the work associated with generating a Kit. A ``Kit`` (defined in metatools/files/release.py)
+	is passed to the constructor of this object to define settings, and stored within this object as ``self.kit``.
+
+	The KitGenerator takes care of creating or connecting to an existing Git tree that is used to house the results of
+	the kit generation, and this Git tree object is stored at ``self.out_tree``.
+
+	The ``self.generate()`` method (and supporting methods) take care of regenerating the Kit. Upon completion,
+	``self.kit_sha1`` is set to the SHA1 of the commit containing these updates.
 	"""
+
 	kit_sha1 = None
 	out_tree = None
 	active_repos = set()
 
-	def __init__(self,
-	             kit: Kit = None,
-	             ):
+	def __init__(self, kit: Kit):
 		self.kit = kit
 
 		git_class = merge.model.git_class
@@ -50,19 +61,22 @@ class KitJob:
 		steps = [
 			merge.steps.CleanTree(),
 			merge.steps.GenerateRepoMetadata(self.kit.name, aliases=self.kit.aliases, masters=self.kit.masters, priority=self.kit.priority),
-		] + self.package_yaml_steps() + self.copy_from_fixups_steps() + [
-			merge.steps.RemoveFiles(merge.model.get_excludes(self.kit)),
+		]
+		await self.out_tree.run(steps)
+		await self.out_tree.run(self.package_yaml_steps())
+		await self.out_tree.run(self.copy_from_fixups_steps())
+		await self.out_tree.run([
+			merge.steps.RemoveFiles(self.kit.get_excludes()),
 			merge.steps.FindAndRemove(["__pycache__"]),
 			merge.steps.FindAndRemove(["COPYRIGHT.txt"]), # replaced with COPYRIGHT.rst
-			merge.steps.GenerateLicensingFile(sorted(list(self.active_repos))),
+			merge.steps.GenerateLicensingFile(text=self.kit.get_copyright_rst()),
 			merge.steps.Minify(),
 			merge.steps.ELTSymlinkWorkaround(),
 			merge.steps.CreateCategories(),
 			# TODO: move this to a post-step and only include active licenses.
-			merge.steps.SyncDir(merge.model.source_repos["gentoo-staging"].root, "licenses"),
-		]
-
-		await self.out_tree.run(steps)
+			# TODO: we should not hard-reference 'gentoo-staging' anymore.
+			merge.steps.SyncDir(self.kit.source.repositories["gentoo-staging"].tree.root, "licenses"),
+		])
 
 		############################################################################################################
 		# We now want to store the md5 digests for the eclasses in the kit at this point and also abort if we have
@@ -106,7 +120,7 @@ class KitJob:
 		# 				],
 		# core/pre: merge.steps.SyncDir(merge.model.source_repos["gentoo-staging"].root, "eclass"),
 		# merge.steps.SyncFiles(
-		# 						self.kit.kit_fixups.context,
+		# 						merge.model.kit_fixups.context,
 		# 						{
 		# 							"LICENSE.txt": "LICENSE.txt",
 		# 						},
@@ -140,15 +154,14 @@ class KitJob:
 		"""
 
 		steps = []
-		for repo_name, copyfile_tuples in merge.model.get_individual_files_to_copy(self.kit).items():
-			steps += [merge.steps.CopyFiles(merge.model.source_repos[repo_name], copyfile_tuples)]
+		for repo_name, copyfile_tuples in self.kit.get_individual_files_to_copy().items():
+			steps += [merge.steps.CopyFiles(self.kit.source.repositories[repo_name].tree, copyfile_tuples)]
 
 		# Copy over catpkgs listed in 'packages' section:
 		for repo_name, packages in self.kit.get_kit_packages():
 			self.active_repos.add(repo_name)
-			from_tree = merge.model.source_repos[repo_name]
 			# TODO: add move maps below
-			steps += [merge.steps.InsertEbuilds(from_tree, skip=None, replace=True, move_maps=None, select=packages)]
+			steps += [merge.steps.InsertEbuilds(self.kit.source.repositories[repo_name].tree, skip=None, replace=True, move_maps=None, select=packages, scope=merge.model.release)]
 		return steps
 
 	def copy_from_fixups_steps(self):
@@ -179,25 +192,25 @@ class KitJob:
 		steps = []
 		# Here is the core logic that copies all the fix-ups from kit-fixups (eclasses and ebuilds) into place:
 		eclass_release_path = "eclass/%s" % merge.model.release
-		if os.path.exists(os.path.join(self.kit.kit_fixups.root, eclass_release_path)):
-			steps += [merge.steps.SyncDir(self.kit.kit_fixups.root, eclass_release_path, "eclass")]
+		if os.path.exists(os.path.join(merge.model.kit_fixups.root, eclass_release_path)):
+			steps += [merge.steps.SyncDir(merge.model.kit_fixups.root, eclass_release_path, "eclass")]
 		fixup_dirs = ["global", "curated", self.kit.branch]
 		for fixup_dir in fixup_dirs:
 			fixup_path = self.kit.name + "/" + fixup_dir
-			if os.path.exists(self.kit.kit_fixups.root + "/" + fixup_path):
-				if os.path.exists(self.kit.kit_fixups.root + "/" + fixup_path + "/eclass"):
+			if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path):
+				if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/eclass"):
 					steps += [
 						merge.steps.InsertFilesFromSubdir(
 							merge.model.kit_fixups, "eclass", ".eclass", select="all", skip=None, src_offset=fixup_path
 						)
 					]
-				if os.path.exists(self.kit.kit_fixups.root + "/" + fixup_path + "/licenses"):
+				if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/licenses"):
 					steps += [
 						merge.steps.InsertFilesFromSubdir(
 							merge.model.kit_fixups, "licenses", None, select="all", skip=None, src_offset=fixup_path
 						)
 					]
-				if os.path.exists(self.kit.kit_fixups.root + "/" + fixup_path + "/profiles"):
+				if os.path.exists(merge.model.kit_fixups.root + "/" + fixup_path + "/profiles"):
 					steps += [
 						merge.steps.InsertFilesFromSubdir(
 							merge.model.kit_fixups, "profiles", None, select="all", skip=["repo_name", "categories"], src_offset=fixup_path
@@ -205,17 +218,300 @@ class KitJob:
 					]
 				# copy appropriate kit readme into place:
 				readme_path = fixup_path + "/README.rst"
-				if os.path.exists(self.kit.kit_fixups.root + "/" + readme_path):
-					steps += [merge.steps.SyncFiles(self.kit.kit_fixups.root, {readme_path: "README.rst"})]
+				if os.path.exists(merge.model.kit_fixups.root + "/" + readme_path):
+					steps += [merge.steps.SyncFiles(merge.model.kit_fixups.root, {readme_path: "README.rst"})]
 
 				# We now add a step to insert the fixups, and we want to record them as being copied so successive kits
 				# don't get this particular catpkg. Assume we may not have all these catpkgs listed in our package-set
 				# file...
 
 				steps += [
-					merge.steps.InsertEbuilds(merge.model.kit_fixups, ebuildloc=fixup_path, select="all", skip=None, replace=True)
+					merge.steps.InsertEbuilds(merge.model.kit_fixups, ebuildloc=fixup_path, select="all", skip=None, replace=True, scope=merge.model.release)
 				]
 		return steps
+
+
+
+class KitPipeline:
+
+	def __init__(self, key, jobs):
+		self.key = key
+		self.jobs = jobs
+
+	def initialize_source_repository(self, repo: SourceRepository):
+		#if repo_key in merge.model.source_repos:
+		#	repo_obj = merge.model.source_repos[repo_key]
+		#	if repo_sha1:
+		#		repo_obj.gitCheckout(sha1=repo_sha1)
+		#	elif repo_branch:
+		#		repo_obj.gitCheckout(branch=repo_branch)
+		#else:
+		merge.model.log.info(f"Initializing Source Repository {repo.name}")
+		repo.tree = GitTree(
+			repo.name,
+			url=repo.url,
+			root="%s/%s" % (merge.model.source_trees, repo.name),
+			branch=repo.branch,
+			commit_sha1=repo.src_sha1,
+			origin_check=False,
+			reclone=False,
+			model=merge.model
+		)
+		repo.tree.initialize()
+
+	def initialize_sources(self, source_def: SourceCollection):
+
+		"""
+		This method initializes the source repositories referenced by the kit to ensure that they are all initialized to the
+		proper branch and/or SHA1. Some internal checking is done to avoid re-initializing repositories unnecessarily, so if
+		they are already set up properly then no action will be taken.
+		"""
+
+		# If we are already using this SourceCollection, no action is needed:
+		merge.model.log.info(f"Initializing source collection {source_def.name} with {len(source_def.repositories)} repositories")
+		if merge.model.current_source_def == source_def:
+			return
+
+		# If we need to switch SourceCollection, we can still avoid unnecessary work:
+		# We will go through each of our repositories, and only (re-)initialize it if:
+		#
+		# 1. Our repo is missing.
+		# 2. Our repo exists with same name but is referencing a different branch/sha1.
+
+		repo_futures = []
+		with ThreadPoolExecutor(max_workers=4) as executor:
+			for repo_name, repo in source_def.repositories.items():
+				fut = executor.submit(self.initialize_source_repository, repo)
+				repo_futures.append(fut)
+			for repo_fut in as_completed(repo_futures):
+				# Getting .result() will also cause any exception to be thrown:
+				repo_dict = repo_fut.result()
+				continue
+
+		merge.model.current_source_def = source_def
+
+	async def run(self):
+		pass
+
+
+class ParallelKitPipeline(KitPipeline):
+
+	async def run(self):
+		if not len(self.jobs):
+			return
+		# All kits here are sharing the same sources collection, so we just have to initialize them once:
+		self.initialize_sources(self.jobs[0].kit.source)
+		regen_futures = []
+		with ThreadPoolExecutor(max_workers=8) as executor:
+			for kit_job in self.jobs:
+				future = executor.submit(hub.run_async_adapter, kit_job.generate)
+				regen_futures.append(future)
+			for future in as_completed(regen_futures):
+				result = future.result()
+
+
+class MasterKitPipeline(KitPipeline):
+
+	current_source_def = None
+
+	def __init__(self, jobs):
+		super().__init__("masters", jobs)
+
+	async def run(self):
+		for kit_job in self.jobs:
+			# Each master may have different sources, so perform initialize call prior to each run:
+			self.initialize_sources(kit_job.kit.source)
+			await kit_job.generate()
+
+
+class MetaRepoJobController:
+
+	"""
+	This class is designed to run the full meta-repo and kit regeneration process -- in other words, the entire
+	technical flow of 'merge-kits' when it creates or updates kits and meta-repo.
+	"""
+
+	pipeline_count = 0
+	kit_pipeline_keys = ["masters"]
+	kit_pipeline_slots = defaultdict(list)
+	kit_jobs = []
+
+	def __init__(self):
+		self.generate_jobs_and_pipelines()
+
+	def iter_pipelines(self):
+		for pipeline_key in self.kit_pipeline_keys[1:]:
+			yield ParallelKitPipeline(pipeline_key, self.kit_pipeline_slots[pipeline_key])
+
+	async def generate(self):
+		merge.metadata.cleanup_error_logs()
+
+		master_pipeline = MasterKitPipeline(jobs=self.kit_pipeline_slots["masters"])
+		await master_pipeline.run()
+
+		for pipeline in self.iter_pipelines():
+			await pipeline.run()
+
+		# Create meta-repo commit referencing our updated kits:
+		merge.kit.generate_metarepo_metadata(merge.model.kit_sha1s)
+		merge.model.meta_repo.gitCommit(message="kit updates", skip=["kits"], push=merge.model.push)
+
+		if not merge.model.prod:
+			# check out preferred kit branches, because there's a good chance we'll be using it locally.
+			for name, ctx in merge.sources.get_kit_preferred_branches().items():
+				merge.model.log.info(f"Checking out {name} {ctx.kit.branch}...")
+				await merge.kit.checkout_kit(ctx, pull=False)
+
+		if not merge.model.mirror_repos:
+			merge.metadata.display_error_summary()
+			return
+
+		# Mirroring to GitHub happens here:
+
+		merge.kit.mirror_all_repositories()
+		merge.metadata.display_error_summary()
+
+	def get_kit_preferred_branches(self):
+		"""
+		When we generate a meta-repo, and we're not in "prod" mode, then it's likely that we will be using
+		our meta-repo locally. In this case, it's handy to have the proper kits checked out after this is
+		done. So for example, we would want gnome-kit 3.36-prime checked out not 3.34-prime, since 3.36-prime
+		is the preferred branch in the metadata. This function will return a dict of kit names with the
+		values being a AttrDict with the info specific to the kit.
+		"""
+		out = {}
+
+		for kit_dict in merge.model.kit_groups:
+			name = kit_dict["name"]
+			stability = kit_dict["stability"]
+			if stability != "prime":
+				continue
+			if name in out:
+				# record first instance of kit from the YAML, ignore others (primary kit is the first one listed)
+				continue
+			out[name] = AttrDict()
+			out[name].kit = AttrDict(kit_dict)
+		return out
+
+	def create_new_pipeline(self) -> str:
+		"""
+		This method creates a new kit pipeline and returns its index as a string.
+		"""
+		pipeline_key = f"pipeline{self.pipeline_count}"
+		self.pipeline_count += 1
+		self.kit_pipeline_keys.append(pipeline_key)
+		return pipeline_key
+
+	def find_existing_pipeline(self, kit_job: KitGenerator):
+		"""
+		For threading, we want to group kits into collections (pipelines) when they can legally run at the same
+		time. This function will help us find a pipeline which we can "legally" join. If we can't find an existing
+		pipeline that works for us, this function will return None so we can know to create a new thread pipeline.
+
+		TODO: we can potentially parallelize this further by detecting when there are no source repositories in
+		      common, even if ``other.source != kit.source`` -- these can still be auto-generated in parallel.
+		"""
+
+		for pipeline_key in self.kit_pipeline_keys[1:]:
+			skip_pipeline = False
+			for other in self.kit_pipeline_slots[pipeline_key]:
+				if other.kit.source != kit_job.kit.source:
+					# Autogenerated kit different git sources, can't use this pipeline:
+					skip_pipeline = True
+					break
+				elif other.kit.name == kit_job.kit.name:
+					# already processing another branch of same kit in this pipeline, so can't run simultaneously:
+					skip_pipeline = True
+					break
+			if skip_pipeline:
+				continue
+			return pipeline_key
+		return None
+
+	def generate_jobs_and_pipelines(self):
+
+		"""
+		This method organizes to-be-generated kits into pipelines containing kit jobs (KitGenerators) to regenerate the kits.
+
+		The first pipeline is called "masters" and is special -- each kit in this pipeline is generated in-order, and there must be only
+		one of each of these kits defined in the entire release. These are the 'foundational' kits of the release that contain eclasses and
+		that other kits reference (core-kit, llvm-kit).
+
+		Successive pipelines contain one or more kits that can be (re)generated at the same time, because they use the same source repositories.
+		To improve performance, this class will parallelize these pipelines.
+
+		For 'regular' kits, we cannot generate two kits in parallel if any of these conditions are true:
+
+		1. The kits are for different branches of the same kit (they will clobber writes to the dest. tree)
+		2. The kits reference a different set of source repositories (they need different sha1's checked out at the same time.)
+		"""
+
+		all_masters = set()
+		for kit in merge.model.release_yaml.iter_kits():
+			all_masters |= set(kit.masters)
+		for kit in merge.model.release_yaml.iter_kits():
+			kit_job = KitGenerator(kit)
+			# Keep master list of all kit jobs so we can collect commit data from them after processing is complete:
+			self.kit_jobs.append(kit_job)
+			if kit.name in all_masters:
+				if kit.name in self.kit_pipeline_slots["masters"]:
+					raise ValueError(f"This release defines {kit.name} multiple times, but it is a master. Only define one master.")
+				self.kit_pipeline_slots["masters"].append(kit_job)
+			else:
+				my_pipeline = self.find_existing_pipeline(kit_job)
+				if my_pipeline is None:
+					my_pipeline = self.create_new_pipeline()
+				self.kit_pipeline_slots[my_pipeline].append(kit_job)
+
+
+	# TODO: does this need to be upgraded to handle multiple remotes?
+	def mirror_repository(self, repo_obj, base_path):
+		"""
+		Mirror a repository to its mirror location, ie. GitHub.
+		"""
+
+		os.makedirs(base_path, exist_ok=True)
+		run_shell(f"git clone --bare {repo_obj.root} {base_path}/{repo_obj.name}.pushme")
+		run_shell(
+			f"cd {base_path}/{repo_obj.name}.pushme && git remote add upstream {repo_obj.mirror} && git push --mirror upstream"
+		)
+		run_shell(f"rm -rf {base_path}/{repo_obj.name}.pushme")
+		return repo_obj.name
+
+	def mirror_all_repositories(self):
+		base_path = os.path.join(merge.temp_path, "mirror_repos")
+		run_shell(f"rm -rf {base_path}")
+		kit_mirror_futures = []
+		with ThreadPoolExecutor(max_workers=8) as executor:
+			# Push all kits, then push meta-repo.
+			for kit_name, kit_tuple in merge.model.kit_results.items():
+				ctx, tree_obj, tree_sha1 = kit_tuple
+				future = executor.submit(self.mirror_repository, tree_obj, base_path)
+				kit_mirror_futures.append(future)
+			for future in as_completed(kit_mirror_futures):
+				kit_name = future.result()
+				print(f"Mirroring of {kit_name} complete.")
+		merge.kit.mirror_repository(merge.model.meta_repo, base_path)
+		print("Mirroring of meta-repo complete.")
+
+
+class MetaRepoGenerator:
+
+	def __init__(self):
+		meta_repo_config = self.release_yaml.get_meta_repo_config()
+		self.meta_repo = self.git_class(
+			name="meta-repo",
+			branch=release,
+			url=meta_repo_config['url'],
+			root=self.dest_trees + "/meta-repo",
+			origin_check=True if self.prod else None,
+			mirrors=meta_repo_config['mirrors'],
+			create_branches=self.create_branches,
+			model=self
+		)
+		self.start_time = datetime.utcnow()
+		self.meta_repo.initialize()
+
 
 # TODO: integrate this into the workflow
 def generate_metarepo_metadata(self):
@@ -266,33 +562,6 @@ def generate_metarepo_metadata(self):
 		a.write(json.dumps(rel_info, sort_keys=True, indent=4, ensure_ascii=False))
 
 
-#TODO: does this need to be upgraded to handle multiple remotes?
-def mirror_repository(repo_obj, base_path):
-	"""
-	Mirror a repository to its mirror location, ie. GitHub.
-	"""
-
-	os.makedirs(base_path, exist_ok=True)
-	run_shell(f"git clone --bare {repo_obj.root} {base_path}/{repo_obj.name}.pushme")
-	run_shell(
-		f"cd {base_path}/{repo_obj.name}.pushme && git remote add upstream {repo_obj.mirror} && git push --mirror upstream"
-	)
-	run_shell(f"rm -rf {base_path}/{repo_obj.name}.pushme")
-	return repo_obj.name
 
 
-def mirror_all_repositories():
-	base_path = os.path.join(merge.temp_path, "mirror_repos")
-	run_shell(f"rm -rf {base_path}")
-	kit_mirror_futures = []
-	with ThreadPoolExecutor(max_workers=8) as executor:
-		# Push all kits, then push meta-repo.
-		for kit_name, kit_tuple in merge.model.kit_results.items():
-			ctx, tree_obj, tree_sha1 = kit_tuple
-			future = executor.submit(mirror_repository, tree_obj, base_path)
-			kit_mirror_futures.append(future)
-		for future in as_completed(kit_mirror_futures):
-			kit_name = future.result()
-			print(f"Mirroring of {kit_name} complete.")
-	merge.kit.mirror_repository(merge.model.meta_repo, base_path)
-	print("Mirroring of meta-repo complete.")
+
