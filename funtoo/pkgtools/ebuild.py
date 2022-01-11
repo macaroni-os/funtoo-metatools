@@ -227,10 +227,18 @@ class BreezyBuild:
 	path = None
 	template = None
 	version = None
-	revision = 0
+	_revision = None
 	source_tree = None
 	output_tree = None
 	template_args = None
+
+	@property
+	def revision(self):
+		if self._revision is None:
+			self._revision = 0
+		else:
+			self.fixup_revision()
+		return self._revision
 
 	def __init__(
 		self,
@@ -247,19 +255,8 @@ class BreezyBuild:
 		for kwarg in ["cat", "name", "version", "path"]:
 			if kwarg in kwargs:
 				setattr(self, kwarg, kwargs[kwarg])
-
-		# Accept a revision= keyword argument, which can be an integer or a dictionary indexed by version.
-		# If a dict by version, we only apply the revision if we find self.version in the dict.
-
 		if "revision" in kwargs:
-			rev_val = kwargs["revision"]
-			if isinstance(rev_val, int):
-				self.revision = rev_val
-			elif isinstance(rev_val, dict):
-				if self.version in rev_val:
-					self.revision = rev_val[self.version]
-			else:
-				raise TypeError(f"Unrecognized type for revision= argument for {kwargs}: {repr(type(rev_val))} {isinstance(rev_val, int)} {isinstance(rev_val, dict)} {rev_val is dict}")
+			self._revision = kwargs["revision"]
 
 		self.template = template
 		self.template_text = template_text
@@ -283,6 +280,29 @@ class BreezyBuild:
 		else:
 			self.artifacts = artifacts
 		self.template_args["artifacts"] = artifacts
+
+	def fixup_revision(self):
+		"""
+		Expand revision based on YAML structure which may have version-specific revision information, like this:
+
+		revision:
+		  2.0.0: 1
+
+		We only want to apply this revision info if the version happens to match.
+		"""
+		if self._revision:
+			if isinstance(self._revision, int):
+				pass
+			elif isinstance(self._revision, dict):
+				if self.version in self._revision:
+					self._revision = self._revision[self.version]
+				else:
+					self._revision = 0
+			elif isinstance(self._revision, str):
+				self._revision = int(self._revision)
+			else:
+				raise TypeError(f"Unrecognized type for revision= argument for {self.catpkg}: {repr(type(self._revision))}")
+			pkgtools.model.log.debug(f"Fixup-revision: {self.catpkg}: {type(self._revision)} {self._revision}")
 
 	def iter_artifacts(self):
 		if type(self.artifacts) == list:
