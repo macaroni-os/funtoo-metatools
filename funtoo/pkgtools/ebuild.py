@@ -302,7 +302,6 @@ class BreezyBuild:
 				self._revision = int(self._revision)
 			else:
 				raise TypeError(f"Unrecognized type for revision= argument for {self.catpkg}: {repr(type(self._revision))}")
-			pkgtools.model.log.debug(f"Fixup-revision: {self.catpkg}: {type(self._revision)} {self._revision}")
 
 	def iter_artifacts(self):
 		if type(self.artifacts) == list:
