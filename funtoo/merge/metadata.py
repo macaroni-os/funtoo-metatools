@@ -499,7 +499,7 @@ def load_json(fn, validate=True):
 		return kit_cache_data
 
 
-def get_atom(repo_obj, atom, md5, manifest_md5, eclass_hashes):
+def get_atom(kit_gen_obj, atom, md5, manifest_md5):
 	"""
 	Read from our in-memory kit metadata cache. Return something if available, else None.
 
@@ -508,8 +508,8 @@ def get_atom(repo_obj, atom, md5, manifest_md5, eclass_hashes):
 	Otherwise we treat this as a cache miss.
 	"""
 	existing = None
-	if atom in repo_obj.KIT_CACHE and repo_obj.KIT_CACHE[atom]["md5"] == md5:
-		existing = repo_obj.KIT_CACHE[atom]
+	if atom in kit_gen_obj.kit_cache and kit_gen_obj.kit_cache[atom]["md5"] == md5:
+		existing = kit_gen_obj.kit_cache[atom]
 		bad = False
 		if "manifest_md5" not in existing:
 			bad = True
@@ -517,10 +517,10 @@ def get_atom(repo_obj, atom, md5, manifest_md5, eclass_hashes):
 			bad = True
 		elif existing["eclasses"]:
 			for eclass, md5 in existing["eclasses"]:
-				if eclass not in eclass_hashes:
+				if eclass not in kit_gen_obj.kit.eclass_hashes:
 					bad = True
 					break
-				if eclass_hashes[eclass] != md5:
+				if kit_gen_obj.kit.eclass_hashes[eclass] != md5:
 					bad = True
 					break
 		if bad:

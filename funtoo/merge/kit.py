@@ -73,7 +73,14 @@ class KitGenerator:
 		self.kit_cache[td_out["atom"]] = td_out
 		self.kit_cache_writes.add(td_out["atom"])
 
-	def fetch_kit(self, repo_obj):
+	# TODO: I removed this from GitTree and moved it here. All Steps should be adapted.
+	async def run(self, steps):
+		for step in steps:
+			if step is not None:
+				merge.model.logger.info(f"Running step {step.__class__.__name__} for {self.out_tree.root}")
+				await step.run(self)
+
+	def fetch_kit(self):
 		"""
 		Grab cached metadata for an entire kit from serialized JSON, with a single query.
 		"""
@@ -212,7 +219,7 @@ class KitGenerator:
 			manifest_md5 = get_md5(manifest_path)
 
 		# Try to see if we already have this metadata in our kit metadata cache.
-		existing = get_atom(self.out_tree, atom, ebuild_md5, manifest_md5, self.kit.eclass_hashes)
+		existing = get_atom(self, atom, ebuild_md5, manifest_md5)
 		self.kit_cache_retrieved_atoms.add(atom)
 
 		if existing:
@@ -365,7 +372,7 @@ class KitGenerator:
 		"""
 
 		# load on-disk JSON metadata cache into memory:
-		merge.metadata.fetch_kit(self.out_tree)
+		self.fetch_kit()
 
 		steps = [
 			merge.steps.CleanTree(),
@@ -409,7 +416,7 @@ class KitGenerator:
 		self.out_tree.gitCommit(message=update_msg, push=merge.model.push)
 
 		# save in-memory metadata cache to JSON:
-		merge.metadata.flush_kit(self.out_tree)
+		self.flush_kit()
 		self.kit_sha1 = self.out_tree.head()
 
 	def get_kit_pre_post_steps(self):
@@ -746,14 +753,11 @@ class MetaRepoJobController:
 		2. The kits reference a different set of source repositories (they need different sha1's checked out at the same time.)
 		"""
 
-		all_masters = merge.model.release_yaml.masters
 		for kit in merge.model.release_yaml.iter_kits():
 			kit_job = KitGenerator(kit)
 			# Keep master list of all kit jobs so we can collect commit data from them after processing is complete:
 			self.kit_jobs.append(kit_job)
-			if kit.name in all_masters:
-				if kit.name in self.kit_pipeline_slots["masters"]:
-					raise ValueError(f"This release defines {kit.name} multiple times, but it is a master. Only define one master.")
+			if kit.is_master:
 				self.kit_pipeline_slots["masters"].append(kit_job)
 			else:
 				my_pipeline = self.find_existing_pipeline(kit_job)

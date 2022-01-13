@@ -110,12 +110,6 @@ class Tree:
 		else:
 			return True
 
-	async def run(self, steps):
-		for step in steps:
-			if step is not None:
-				print("Running step", step.__class__.__name__, self.root)
-				await step.run(self)
-
 	def head(self):
 		return headSHA1(self.root)
 

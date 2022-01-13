@@ -69,6 +69,7 @@ class Kit:
 	# These are populated later, when the KitGenerator initializes, and contain paths to eclasses defined in this kit, along with md5's for them:
 	eclass_paths = None
 	eclass_hashes = None
+	is_master = False
 
 	def __init__(self, locator, release=None, name=None, source : SourceCollection = None, stability=None, branch=None, eclasses=None, priority=None, aliases=None, masters=None, sync_url=None, settings=None):
 		self.kit_fixups: GitRepositoryLocator = locator
@@ -96,7 +97,13 @@ class Kit:
 		return self._package_data
 
 	def _get_package_data(self):
+
+		# Look for branch-specific packages.yaml:
 		fn = f"{self.kit_fixups.root}/{self.name}/{self.branch}/packages.yaml"
+		# Fallback to curated packages.yaml:
+		if not os.path.exists(fn):
+			fn = f"{self.kit_fixups.root}/{self.name}/curated/packages.yaml"
+		# Fallback to kit-wide packages.yaml:
 		if not os.path.exists(fn):
 			fn = f"{self.kit_fixups.root}/{self.name}/packages.yaml"
 		with open(fn, "r") as f:
@@ -199,6 +206,7 @@ class ReleaseYAML(YAMLReader):
 	filename = None
 	remotes = None
 	locator = None
+	masters = None
 
 	def start(self):
 		self.kits = self._kits()
@@ -214,8 +222,9 @@ class ReleaseYAML(YAMLReader):
 		"""
 
 		all_masters = set()
-		for kit in self.kits:
-			all_masters |= set(kit.masters)
+		for kit_name, kit_list in self.kits.items():
+			for kit in kit_list:
+				all_masters |= set(kit.masters)
 
 		# validation --
 
@@ -225,11 +234,17 @@ class ReleaseYAML(YAMLReader):
 			elif len(self.kits[master]) > 1:
 				raise ValueError(f"This release defines {master} multiple times, but it is a master. Only define one master since it is foundational to the release.")
 
+		# Used in kit job planning, let's set an is_master boolean for each kit.
+		self.masters = {}
+		for master in all_masters:
+			self.kits[master][0].is_master = True
+
 		# We now know that we have only one master defined in the yaml. So we can reference it in position 0:
 
-		for kit in self.kits:
-			for master in kit.masters:
-				kit.masters_list.append(self.kits[master][0])
+		for kit_name, kit_list in self.kits.items():
+			for kit in kit_list:
+				for master in kit.masters:
+					kit.masters_list.append(self.kits[master][0])
 
 		# Now each repo can access its masters at self.masters_list.
 
