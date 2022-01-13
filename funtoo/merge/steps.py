@@ -25,11 +25,11 @@ class GenerateLicensingFile(MergeStep):
 	def __init__(self, text: str):
 		self.text = text
 
-	async def run(self, kit):
+	async def run(self, kit_gen):
 		with open(os.path.join(merge.model.kit_fixups.root, "COPYRIGHT.rst.tmpl"), "r") as lic_temp:
 			template = jinja2.Template(lic_temp.read())
-		with open(os.path.join(kit.root, "COPYRIGHT.rst"), "wb") as lic_out:
-			lic_out.write(template.render(kit=kit, copyright=self.text).encode('utf-8'))
+		with open(os.path.join(kit_gen.out_tree.root, "COPYRIGHT.rst"), "wb") as lic_out:
+			lic_out.write(template.render(kit=kit_gen.kit, copyright=self.text).encode('utf-8'))
 
 
 class ThirdPartyMirrors(MergeStep):
@@ -37,9 +37,9 @@ class ThirdPartyMirrors(MergeStep):
 	Add funtoo's distfiles mirror, and add funtoo's mirrors as gentoo back-ups.
 	"""
 
-	async def run(self, tree):
-		orig = "%s/profiles/thirdpartymirrors" % tree.root
-		new = "%s/profiles/thirdpartymirrors.new" % tree.root
+	async def run(self, kit_gen):
+		orig = "%s/profiles/thirdpartymirrors" % kit_gen.out_tree.root
+		new = "%s/profiles/thirdpartymirrors.new" % kit_gen.out_tree.root
 		mirrors = "https://fastpull-us.funtoo.org/distfiles"
 		a = open(orig, "r")
 		b = open(new, "w")
@@ -65,18 +65,18 @@ class SyncDir(MergeStep):
 		self.exclude = exclude if exclude is not None else []
 		self.delete = delete
 
-	async def run(self, tree):
+	async def run(self, kit_gen):
 		if self.srcdir:
 			src = os.path.join(self.srcroot, self.srcdir) + "/"
 		else:
 			src = os.path.normpath(self.srcroot) + "/"
 		if self.destdir:
-			dest = os.path.join(tree.root, self.destdir) + "/"
+			dest = os.path.join(kit_gen.out_tree.root, self.destdir) + "/"
 		else:
 			if self.srcdir:
-				dest = os.path.join(tree.root, self.srcdir) + "/"
+				dest = os.path.join(kit_gen.out_tree.root, self.srcdir) + "/"
 			else:
-				dest = os.path.normpath(tree.root) + "/"
+				dest = os.path.normpath(kit_gen.out_tree.root) + "/"
 		if not os.path.exists(dest):
 			os.makedirs(dest)
 		cmd = 'rsync -a --exclude CVS --exclude .svn --filter="hide /.git" --filter="protect /.git" '
@@ -96,9 +96,9 @@ class SyncFromTree(SyncDir):
 		self.srctree = srctree
 		SyncDir.__init__(self, srctree.root, srcdir=None, destdir=None, exclude=exclude, delete=True)
 
-	async def run(self, desttree):
-		await SyncDir.run(self, desttree)
-		desttree.logTree(self.srctree)
+	async def run(self, kit_gen):
+		await SyncDir.run(self, kit_gen)
+		kit_gen.out_tree.logTree(self.srctree)
 
 
 class GenerateRepoMetadata(MergeStep):
@@ -108,8 +108,8 @@ class GenerateRepoMetadata(MergeStep):
 		self.masters = masters if masters is not None else []
 		self.priority = priority
 
-	async def run(self, tree):
-		meta_path = os.path.join(tree.root, "metadata")
+	async def run(self, kit_gen):
+		meta_path = os.path.join(kit_gen.out_tree.root, "metadata")
 		if not os.path.exists(meta_path):
 			os.makedirs(meta_path)
 		a = open(meta_path + "/layout.conf", "w")
@@ -128,7 +128,7 @@ cache-formats = md5-dict
 			out += "masters = %s\n" % " ".join(self.masters)
 		a.write(out)
 		a.close()
-		rn_path = os.path.join(tree.root, "profiles")
+		rn_path = os.path.join(kit_gen.out_tree.root, "profiles")
 		if not os.path.exists(rn_path):
 			os.makedirs(rn_path)
 		a = open(rn_path + "/repo_name", "w")
@@ -140,9 +140,9 @@ class RemoveIfExists(MergeStep):
 	def __init__(self, files):
 		self.files = files
 
-	async def run(self, tree):
+	async def run(self, kit_gen):
 		for file in self.files:
-			path = os.path.join(tree.root, file)
+			path = os.path.join(kit_gen.out_tree.root, file)
 			if os.path.exists(file):
 				os.unlink(path)
 
@@ -153,9 +153,9 @@ class FindAndRemove(MergeStep):
 			globs = []
 		self.globs = globs
 
-	async def run(self, tree):
+	async def run(self, kit_gen):
 		for glob in self.globs:
-			cmd = f"find {tree.root} -name {glob} -exec rm -rf {{}} +"
+			cmd = f"find {kit_gen.out_tree.root} -name {glob} -exec rm -rf {{}} +"
 			run_shell(cmd, abort_on_failure=False)
 
 
@@ -165,9 +165,9 @@ class RemoveFiles(MergeStep):
 			globs = []
 		self.globs = globs
 
-	async def run(self, tree):
+	async def run(self, kit_gen):
 		for glob in self.globs:
-			cmd = "rm -rf %s/%s" % (tree.root, glob)
+			cmd = "rm -rf %s/%s" % (kit_gen.out_tree.root, glob)
 			run_shell(cmd)
 
 
@@ -190,12 +190,12 @@ class CopyFiles(MergeStep):
 		self.srctree = srctree
 		self.file_map_tuples = file_map_tuples
 
-	async def run(self, desttree):
+	async def run(self, kit_gen):
 		for src_path, dst_path in self.file_map_tuples:
 			f_src_path = os.path.join(self.srctree.root, src_path)
 			if not os.path.exists(f_src_path):
 				raise FileNotFoundError(f"Source file not found: {f_src_path}.")
-			f_dst_path = os.path.join(desttree.root, dst_path)
+			f_dst_path = os.path.join(kit_gen.out_tree.root, dst_path)
 			if os.path.exists(f_dst_path):
 				os.unlink(f_dst_path)
 			parent = os.path.dirname(f_dst_path)
@@ -211,10 +211,10 @@ class CopyAndRename(MergeStep):
 		# renaming function ... accepts source file path, and returns destination filename
 		self.ren_fun = ren_fun
 
-	async def run(self, tree):
-		srcpath = os.path.join(tree.root, self.src)
+	async def run(self, kit_gen):
+		srcpath = os.path.join(kit_gen.out_tree.root, self.src)
 		for f in os.listdir(srcpath):
-			destfile = os.path.join(tree.root, self.dest)
+			destfile = os.path.join(kit_gen.out_tree.root, self.dest)
 			destfile = os.path.join(destfile, self.ren_fun(f))
 			run_shell(f"cp -a {srcpath}/{f} {destfile}")
 
@@ -226,12 +226,12 @@ class SyncFiles(MergeStep):
 		if not isinstance(files, dict):
 			raise TypeError("'files' argument should be a dict of source:destination items")
 
-	async def run(self, tree):
+	async def run(self, kit_gen):
 		for src, dest in self.files.items():
 			if dest is not None:
-				dest = os.path.join(tree.root, dest)
+				dest = os.path.join(kit_gen.out_tree.root, dest)
 			else:
-				dest = os.path.join(tree.root, src)
+				dest = os.path.join(kit_gen.out_tree.root, src)
 			src = os.path.join(self.srcroot, src)
 			if os.path.exists(dest):
 				print("%s exists, attempting to unlink..." % dest)
@@ -257,20 +257,20 @@ class CleanTree(MergeStep):
 			exclude = []
 		self.exclude = exclude
 
-	async def run(self, tree):
+	async def run(self, kit_gen):
 		files = ""
-		for fn in os.listdir(tree.root):
+		for fn in os.listdir(kit_gen.out_tree.root):
 			if fn[:1] == ".":
 				continue
 			if fn in self.exclude:
 				continue
 			files += " '" + fn + "'"
-		run_shell(f"cd {tree.root} && rm -rf {files[1:]}")
+		run_shell(f"cd {kit_gen.out_tree.root} && rm -rf {files[1:]}")
 
 
 class ELTSymlinkWorkaround(MergeStep):
-	async def run(self, tree):
-		dest = os.path.join(tree.root + "/eclass/ELT-patches")
+	async def run(self, kit_gen):
+		dest = os.path.join(kit_gen.out_tree.root + "/eclass/ELT-patches")
 		if not os.path.lexists(dest):
 			os.makedirs(dest)
 
@@ -287,8 +287,8 @@ class InsertFilesFromSubdir(MergeStep):
 		self.skip = skip
 		self.src_offset = src_offset
 
-	async def run(self, desttree):
-		desttree.logTree(self.srctree)
+	async def run(self, kit_gen):
+		kit_gen.out_tree.logTree(self.srctree)
 		src = self.srctree.root
 		if self.src_offset:
 			src = os.path.join(src, self.src_offset)
@@ -296,7 +296,7 @@ class InsertFilesFromSubdir(MergeStep):
 			src = os.path.join(src, self.subdir)
 		if not os.path.exists(src):
 			return
-		dst = desttree.root
+		dst = kit_gen.out_tree.root
 		if self.subdir:
 			dst = os.path.join(dst, self.subdir)
 		if not os.path.exists(dst):
@@ -333,37 +333,37 @@ class PruneLicenses(MergeStep):
 
 	"""
 
-	def get_all_licenses(self, desttree):
+	def get_all_licenses(self, kit_gen):
 		used_licenses = set()
-		for key, datums in desttree.KIT_CACHE.items():
+		for key, datums in kit_gen.kit_cache.items():
 			metadata = datums["metadata"]
 			if metadata and "LICENSE" in metadata:
 				used_licenses = used_licenses | set(metadata["LICENSE"].split())
 		return used_licenses
 
-	async def run(self, desttree):
-		if os.path.exists(desttree.root + "/licenses"):
-			used_licenses = self.get_all_licenses(desttree)
+	async def run(self, kit_gen):
+		if os.path.exists(kit_gen.out_tree.root + "/licenses"):
+			used_licenses = self.get_all_licenses(kit_gen)
 			to_remove = []
-			for license in os.listdir(desttree.root + "/licenses"):
+			for license in os.listdir(kit_gen.out_tree.root + "/licenses"):
 				if license not in used_licenses:
-					to_remove.append(desttree.root + "/licenses/" + license)
+					to_remove.append(kit_gen.out_tree.root + "/licenses/" + license)
 			for file in to_remove:
 				os.unlink(file)
 
 
 class CreateCategories(MergeStep):
-	async def run(self, desttree):
+	async def run(self, kit_gen):
 		catset = set()
-		for maybe_cat in os.listdir(desttree.root):
-			full_path = os.path.join(desttree.root, maybe_cat)
+		for maybe_cat in os.listdir(kit_gen.out_tree.root):
+			full_path = os.path.join(kit_gen.out_tree.root, maybe_cat)
 			if not os.path.isdir(full_path):
 				continue
 			if "-" in maybe_cat or maybe_cat == "virtual":
 				catset.add(maybe_cat)
-		if not os.path.exists(desttree.root + "/profiles"):
-			os.makedirs(desttree.root + "/profiles")
-		with open(desttree.root + "/profiles/categories", "w") as g:
+		if not os.path.exists(kit_gen.out_tree.root + "/profiles"):
+			os.makedirs(kit_gen.out_tree.root + "/profiles")
+		with open(kit_gen.out_tree.root + "/profiles/categories", "w") as g:
 			for cat in sorted(list(catset)):
 				g.write(cat + "\n")
 
@@ -374,12 +374,12 @@ class ZapMatchingEbuilds(MergeStep):
 		self.srctree = srctree
 		self.branch = branch
 
-	async def run(self, desttree):
+	async def run(self, kit_gen):
 		if self.branch is not None:
 			# Allow dynamic switching to different branches/commits to grab things we want:
 			self.srctree.gitCheckout(branch=self.branch)
 		# Figure out what categories to process:
-		dest_cat_path = os.path.join(desttree.root, "profiles/categories")
+		dest_cat_path = os.path.join(kit_gen.out_tree.root, "profiles/categories")
 		if os.path.exists(dest_cat_path):
 			with open(dest_cat_path, "r") as f:
 				dest_cat_set = set(f.read().splitlines())
@@ -387,15 +387,15 @@ class ZapMatchingEbuilds(MergeStep):
 			dest_cat_set = set()
 
 		# Our main loop:
-		print("# Zapping builds from %s" % desttree.root)
-		for cat in os.listdir(desttree.root):
+		print("# Zapping builds from %s" % kit_gen.out_tree.root)
+		for cat in os.listdir(kit_gen.out_tree.root):
 			if cat not in dest_cat_set:
 				continue
 			src_catdir = os.path.join(self.srctree.root, cat)
 			if not os.path.isdir(src_catdir):
 				continue
 			for src_pkg in os.listdir(src_catdir):
-				dest_pkgdir = os.path.join(desttree.root, cat, src_pkg)
+				dest_pkgdir = os.path.join(kit_gen.out_tree.root, cat, src_pkg)
 				if not os.path.exists(dest_pkgdir):
 					# don't need to zap as it doesn't exist
 					continue
@@ -468,7 +468,7 @@ class InsertEbuilds(MergeStep):
 	def __repr__(self):
 		return "<InsertEbuilds: %s>" % self.srctree.root
 
-	async def run(self, desttree):
+	async def run(self, kit_gen):
 
 		script_out = ""
 		checks = []
@@ -481,10 +481,10 @@ class InsertEbuilds(MergeStep):
 		if self.srctree.should_autogen:
 			await self.srctree.autogen(src_offset=self.ebuildloc)
 
-		desttree.logTree(self.srctree)
+		kit_gen.out_tree.logTree(self.srctree)
 		# Figure out what categories to process:
 		src_cat_path = os.path.join(srctree_root, "profiles/categories")
-		dest_cat_path = os.path.join(desttree.root, "profiles/categories")
+		dest_cat_path = os.path.join(kit_gen.out_tree.root, "profiles/categories")
 		if self.categories is not None:
 			# categories specified in __init__:
 			src_cat_set = set(self.categories)
@@ -546,15 +546,15 @@ class InsertEbuilds(MergeStep):
 					if os.path.exists(pkgdir):
 						# old package exists, so we'll want to rename.
 						tcatpkg = self.move_maps[catpkg]
-						tpkgdir = os.path.join(desttree.root, tcatpkg)
+						tpkgdir = os.path.join(kit_gen.out_tree.root, tcatpkg)
 					else:
 						tcatpkg = self.move_maps[catpkg]
 						# old package doesn't exist, so we'll want to use the "new" pkgname as the source, hope it's there...
 						pkgdir = os.path.join(srctree_root, tcatpkg)
 						# and use new package name as destination...
-						tpkgdir = os.path.join(desttree.root, tcatpkg)
+						tpkgdir = os.path.join(kit_gen.out_tree.root, tcatpkg)
 				else:
-					tpkgdir = os.path.join(desttree.root, catpkg)
+					tpkgdir = os.path.join(kit_gen.out_tree.root, catpkg)
 				tcatdir = os.path.dirname(tpkgdir)
 				copied = False
 				if self.replace is True or (isinstance(self.replace, list) and (catpkg in self.replace)):
@@ -577,7 +577,7 @@ class InsertEbuilds(MergeStep):
 					# log XML here.
 					pass
 		if script_out:
-			temp_out = os.path.join(merge.model.temp_path, desttree.name + "_copyfiles.sh")
+			temp_out = os.path.join(merge.model.temp_path, kit_gen.out_tree.name + "_copyfiles.sh")
 			os.makedirs(os.path.dirname(temp_out), exist_ok=True)
 			with open(temp_out, "w") as f:
 				f.write("#!/bin/bash\n")
@@ -594,8 +594,8 @@ class InsertEbuilds(MergeStep):
 class ProfileDepFix(MergeStep):
 	"""ProfileDepFix undeprecates profiles marked as deprecated."""
 
-	async def run(self, tree):
-		fpath = os.path.join(tree.root, "profiles/profiles.desc")
+	async def run(self, kit_gen):
+		fpath = os.path.join(kit_gen.out_tree.root, "profiles/profiles.desc")
 		if os.path.exists(fpath):
 			a = open(fpath, "r")
 			for line in a:
@@ -604,7 +604,7 @@ class ProfileDepFix(MergeStep):
 				sp = line.split()
 				if len(sp) >= 2:
 					prof_path = sp[1]
-					run_shell("rm -f %s/profiles/%s/deprecated" % (tree.root, prof_path))
+					run_shell("rm -f %s/profiles/%s/deprecated" % (kit_gen.out_tree.root, prof_path))
 
 
 class RunSed(MergeStep):
@@ -620,29 +620,18 @@ class RunSed(MergeStep):
 		self.files = files
 		self.commands = commands
 
-	async def run(self, tree):
+	async def run(self, kit_gen):
 		commands = list(itertools.chain.from_iterable(("-e", command) for command in self.commands))
-		files = [os.path.join(tree.root, file) for file in self.files]
+		files = [os.path.join(kit_gen.out_tree.root, file) for file in self.files]
 		run_shell(["sed"] + commands + ["-i"] + files)
-
-
-class GenCache(MergeStep):
-	"""GenCache runs egencache --update to update metadata."""
-
-	def __init__(self, cache_dir=None, release=None):
-		self.cache_dir = cache_dir
-		self.release = release
-
-	async def run(self, tree):
-		merge.metadata.gen_cache(tree)
 
 
 class Minify(MergeStep):
 	"""Minify removes ChangeLogs and shrinks Manifests."""
 
-	async def run(self, tree):
-		run_shell("( cd %s && find -iname ChangeLog | xargs rm -f )" % tree.root, abort_on_failure=False)
-		run_shell("( cd %s && find -iname Manifest | xargs -i@ sed -ni '/^DIST/p' @ )" % tree.root)
+	async def run(self, kit_gen):
+		run_shell("( cd %s && find -iname ChangeLog | xargs rm -f )" % kit_gen.out_tree.root, abort_on_failure=False)
+		run_shell("( cd %s && find -iname Manifest | xargs -i@ sed -ni '/^DIST/p' @ )" % kit_gen.out_tree.root)
 
 
 class GenPythonUse(MergeStep):
@@ -652,31 +641,32 @@ class GenPythonUse(MergeStep):
 		self.mask = mask
 		self.out_subpath = out_subpath
 
-	async def run(self, cur_overlay):
+	# TODO: needs refactor most likely
+	async def run(self, kit_gen):
 		all_lines = []
-		for catpkg, cpv_list in merge.metadata.get_catpkg_from_cpvs(cur_overlay.KIT_CACHE.keys()).items():
+		for catpkg, cpv_list in merge.metadata.get_catpkg_from_cpvs(kit_gen.kit_cache.keys()).items():
 			result = await merge.metadata.get_python_use_lines(
-				cur_overlay, catpkg, cpv_list, cur_overlay.root, self.def_python, self.bk_python
+				kit_gen, catpkg, cpv_list, kit_gen.out_tree.root, self.def_python, self.bk_python
 			)
 			if result is not None:
 				all_lines += result
 
 		all_lines = sorted(all_lines)
-		outpath = cur_overlay.root + "/profiles/" + self.out_subpath + "/package.use"
+		outpath = kit_gen.out_tree.root + "/profiles/" + self.out_subpath + "/package.use"
 		if not os.path.exists(outpath):
 			os.makedirs(outpath)
 		with open(outpath + "/python-use", "w") as f:
 			for l in all_lines:
 				f.write(l + "\n")
 		# for core-kit, set good defaults as well.
-		if cur_overlay.name == "core-kit":
-			outpath = cur_overlay.root + "/profiles/" + self.out_subpath + "/make.defaults"
+		if kit_gen.out_tree.name == "core-kit":
+			outpath = kit_gen.out_tree.root + "/profiles/" + self.out_subpath + "/make.defaults"
 			a = open(outpath, "w")
 			a.write('PYTHON_TARGETS="%s %s"\n' % (self.def_python, self.bk_python))
 			a.write('PYTHON_SINGLE_TARGET="%s"\n' % self.def_python)
 			a.close()
 			if self.mask:
-				outpath = cur_overlay.root + "/profiles/" + self.out_subpath + "/package.mask/funtoo-kit-python"
+				outpath = kit_gen.out_tree.root + "/profiles/" + self.out_subpath + "/package.mask/funtoo-kit-python"
 				if not os.path.exists(os.path.dirname(outpath)):
 					os.makedirs(os.path.dirname(outpath))
 				a = open(outpath, "w")

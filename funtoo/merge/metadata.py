@@ -410,11 +410,11 @@ def catpkg_generator(repo_path=None):
 #       created before we had the kit-cache and deepdive.
 
 
-async def get_python_use_lines(repo, catpkg, cpv_list, cur_tree, def_python, bk_python):
+async def get_python_use_lines(kit_gen, catpkg, cpv_list, cur_tree, def_python, bk_python):
 	# TODO: This should be fixed or replaced, because there's hard-coded thangs in here.
 	ebs = {}
 	for cpv in cpv_list:
-		metadata = repo.KIT_CACHE[cpv]["metadata"]
+		metadata = kit_gen.kit_cache[cpv]["metadata"]
 		if not metadata:
 			imps = []
 		else:

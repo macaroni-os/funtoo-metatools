@@ -209,6 +209,8 @@ class Download:
 		final_data['size'] = self.filesize
 		self.final_data = final_data
 
+		# TODO: Handle error 416, requested range not satisfiable. ^Z during download and resume seems to break our resume functionality.
+
 		if self.completion_pipeline:
 			# start by handing this Download object to the start of the pipeline:
 			completion_result = self
@@ -216,6 +218,20 @@ class Download:
 				log.debug(f"Calling completion function {completion_fn} with argument {completion_result}")
 				completion_result = completion_fn(completion_result)
 			self.notify_waiters(completion_result)
+			# TODO: we may have a race condition here, or an unhandled case for aborted download (traceback seen in output)
+			#       File "/home/drobbins/development/funtoo-metatools/metatools/fastpull/core.py", line 75, in get_file_by_url
+			#         blos_obj = await self.parent.spider.download(request, completion_pipeline=[self.parent.fetch_completion_callback])
+			#       File "/home/drobbins/development/funtoo-metatools/metatools/fastpull/spider.py", line 322, in download
+			#         response = await download.launch()
+			#       File "/home/drobbins/development/funtoo-metatools/metatools/fastpull/spider.py", line 217, in launch
+			#         completion_result = completion_fn(completion_result)
+			#       File "/home/drobbins/development/funtoo-metatools/metatools/fastpull/core.py", line 177, in fetch_completion_callback
+			#         blos_object = self.blos.insert_object(download.temp_path)
+			#       File "/home/drobbins/development/funtoo-metatools/metatools/fastpull/blos.py", line 378, in insert_object
+			#         new_hashes = calc_hashes(temp_path, missing)
+			#       File "/home/drobbins/development/funtoo-metatools/metatools/hashutils.py", line 10, in calc_hashes
+			#         with open(fn, "rb") as myf:
+			#       FileNotFoundError: [Errno 2] No such file or directory: '/home/drobbins/repo_tmp/tmp/spider/8dafbe2c08150bfbeeec719150b5ae1d'
 			return completion_result
 		else:
 			return None
