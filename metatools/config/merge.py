@@ -11,44 +11,6 @@ from metatools.pretty_logging import TornadoPrettyLogFormatter
 from metatools.tree import AutoCreatedGitTree, GitTree
 
 
-class EClassHashCollector:
-
-	LOCK = threading.Lock()
-	# mapping eclass to source location:
-	eclass_loc_dict = {}
-	# mapping eclass to hash:
-	eclass_hash_dict = {}
-
-	"""
-	When we are doing a merge run, we need to collect the hashes for all the eclasses in each kit. We also
-	need to ensure that eclasses only appear once and are not duplicated (best practice, and not doing so
-	creates problems with inconsistent behavior.) This class implements a cross-thread storage that can be
-	used to record this information and identify when we have a duplicate eclass situation so we can print
-	an informative error message.
-	"""
-
-	def add_eclasses(self, eclass_sourcedir: str):
-		"""
-
-		For generating metadata, we need md5 hashes of all eclasses for writing out into the metadata.
-
-		This function grabs all the md5sums for all eclasses.
-		"""
-
-		ecrap = os.path.join(eclass_sourcedir, "eclass")
-		if os.path.isdir(ecrap):
-			for eclass in os.listdir(ecrap):
-				if not eclass.endswith(".eclass"):
-					continue
-				eclass_path = os.path.join(ecrap, eclass)
-				eclass_name = eclass[:-7]
-				with self.LOCK:
-					if eclass_name in self.eclass_loc_dict:
-						raise KeyError(f"Eclass {eclass_name} in {eclass_path} is duplicated by {self.eclass_loc_dict[eclass_name]}. This should be fixed.")
-					self.eclass_loc_dict[eclass_name] = eclass_path
-					self.eclass_hash_dict[eclass_name] = get_md5(eclass_path)
-
-
 class MergeConfig(MinimalConfig):
 	"""
 	This configuration is used for tree regen, also known as 'merge-kits'.
@@ -75,7 +37,6 @@ class MergeConfig(MinimalConfig):
 	kit_fixups: GitTree = None
 	metadata_error_stats = []
 	processing_error_stats = []
-	eclass_hashes = EClassHashCollector()
 	start_time: datetime = None
 	current_source_def = None
 	log = None

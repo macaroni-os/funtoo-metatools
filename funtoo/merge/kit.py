@@ -2,13 +2,18 @@
 
 import json
 import os
+import sys
 from collections import defaultdict
 from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
+from multiprocessing import cpu_count
 
 import dyne.org.funtoo.metatools.merge as merge
+from subpop.util import AttrDict
 
+from funtoo.merge.metadata import AUXDB_LINES, get_catpkg_relations_from_depstring, get_filedata, extract_ebuild_metadata, strip_rev, get_atom, load_json, CACHE_DATA_VERSION
 from metatools.files.release import Kit, SourceCollection, SourceRepository
+from metatools.hashutils import get_md5
 from metatools.tree import run_shell, GitTree
 
 """
@@ -35,6 +40,13 @@ class KitGenerator:
 	out_tree = None
 	active_repos = set()
 
+	kit_cache = None
+	metadata_errors = None
+	processing_warnings = None
+	kit_cache_retrieved_atoms = None
+	kit_cache_misses = None
+	kit_cache_writes = None
+
 	def __init__(self, kit: Kit):
 		self.kit = kit
 
@@ -46,6 +58,303 @@ class KitGenerator:
 			root = os.path.join(merge.model.dest_trees, kit.name)
 		self.out_tree = git_class(kit.name, branch=kit.branch, root=root, model=merge.model)
 		self.out_tree.initialize()
+		self.gen_eclass_hashes()
+
+	def get_kit_cache_path(self):
+		os.makedirs(os.path.join(merge.model.temp_path, "kit_cache"), exist_ok=True)
+		return os.path.join(merge.model.temp_path, "kit_cache", f"{self.out_tree.name}-{self.out_tree.branch}")
+
+	def update_atom(self, td_out):
+		"""
+		Update our in-memory record for a specific ebuild atom on disk that has changed. This will
+		be written out by flush_kit(). Right now we just record it in memory.
+
+		"""
+		self.kit_cache[td_out["atom"]] = td_out
+		self.kit_cache_writes.add(td_out["atom"])
+
+	def fetch_kit(self, repo_obj):
+		"""
+		Grab cached metadata for an entire kit from serialized JSON, with a single query.
+		"""
+		outpath = self.get_kit_cache_path()
+		kit_cache_data = None
+		if os.path.exists(outpath):
+			kit_cache_data = load_json(outpath)
+		if kit_cache_data is not None:
+			self.kit_cache = kit_cache_data["atoms"]
+			self.metadata_errors = kit_cache_data["metadata_errors"]
+		else:
+			# Missing kit cache or different CACHE_DATA_VERSION will cause it to be thrown away so we can regenerate it.
+			self.kit_cache = {}
+			self.metadata_errors = {}
+		self.processing_warnings = []
+		self.kit_cache_retrieved_atoms = set()
+		self.kit_cache_misses = set()
+		self.kit_cache_writes = set()
+
+	def flush_kit(self, save=True, prune=True):
+		"""
+		Write out our in-memory copy of our entire kit metadata, which may contain updates.
+
+		If `save` is False, simply empty without saving.
+
+		If no changes have been made to the kit cache, no changes need to be saved.
+
+		If there were changes, and if `prune` is True, any unaccessed (unread) item will be removed from the cache.
+		This is intended to clean out stale entries during tree regeneration.
+		"""
+		if prune:
+			all_keys = set(self.kit_cache.keys())
+			remove_keys = all_keys - (self.kit_cache_retrieved_atoms | self.kit_cache_writes)
+			extra_atoms = self.kit_cache_retrieved_atoms - all_keys
+			for key in remove_keys:
+				del self.kit_cache[key]
+			if len(extra_atoms):
+				merge.model.log.error("THERE ARE EXTRA ATOMS THAT WERE RETRIEVED BUT NOT IN CACHE!")
+				merge.model.log.error(f"{extra_atoms}")
+		if save:
+			outpath = self.get_kit_cache_path()
+			outdata = {
+				"cache_data_version": CACHE_DATA_VERSION,
+				"atoms": self.kit_cache,
+				"metadata_errors": self.metadata_errors,
+			}
+			with open(outpath, "w") as f:
+				f.write(json.dumps(outdata))
+
+			# Add summary to hub of error count for this kit, and also write out the error logs:
+
+			error_outpath = os.path.join(
+				merge.model.temp_path, f"metadata-errors-{self.out_tree.name}-{self.out_tree.branch}.log"
+			)
+			if len(self.metadata_errors):
+				merge.model.metadata_error_stats.append(
+					{"name": self.out_tree.name, "branch": self.out_tree.branch, "count": len(self.metadata_errors)}
+				)
+				with open(error_outpath, "w") as f:
+					f.write(json.dumps(self.metadata_errors))
+			else:
+				if os.path.exists(error_outpath):
+					os.unlink(error_outpath)
+
+			error_outpath = os.path.join(merge.model.temp_path, f"warnings-{self.out_tree.name}-{self.out_tree.branch}.log")
+			if len(self.processing_warnings):
+				merge.model.processing_warning_stats.append(
+					{"name": self.out_tree.name, "branch": self.out_tree.branch, "count": len(self.processing_warnings)}
+				)
+				with open(error_outpath, "w") as f:
+					f.write(json.dumps(self.processing_warnings))
+			else:
+				if os.path.exists(error_outpath):
+					os.unlink(error_outpath)
+
+	def gen_eclass_hashes(self):
+		"""
+		This will grab md5 hashes for all eclasses in this kit, which will be used later for metadata
+		generation.
+		"""
+		eclass_root = os.path.join(self.out_tree.root, "eclass")
+		if os.path.isdir(eclass_root):
+			for eclass in os.listdir(eclass_root):
+				if not eclass.endswith(".eclass"):
+					continue
+				eclass_path = os.path.join(eclass_root, eclass)
+				eclass_name = eclass[:-7]
+				self.kit.eclass_paths[eclass_name] = eclass_path
+				self.kit.eclass_hashes[eclass_name] = get_md5(eclass_path)
+
+	def iter_ebuilds(self):
+		"""
+		This function is a generator that scans the specified path for ebuilds and yields all
+		the ebuilds it finds in this kit. Used for metadata generation.
+		"""
+
+		for catdir in os.listdir(self.out_tree.root):
+			catpath = os.path.join(self.out_tree.root, catdir)
+			if not os.path.isdir(catpath):
+				continue
+			for pkgdir in os.listdir(catpath):
+				pkgpath = os.path.join(catpath, pkgdir)
+				if not os.path.isdir(pkgpath):
+					continue
+				for ebfile in os.listdir(pkgpath):
+					if ebfile.endswith(".ebuild"):
+						yield os.path.join(pkgpath, ebfile)
+
+	def get_ebuild_metadata(self, ebuild_path, write_cache=False):
+		"""
+		This function will grab metadata from a single ebuild pointed to by `ebuild_path` and
+		return it as a dictionary.
+
+		If `write_cache` is True, a `metadata/md5-cache/cat/pvr` file will be written out to the
+		repository as well. If `write_cache` is True, then `eclass_paths` and `eclass_hashes`
+		must be supplied.
+
+		This function sets up a clean environment and spawns a bash process which runs `ebuild.sh`,
+		which is a file from Portage that processes the ebuild and eclasses and outputs the metadata
+		so we can grab it. We do a lot of the environment setup inline in this function for clarity
+		(helping the reader understand the process) and also to avoid bunches of function calls.
+		"""
+
+		basespl = ebuild_path.split("/")
+		atom = basespl[-3] + "/" + basespl[-1][:-7]
+		ebuild_md5 = get_md5(ebuild_path)
+		cp_dir = ebuild_path[: ebuild_path.rfind("/")]
+		manifest_path = cp_dir + "/Manifest"
+
+		if not os.path.exists(manifest_path):
+			manifest_md5 = None
+		else:
+			# TODO: this is a potential area of performance improvement. Multiple ebuilds in a single catpkg
+			#       directory will result in get_md5() being called on the same Manifest file multiple times
+			#       during a run. Cache might be good here.
+			manifest_md5 = get_md5(manifest_path)
+
+		# Try to see if we already have this metadata in our kit metadata cache.
+		existing = get_atom(self.out_tree, atom, ebuild_md5, manifest_md5, self.kit.eclass_hashes)
+		self.kit_cache_retrieved_atoms.add(atom)
+
+		if existing:
+			infos = existing["metadata"]
+			metadata_out = existing["metadata_out"]
+		# TODO: Note - this may be a 'dud' existing entry where there was a metadata failure previously.
+		else:
+			sys.stdout.write("*")
+			sys.stdout.flush()
+			self.kit_cache_misses.add(atom)
+			env = {}
+			env["PF"] = os.path.basename(ebuild_path)[:-7]
+			env["CATEGORY"] = ebuild_path.split("/")[-3]
+			pkg_only = ebuild_path.split("/")[-2]  # JUST the pkg name "foobar"
+			reduced, rev = strip_rev(env["PF"])
+			if rev is None:
+				env["PR"] = "r0"
+				pkg_and_ver = env["PF"]
+			else:
+				env["PR"] = f"r{rev}"
+				pkg_and_ver = reduced
+			env["P"] = pkg_and_ver
+			env["PV"] = pkg_and_ver[len(pkg_only) + 1:]
+			env["PN"] = pkg_only
+			env["PVR"] = env["PF"][len(env["PN"]) + 1:]
+
+			infos = extract_ebuild_metadata(self, atom, ebuild_path, env, self.kit.eclass_paths)
+
+			eclass_out = ""
+			eclass_tuples = []
+
+			if infos and infos["INHERITED"]:
+
+				# Do common pre-processing for eclasses:
+
+				for eclass_name in sorted(infos["INHERITED"].split()):
+					if eclass_name not in self.kit.eclass_hashes:
+						self.processing_warnings.append({"msg": f"Can't find eclass hash for {eclass_name}", "atom": atom})
+						continue
+					try:
+						eclass_out += f"\t{eclass_name}\t{self.kit.eclass_hashes[eclass_name]}"
+						eclass_tuples.append((eclass_name, self.kit.eclass_hashes[eclass_name]))
+					except KeyError as ke:
+						self.processing_warnings.append({"msg": f"Can't find eclass {eclass_name}", "atom": atom})
+						pass
+
+			metadata_out = ""
+			if infos:
+				# if metdata extraction successful...
+				for key in AUXDB_LINES:
+					if infos[key] != "":
+						metadata_out += key + "=" + infos[key] + "\n"
+				if len(eclass_out):
+					metadata_out += "_eclasses_=" + eclass_out[1:] + "\n"
+				metadata_out += "_md5_=" + ebuild_md5 + "\n"
+
+			# Extended metadata calculation:
+
+			td_out = {}
+			relations = defaultdict(set)
+			if infos:
+				# if metadata extraction successful...
+				for key in ["DEPEND", "RDEPEND", "PDEPEND", "BDEPEND", "HDEPEND"]:
+					if infos[key]:
+						relations[key] = get_catpkg_relations_from_depstring(infos[key])
+			all_relations = set()
+			relations_by_kind = dict()
+
+			for key, relset in relations.items():
+				all_relations = all_relations | relset
+				relations_by_kind[key] = sorted(list(relset))
+
+			td_out["relations"] = sorted(list(all_relations))
+			td_out["relations_by_kind"] = relations_by_kind
+			td_out["category"] = env["CATEGORY"]
+			td_out["revision"] = env["PR"].lstrip("r")
+			td_out["package"] = env["PN"]
+			td_out["catpkg"] = env["CATEGORY"] + "/" + env["PN"]
+			td_out["atom"] = atom
+			td_out["eclasses"] = eclass_tuples
+			td_out["kit"] = self.out_tree.name
+			td_out["branch"] = self.out_tree.branch
+			td_out["metadata"] = infos
+			td_out["md5"] = ebuild_md5
+			td_out["metadata_out"] = metadata_out
+			td_out["manifest_md5"] = manifest_md5
+			if infos and manifest_md5 is not None and "SRC_URI" in infos:
+				td_out["files"] = get_filedata(infos["SRC_URI"], manifest_path)
+			self.update_atom(td_out)
+
+		if infos and write_cache:
+			# if we successfully extracted metadata and we are told to write cache, write the cache entry:
+			metadata_outpath = os.path.join(self.out_tree.root, "metadata/md5-cache")
+			final_md5_outpath = os.path.join(metadata_outpath, atom)
+			os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
+			with open(os.path.join(metadata_outpath, atom), "w") as f:
+				f.write(metadata_out)
+
+		return infos
+
+	def gen_cache(self):
+		"""
+		Generate md5-cache metadata from a bunch of ebuilds, for this kit. Use a ThreadPoolExecutor to run as many threads
+		of this as we have logical cores on the system.
+		"""
+
+		with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
+			count = 0
+			futures = []
+			fut_map = {}
+
+			eclass_hashes = {}
+			eclass_paths = {}
+
+			# Add eclasses from masters:
+			for master in self.kit.masters_list:
+				eclass_hashes.update(master.eclass_hashes)
+				eclass_paths.update(master.eclass_paths)
+
+			# Add any local eclasses:
+			eclass_hashes.update(self.kit.eclass_hashes)
+			eclass_paths.update(self.kit.eclass_paths)
+
+			for ebpath in self.iter_ebuilds():
+				future = executor.submit(
+					self.get_ebuild_metadata,
+					ebpath,
+					write_cache=True,
+				)
+				fut_map[future] = ebpath
+				futures.append(future)
+
+			for future in as_completed(futures):
+				count += 1
+				data = future.result()
+				if data is None:
+					sys.stdout.write("!")
+				else:
+					sys.stdout.write(".")
+					sys.stdout.flush()
+
+			print(f"{count} ebuilds processed.")
 
 	async def generate(self):
 
@@ -79,18 +388,10 @@ class KitGenerator:
 		])
 
 		############################################################################################################
-		# We now want to store the md5 digests for the eclasses in the kit at this point and also abort if we have
-		# a duplicate eclass:
+		# Use lots of CPU (potentially) to generate/update metadata cache:
 		############################################################################################################
 
-		merge.model.eclass_hashes.add_eclasses(self.out_tree.root)
-
-		############################################################################################################
-		# We will now generate the cached ebuild metadata for this kit, now that all ebuilds and eclasses are in
-		# place:
-		############################################################################################################
-
-		await self.out_tree.run([merge.steps.GenCache()])
+		self.gen_cache()
 
 		############################################################################################################
 		# Python USE settings auto-generation and other finalization steps:
@@ -229,7 +530,6 @@ class KitGenerator:
 					merge.steps.InsertEbuilds(merge.model.kit_fixups, ebuildloc=fixup_path, select="all", skip=None, replace=True, scope=merge.model.release)
 				]
 		return steps
-
 
 
 class KitPipeline:
@@ -446,9 +746,7 @@ class MetaRepoJobController:
 		2. The kits reference a different set of source repositories (they need different sha1's checked out at the same time.)
 		"""
 
-		all_masters = set()
-		for kit in merge.model.release_yaml.iter_kits():
-			all_masters |= set(kit.masters)
+		all_masters = merge.model.release_yaml.masters
 		for kit in merge.model.release_yaml.iter_kits():
 			kit_job = KitGenerator(kit)
 			# Keep master list of all kit jobs so we can collect commit data from them after processing is complete:

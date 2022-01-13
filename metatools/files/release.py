@@ -58,6 +58,120 @@ class SourceCollection:
 			self.repositories[repo.name] = repo
 
 
+class Kit:
+
+	"""
+	This class represents Kit defined in the release's YAML. It contains settings from the YAML data related to how the
+	kit should be assembled. It does not contain a reference to the actual Git repository of the kit, as it is just designed
+	as an object model of the settings for the Kit.
+	"""
+
+	# These are populated later, when the KitGenerator initializes, and contain paths to eclasses defined in this kit, along with md5's for them:
+	eclass_paths = None
+	eclass_hashes = None
+
+	def __init__(self, locator, release=None, name=None, source : SourceCollection = None, stability=None, branch=None, eclasses=None, priority=None, aliases=None, masters=None, sync_url=None, settings=None):
+		self.kit_fixups: GitRepositoryLocator = locator
+		self.release = release
+		self.name = name
+		self.source = source
+		self.stability = stability
+		self.branch = branch
+		self.eclasses = eclasses if eclasses is not None else {}
+		self.priority = priority
+		self.aliases = aliases if aliases else []
+		self.masters = masters if masters else []
+		# This will be initialized by ReleaseYAML.set_kit_hierarchies() later, once all Kits have been instantiated:
+		self.masters_list = []
+		self.sync_url = sync_url.format(kit_name=name) if sync_url else None
+		self.settings = settings if settings is not None else {}
+		self._package_data = None
+		self.eclass_hashes = {}
+		self.eclass_paths = {}
+
+	@property
+	def package_data(self):
+		if self._package_data is None:
+			self._package_data = self._get_package_data()
+		return self._package_data
+
+	def _get_package_data(self):
+		fn = f"{self.kit_fixups.root}/{self.name}/{self.branch}/packages.yaml"
+		if not os.path.exists(fn):
+			fn = f"{self.kit_fixups.root}/{self.name}/packages.yaml"
+		with open(fn, "r") as f:
+			return yaml.safe_load(f)
+
+	def yaml_walk(self, yaml_dict):
+		"""
+		This method will scan a section of loaded YAML and return all list elements -- the leaf items.
+		"""
+		retval = []
+		for key, item in yaml_dict.items():
+			if isinstance(item, dict):
+				retval += self.yaml_walk(item)
+			elif isinstance(item, list):
+				retval += item
+			else:
+				raise TypeError(f"yaml_walk: unrecognized: {repr(item)}")
+		return retval
+
+	def get_kit_items(self, section="packages"):
+		if section in self.package_data:
+			for package_set in self.package_data[section]:
+				repo_name = list(package_set.keys())[0]
+				if section == "packages":
+					# for packages, allow arbitrary nesting, only capturing leaf nodes (catpkgs):
+					yield repo_name, self.yaml_walk(package_set)
+				else:
+					# not a packages section, and just return the raw YAML subsection for further parsing:
+					packages = package_set[repo_name]
+					yield repo_name, packages
+
+	def get_kit_packages(self):
+		return self.get_kit_items()
+
+	def get_excludes(self):
+		"""
+		Grabs the excludes: section from packages.yaml, which is used to remove stuff from the resultant
+		kit that accidentally got copied by merge scripts (due to a directory looking like an ebuild
+		directory, for example.)
+		"""
+		if "exclude" in self.package_data:
+			return self.package_data["exclude"]
+		else:
+			return []
+
+	def get_individual_files_to_copy(self):
+		"""
+		Parses the 'eclasses' and 'copyfiles' sections in a kit's YAML and returns a list of files to
+		copy from each source repository in a tuple format.
+		"""
+		#TODO: upgrade ability to specify eclass items in packages.yaml.
+
+		eclass_items = list(self.get_kit_items(section="eclasses"))
+		copyfile_items = list(self.get_kit_items(section="copyfiles"))
+		copy_tuple_dict = defaultdict(list)
+
+		for src_repo, eclasses in eclass_items:
+			for eclass in eclasses:
+				copy_tuple_dict[src_repo].append((f"eclass/{eclass}.eclass", f"eclass/{eclass}.eclass"))
+
+		for src_repo, copyfiles in copyfile_items:
+			for copy_dict in copyfiles:
+				copy_tuple_dict[src_repo].append((copy_dict["src"], copy_dict["dest"] if "dest" in copy_dict else copy_dict["src"]))
+		return copy_tuple_dict
+
+	def get_copyright_rst(self):
+		cur_year = str(datetime.now().year)
+		out = self.release.get_default_copyright_rst().replace("{{cur_year}}", cur_year)
+		for source_name in sorted(self.source.repositories.keys()):
+			source = self.source.repositories[source_name]
+			if source.copyright:
+				out += source.copyright.replace("{{cur_year}}", cur_year)
+		return out
+
+
 class ReleaseYAML(YAMLReader):
 	"""
 	This class is the primary object created from a releases/<release>.yaml file, and contains an object hierarchy
@@ -88,7 +202,36 @@ class ReleaseYAML(YAMLReader):
 
 	def start(self):
 		self.kits = self._kits()
+		self.set_kit_hierarchies()
 		self.remotes = self._remotes()
+
+	def set_kit_hierarchies(self):
+		"""
+		For each kit in self.kits, we want to give them references to their masters, if any. That way, they have a
+		model of this in self.masters_list. This also performs some validation -- like we currently don't allow multiple
+		definitions of a master. If something's a master, the YAML should only have one branch of it defined per
+		release since this kit is 'foundational' for the release.
+		"""
+
+		all_masters = set()
+		for kit in self.kits:
+			all_masters |= set(kit.masters)
+
+		# validation --
+
+		for master in all_masters:
+			if not len(self.kits[master]):
+				raise ValueError(f"Master {master} defined in release does not seem to exist in kits YAML.")
+			elif len(self.kits[master]) > 1:
+				raise ValueError(f"This release defines {master} multiple times, but it is a master. Only define one master since it is foundational to the release.")
+
+		# We now know that we have only one master defined in the yaml. So we can reference it in position 0:
+
+		for kit in self.kits:
+			for master in kit.masters:
+				kit.masters_list.append(self.kits[master][0])
+
+		# Now each repo can access its masters at self.masters_list.
 
 	def get_default_copyright_rst(self):
 		return self.get_elem("release/copyright")
@@ -202,10 +345,12 @@ class ReleaseYAML(YAMLReader):
 
 	def _kits(self):
 		"""
-		Returns a dictionary mapping each kit name to the kit data in the JSON.
+		Returns a defaultdict[list] mapping each kit name to the kit data in the JSON, where multiple kits with the same name
+		will appear in the list in the order they appear in the YAML. We generally consider the first kit to be the 'primary'
+		(active) kit.
 		"""
 		collections = self._source_collections()
-		kits = OrderedDict()
+		kits = defaultdict(list)
 		kit_defaults = self.get_elem("release/kit-definitions/defaults")
 		if kit_defaults is None:
 			kit_defaults = {}
@@ -224,7 +369,7 @@ class ReleaseYAML(YAMLReader):
 					kit_insides['source'] = collections[sdef_name]
 				except KeyError:
 					raise KeyError(f"Source collection '{sdef_name}' not found in source-definitions section of release.yaml.")
-			kits[kit_name] = Kit(self.locator, release=self, name=kit_name, **kit_insides)
+			kits[kit_name].append(Kit(self.locator, release=self, name=kit_name, **kit_insides))
 		return kits
 
 	def iter_kits(self, name=None):
@@ -232,10 +377,10 @@ class ReleaseYAML(YAMLReader):
 		This is a handy way to iterate over all kits that meet certain criteria (currently supporting kit
 		name.) This is used to get all python-kit kits for auto-USE-flag generation.
 		"""
-		for kit_name, kit in self.kits.items():
-			if name is not None and kit.name == name:
-				yield kit
-			else:
+		for kit_name, kit_list in self.kits.items():
+			if name is not None and kit_name != name:
+				continue
+			for kit in kit_list:
 				yield kit
 
 
@@ -245,108 +390,3 @@ if __name__ == "__main__":
 	print("REMOTES", ryaml.remotes)
 	print(ryaml.get_kit_remote("core-kit"))
 
-
-class Kit:
-
-	"""
-	This class represents Kit defined in the release's YAML. It contains settings from the YAML data related to how the
-	kit should be assembled. It does not contain a reference to the actual Git repository of the kit, as it is just designed
-	as an object model of the settings for the Kit.
-	"""
-
-	def __init__(self, locator, release=None, name=None, source : SourceCollection = None, stability=None, branch=None, eclasses=None, priority=None, aliases=None, masters=None, sync_url=None, settings=None):
-		self.kit_fixups: GitRepositoryLocator = locator
-		self.release = release
-		self.name = name
-		self.source = source
-		self.stability = stability
-		self.branch = branch
-		self.eclasses = eclasses if eclasses is not None else {}
-		self.priority = priority
-		self.aliases = aliases if aliases else []
-		self.masters = masters if masters else []
-		self.sync_url = sync_url.format(kit_name=name) if sync_url else None
-		self.settings = settings if settings is not None else {}
-		self._package_data = None
-
-	@property
-	def package_data(self):
-		if self._package_data is None:
-			self._package_data = self._get_package_data()
-		return self._package_data
-
-	def _get_package_data(self):
-		fn = f"{self.kit_fixups.root}/{self.name}/{self.branch}/packages.yaml"
-		if not os.path.exists(fn):
-			fn = f"{self.kit_fixups.root}/{self.name}/packages.yaml"
-		with open(fn, "r") as f:
-			return yaml.safe_load(f)
-
-	def yaml_walk(self, yaml_dict):
-		"""
-		This method will scan a section of loaded YAML and return all list elements -- the leaf items.
-		"""
-		retval = []
-		for key, item in yaml_dict.items():
-			if isinstance(item, dict):
-				retval += self.yaml_walk(item)
-			elif isinstance(item, list):
-				retval += item
-			else:
-				raise TypeError(f"yaml_walk: unrecognized: {repr(item)}")
-		return retval
-
-	def get_kit_items(self, section="packages"):
-		if section in self.package_data:
-			for package_set in self.package_data[section]:
-				repo_name = list(package_set.keys())[0]
-				if section == "packages":
-					# for packages, allow arbitrary nesting, only capturing leaf nodes (catpkgs):
-					yield repo_name, self.yaml_walk(package_set)
-				else:
-					# not a packages section, and just return the raw YAML subsection for further parsing:
-					packages = package_set[repo_name]
-					yield repo_name, packages
-
-	def get_kit_packages(self):
-		return self.get_kit_items()
-
-	def get_excludes(self):
-		"""
-		Grabs the excludes: section from packages.yaml, which is used to remove stuff from the resultant
-		kit that accidentally got copied by merge scripts (due to a directory looking like an ebuild
-		directory, for example.)
-		"""
-		if "exclude" in self.package_data:
-			return self.package_data["exclude"]
-		else:
-			return []
-
-	def get_individual_files_to_copy(self):
-		"""
-		Parses the 'eclasses' and 'copyfiles' sections in a kit's YAML and returns a list of files to
-		copy from each source repository in a tuple format.
-		"""
-		#TODO: upgrade ability to specify eclass items in packages.yaml.
-
-		eclass_items = list(self.get_kit_items(section="eclasses"))
-		copyfile_items = list(self.get_kit_items(section="copyfiles"))
-		copy_tuple_dict = defaultdict(list)
-
-		for src_repo, eclasses in eclass_items:
-			for eclass in eclasses:
-				copy_tuple_dict[src_repo].append((f"eclass/{eclass}.eclass", f"eclass/{eclass}.eclass"))
-
-		for src_repo, copyfiles in copyfile_items:
-			for copy_dict in copyfiles:
-				copy_tuple_dict[src_repo].append((copy_dict["src"], copy_dict["dest"] if "dest" in copy_dict else copy_dict["src"]))
-		return copy_tuple_dict
-
-	def get_copyright_rst(self):
-		cur_year = str(datetime.now().year)
-		out = self.release.get_default_copyright_rst().replace("{{cur_year}}", cur_year)
-		for source_name in sorted(self.source.repositories.keys()):
-			source = self.source.repositories[source_name]
-			if source.copyright:
-				out += source.copyright.replace("{{cur_year}}", cur_year)
-		return out
