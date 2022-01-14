@@ -319,11 +319,6 @@ class InsertFilesFromSubdir(MergeStep):
 			run_shell("cp -a %s/%s %s" % (src, e, dst))
 
 
-class InsertEclasses(InsertFilesFromSubdir):
-	def __init__(self, srctree, select="all", skip=None):
-		InsertFilesFromSubdir.__init__(self, srctree, "eclass", ".eclass", select=select, skip=skip)
-
-
 class PruneLicenses(MergeStep):
 
 	"""

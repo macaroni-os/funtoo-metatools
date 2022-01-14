@@ -413,12 +413,10 @@ class KitGenerator:
 
 		steps = [
 			merge.steps.CleanTree(),
-			merge.steps.GenerateRepoMetadata(self.kit.name, aliases=self.kit.aliases, masters=self.kit.masters, priority=self.kit.priority),
+			merge.steps.GenerateRepoMetadata(self.kit.name, aliases=self.kit.aliases, masters=self.kit.masters, priority=self.kit.priority)
 		]
-		await self.run(steps)
-		await self.run(self.package_yaml_steps())
-		await self.run(self.copy_from_fixups_steps())
-		await self.run([
+		steps += self.package_yaml_packages_steps() + self.package_yaml_copyfiles_steps() + self.copy_from_fixups_steps()
+		steps += [
 			merge.steps.RemoveFiles(self.kit.get_excludes()),
 			merge.steps.FindAndRemove(["__pycache__"]),
 			merge.steps.FindAndRemove(["COPYRIGHT.txt"]), # replaced with COPYRIGHT.rst
@@ -428,8 +426,12 @@ class KitGenerator:
 			merge.steps.CreateCategories(),
 			# TODO: move this to a post-step and only include active licenses.
 			# TODO: we should not hard-reference 'gentoo-staging' anymore.
-			merge.steps.SyncDir(self.kit.source.repositories["gentoo-staging"].tree.root, "licenses"),
-		])
+			merge.steps.SyncDir(self.kit.source.repositories["gentoo-staging"].tree.root, "licenses")
+		]
+		await self.run(steps)
+
+		# TODO: before genning cache, we need to copy over all local eclasses, plus any eclasses specified in
+		#       packages.yaml, release/*
 
 		############################################################################################################
 		# Use lots of CPU (potentially) to generate/update metadata cache:
@@ -491,17 +493,13 @@ class KitGenerator:
 			steps += [merge.steps.GenPythonUse("funtoo/kits/python-kit/%s" % kit.branch)]
 		return steps
 
-	def package_yaml_steps(self):
+	def package_yaml_packages_steps(self):
 		"""
 		This method returns steps required to copy over all 'eclasses' and 'copyfiles' entries in the
 		packages.yaml file for the kit, as well as all packages referenced in the 'packages' section
 		(from the appropriate source repository.)
 		"""
-
 		steps = []
-		for repo_name, copyfile_tuples in self.kit.get_individual_files_to_copy().items():
-			steps += [merge.steps.CopyFiles(self.kit.source.repositories[repo_name].tree, copyfile_tuples)]
-
 		# Copy over catpkgs listed in 'packages' section:
 		for repo_name, packages in self.kit.get_kit_packages():
 			self.active_repos.add(repo_name)
@@ -940,8 +938,5 @@ def generate_metarepo_metadata(self):
 
 	with open(merge.model.meta_repo.root + "/metadata/version.json", "w") as a:
 		a.write(json.dumps(rel_info, sort_keys=True, indent=4, ensure_ascii=False))
-
-
-
 
 

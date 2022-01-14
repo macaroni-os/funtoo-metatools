@@ -131,6 +131,25 @@ class Kit:
 	def get_kit_packages(self):
 		return self.get_kit_items()
 
+	def eclass_copy_steps(self):
+
+		if not self.eclasses:
+			return []
+
+		if "mask" in self.eclasses:
+			mask_set = set(list(self.eclasses["mask"]))
+		else:
+			mask_set = set()
+
+		if "include" in self.eclasses:
+			for repo_name in self.eclasses["include"]:
+				print("  include", repo_name)
+				for item in self.eclasses["include"][repo_name]:
+					if item == "*":
+						print("      ALL (*)")
+					else:
+						print("     ", item)
+
 	def get_excludes(self):
 		"""
 		Grabs the excludes: section from packages.yaml, which is used to remove stuff from the resultant
@@ -141,26 +160,6 @@ class Kit:
 			return self.package_data["exclude"]
 		else:
 			return []
-
-	def get_individual_files_to_copy(self):
-		"""
-		Parses the 'eclasses' and 'copyfiles' sections in a kit's YAML and returns a list of files to
-		copy from each source repository in a tuple format.
-		"""
-		#TODO: upgrade ability to specify eclass items in packages.yaml.
-
-		eclass_items = list(self.get_kit_items(section="eclasses"))
-		copyfile_items = list(self.get_kit_items(section="copyfiles"))
-		copy_tuple_dict = defaultdict(list)
-
-		for src_repo, eclasses in eclass_items:
-			for eclass in eclasses:
-				copy_tuple_dict[src_repo].append((f"eclass/{eclass}.eclass", f"eclass/{eclass}.eclass"))
-
-		for src_repo, copyfiles in copyfile_items:
-			for copy_dict in copyfiles:
-				copy_tuple_dict[src_repo].append((copy_dict["src"], copy_dict["dest"] if "dest" in copy_dict else copy_dict["src"]))
-		return copy_tuple_dict
 
 	def get_copyright_rst(self):
 		cur_year = str(datetime.now().year)
