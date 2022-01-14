@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 from collections import defaultdict
 
 import dyne.org.funtoo.metatools.merge as merge
@@ -306,19 +307,37 @@ def extract_ebuild_metadata(kit_gen_obj, atom, ebuild_path=None, env=None, eclas
 		env["EAPI"] = "0"
 	env["PORTAGE_GID"] = "250"
 	env["PORTAGE_BIN_PATH"] = "/usr/lib/portage/python3.7"
-	env["PORTAGE_ECLASS_LOCATIONS"] = " ".join(eclass_paths)
+	#env["PORTAGE_ECLASS_LOCATIONS"] = " ".join(eclass_paths)
 	env["EBUILD"] = ebuild_path
 	env["EBUILD_PHASE"] = "depend"
+	# TODO: turn off:
+	env["ECLASS_DEBUG_OUTPUT"] = "on"
 	# This tells ebuild.sh to write out the metadata to stdout (fd 1) which is where we will grab
 	# it from:
 	env["PORTAGE_PIPE_FD"] = "1"
-	result = run("/bin/bash " + os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh"), env=env)
-	if result.returncode != 0:
-		kit_gen_obj.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": result.stderr}
+	cmdstr = "export PORTAGE_ECLASS_LOCATIONS=(\n"
+	for eclass_path in eclass_paths:
+		cmdstr += f"  {eclass_path}\n"
+	cmdstr += ")\n"
+	#echo LOCATIONS IS $PORTAGE_ECLASS_LOCATIONS[@]\n"
+	ebuild_sh_path = os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh")
+	cmdstr += f". {ebuild_sh_path}\n"
+	merge.model.log.info(cmdstr)
+	#result = run("/bin/bash -c \"" + cmdstr + "\"", env=env)
+
+	success = False
+	err_out = ""
+	with subprocess.Popen(["/bin/bash", "-c", cmdstr], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
+		if proc.returncode == 0:
+			success = True
+		else:
+			output, err_out = proc.communicate()
+	if not success:
+		kit_gen_obj.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": err_out}
+		merge.model.log.error(f"ebuild.sh failure: {err_out}")
 		return None
 	try:
-		# Extract results:
-		lines = result.stdout.split("\n")
+		lines = output.decode("utf-8").split("\n")
 		line = 0
 		found = set()
 		while line < len(METADATA_LINES) and line < len(lines):
@@ -327,7 +346,7 @@ def extract_ebuild_metadata(kit_gen_obj, atom, ebuild_path=None, env=None, eclas
 			line += 1
 		if line != len(METADATA_LINES):
 			missing = set(METADATA_LINES) - found
-			kit_gen_obj.metadata_errors[atom] = {"status": "missing " + " ".join(missing), "output": result.stderr}
+			kit_gen_obj.metadata_errors[atom] = {"status": "missing " + " ".join(missing), "output": err_out}
 			return None
 		# Success! Clear previous error, if any:
 		if atom in kit_gen_obj.metadata_errors:
@@ -517,10 +536,10 @@ def get_atom(kit_gen_obj, atom, md5, manifest_md5):
 			bad = True
 		elif existing["eclasses"]:
 			for eclass, md5 in existing["eclasses"]:
-				if eclass not in kit_gen_obj.kit.eclass_hashes:
+				if eclass not in kit_gen_obj.eclasses.hashes:
 					bad = True
 					break
-				if kit_gen_obj.kit.eclass_hashes[eclass] != md5:
+				if kit_gen_obj.eclasses.hashes[eclass] != md5:
 					bad = True
 					break
 		if bad:

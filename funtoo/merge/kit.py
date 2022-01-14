@@ -23,6 +23,55 @@ from a release's YAML data.
 """
 
 
+class EclassHashCollection:
+	"""
+	This is just a simple class for storing the path where we grabbed all the eclasses from plus
+	the mapping from eclass name (ie. 'eutils') to the hexdigest of the generated hash.
+
+	You can add two collections together, with the last collection's eclasses taking precedence
+	over the first. The concept is to be able to this::
+
+	  all_eclasses = core_kit_eclasses + llvm_eclasses + this_kits_eclasses
+	"""
+
+	def __init__(self, path=None, paths=None, hashes=None):
+		if paths:
+			self.paths = paths
+		else:
+			self.paths = []
+		if hashes:
+			self.hashes = hashes
+		else:
+			self.hashes = {}
+		if path and (hashes or paths):
+			raise AttributeError("Don't use path= with hashes= or paths= -- pick one.")
+		if path:
+			self.add_path(path)
+
+	def add_path(self, path, scan=True):
+		"""
+		Adds a path to self.paths which will take precedence over any existing paths.
+		"""
+		self.paths = [path] + self.paths
+		if scan:
+			self.scan_path(os.path.join(path, "eclass"))
+
+	def __add__(self, other):
+		paths = other.paths + self.paths
+		hashes = self.hashes.copy()
+		hashes.update(other.hashes)
+		return self.__class__(paths=paths, hashes=hashes)
+
+	def scan_path(self, eclass_scan_path):
+		if os.path.isdir(eclass_scan_path):
+			for eclass in os.listdir(eclass_scan_path):
+				if not eclass.endswith(".eclass"):
+					continue
+				eclass_path = os.path.join(eclass_scan_path, eclass)
+				eclass_name = eclass[:-7]
+				self.hashes[eclass_name] = get_md5(eclass_path)
+
+
 class KitGenerator:
 
 	"""
@@ -47,8 +96,12 @@ class KitGenerator:
 	kit_cache_misses = None
 	kit_cache_writes = None
 
-	def __init__(self, kit: Kit):
+	eclasses = None
+	is_master = None
+
+	def __init__(self, kit: Kit, is_master=False):
 		self.kit = kit
+		self.is_master = is_master
 
 		git_class = merge.model.git_class
 
@@ -58,7 +111,7 @@ class KitGenerator:
 			root = os.path.join(merge.model.dest_trees, kit.name)
 		self.out_tree = git_class(kit.name, branch=kit.branch, root=root, model=merge.model)
 		self.out_tree.initialize()
-		self.gen_eclass_hashes()
+		self.eclasses = EclassHashCollection(path=self.out_tree.root)
 
 	def get_kit_cache_path(self):
 		os.makedirs(os.path.join(merge.model.temp_path, "kit_cache"), exist_ok=True)
@@ -156,21 +209,6 @@ class KitGenerator:
 				if os.path.exists(error_outpath):
 					os.unlink(error_outpath)
 
-	def gen_eclass_hashes(self):
-		"""
-		This will grab md5 hashes for all eclasses in this kit, which will be used later for metadata
-		generation.
-		"""
-		eclass_root = os.path.join(self.out_tree.root, "eclass")
-		if os.path.isdir(eclass_root):
-			for eclass in os.listdir(eclass_root):
-				if not eclass.endswith(".eclass"):
-					continue
-				eclass_path = os.path.join(eclass_root, eclass)
-				eclass_name = eclass[:-7]
-				self.kit.eclass_paths[eclass_name] = eclass_path
-				self.kit.eclass_hashes[eclass_name] = get_md5(eclass_path)
-
 	def iter_ebuilds(self):
 		"""
 		This function is a generator that scans the specified path for ebuilds and yields all
@@ -190,7 +228,7 @@ class KitGenerator:
 						yield os.path.join(pkgpath, ebfile)
 
 	# TODO: eclass_paths needs to be supported so that we can find eclasses.
-	def get_ebuild_metadata(self, ebuild_path, eclass_paths, write_cache=False):
+	def get_ebuild_metadata(self, eclasses, ebuild_path, write_cache=False):
 		"""
 		This function will grab metadata from a single ebuild pointed to by `ebuild_path` and
 		return it as a dictionary.
@@ -224,10 +262,12 @@ class KitGenerator:
 		self.kit_cache_retrieved_atoms.add(atom)
 
 		if existing:
+			# merge.model.log.info(f"get_ebuild_metadata for {ebuild_path} (Existing)")
 			infos = existing["metadata"]
 			metadata_out = existing["metadata_out"]
 		# TODO: Note - this may be a 'dud' existing entry where there was a metadata failure previously.
 		else:
+			# merge.model.log.info(f"get_ebuild_metadata for {ebuild_path} (new)")
 			sys.stdout.write("*")
 			sys.stdout.flush()
 			self.kit_cache_misses.add(atom)
@@ -247,7 +287,7 @@ class KitGenerator:
 			env["PN"] = pkg_only
 			env["PVR"] = env["PF"][len(env["PN"]) + 1:]
 
-			infos = extract_ebuild_metadata(self, atom, ebuild_path, env, self.kit.eclass_paths)
+			infos = extract_ebuild_metadata(self, atom, ebuild_path, env, eclasses.paths)
 
 			eclass_out = ""
 			eclass_tuples = []
@@ -257,12 +297,12 @@ class KitGenerator:
 				# Do common pre-processing for eclasses:
 
 				for eclass_name in sorted(infos["INHERITED"].split()):
-					if eclass_name not in self.kit.eclass_hashes:
+					if eclass_name not in eclasses.hashes:
 						self.processing_warnings.append({"msg": f"Can't find eclass hash for {eclass_name}", "atom": atom})
 						continue
 					try:
-						eclass_out += f"\t{eclass_name}\t{self.kit.eclass_hashes[eclass_name]}"
-						eclass_tuples.append((eclass_name, self.kit.eclass_hashes[eclass_name]))
+						eclass_out += f"\t{eclass_name}\t{eclasses.hashes[eclass_name]}"
+						eclass_tuples.append((eclass_name, eclasses.hashes[eclass_name]))
 					except KeyError as ke:
 						self.processing_warnings.append({"msg": f"Can't find eclass {eclass_name}", "atom": atom})
 						pass
@@ -327,42 +367,38 @@ class KitGenerator:
 		of this as we have logical cores on the system.
 		"""
 
+		eclasses = EclassHashCollection()
+
+		for master in self.kit.masters_list:
+			eclasses += master.eclasses
+
+		eclasses += self.eclasses
+
+		count = 0
+		futures = []
+		fut_map = {}
+
 		with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
-			count = 0
-			futures = []
-			fut_map = {}
-
-			eclass_hashes = {}
-			eclass_paths = {}
-
-			# Add eclasses from masters:
-			for master in self.kit.masters_list:
-				eclass_hashes.update(master.eclass_hashes)
-				eclass_paths.update(master.eclass_paths)
-
-			# Add any local eclasses:
-			eclass_hashes.update(self.kit.eclass_hashes)
-			eclass_paths.update(self.kit.eclass_paths)
-
 			for ebpath in self.iter_ebuilds():
 				future = executor.submit(
 					self.get_ebuild_metadata,
+					eclasses,
 					ebpath,
 					write_cache=True,
 				)
 				fut_map[future] = ebpath
 				futures.append(future)
 
-			for future in as_completed(futures):
-				count += 1
-				data = future.result()
-				if data is None:
-					sys.stdout.write("!")
-				else:
-					sys.stdout.write(".")
-					sys.stdout.flush()
+		for future in as_completed(futures):
+			count += 1
+			data = future.result()
+			if data is None:
+				sys.stdout.write("!")
+			else:
+				sys.stdout.write(".")
+				sys.stdout.flush()
 
-			print(f"{count} ebuilds processed.")
+		print(f"{count} ebuilds processed.")
 
 	async def generate(self):
 
@@ -651,6 +687,37 @@ class MetaRepoJobController:
 		for pipeline_key in self.kit_pipeline_keys[1:]:
 			yield ParallelKitPipeline(pipeline_key, self.kit_pipeline_slots[pipeline_key])
 
+	# TODO: refactor to work here.
+	def set_kit_hierarchies(self):
+		"""
+		For each kit in self.kits, we want to give them references to their masters, if any. That way, they have a
+		model of this in self.masters_list. This also performs some validation -- like we currently don't allow multiple
+		definitions of a master. If something's a master, the YAML should only have one branch of it defined per
+		release since this kit is 'foundational' for the release.
+		"""
+
+		all_masters = set()
+		for kit in self.kit_jobs:
+			all_masters |= set(kit.masters)
+
+		# validation --
+
+
+
+		# Used in kit job planning, let's set an is_master boolean for each kit.
+		self.masters = {}
+		for master in all_masters:
+			self.kits[master][0].is_master = True
+
+		# We now know that we have only one master defined in the yaml. So we can reference it in position 0:
+
+		for kit_name, kit_list in self.kits.items():
+			for kit in kit_list:
+				for master in kit.masters:
+					kit.masters_list.append(self.kits[master][0])
+
+		# Now each repo can access its masters at self.masters_list.
+
 	async def generate(self):
 		merge.metadata.cleanup_error_logs()
 
@@ -754,18 +821,28 @@ class MetaRepoJobController:
 		2. The kits reference a different set of source repositories (they need different sha1's checked out at the same time.)
 		"""
 
-		for kit in merge.model.release_yaml.iter_kits():
-			kit_job = KitGenerator(kit)
-			# Keep master list of all kit jobs so we can collect commit data from them after processing is complete:
-			self.kit_jobs.append(kit_job)
-			if kit.is_master:
-				self.kit_pipeline_slots["masters"].append(kit_job)
-			else:
-				my_pipeline = self.find_existing_pipeline(kit_job)
-				if my_pipeline is None:
-					my_pipeline = self.create_new_pipeline()
-				self.kit_pipeline_slots[my_pipeline].append(kit_job)
+		all_masters = set()
+		for kit_name, kit_list in merge.model.release_yaml.kits.items():
+			for kit in kit_list:
+				all_masters |= set(kit.masters)
 
+		for master in all_masters:
+			if not len(merge.model.release_yaml.kits[master]):
+				raise ValueError(f"Master {master} defined in release does not seem to exist in kits YAML.")
+			elif len(merge.model.release_yaml.kits[master]) > 1:
+				raise ValueError(f"This release defines {master} multiple times, but it is a master. Only define one master since it is foundational to the release.")
+
+		for kit_name, kit_list in merge.model.release_yaml.kits.items():
+			for kit in kit_list:
+				kit_job = KitGenerator(kit, is_master=kit_name in all_masters)
+				self.kit_jobs.append(kit_job)
+				if kit_job.is_master:
+					self.kit_pipeline_slots["masters"].append(kit_job)
+				else:
+					my_pipeline = self.find_existing_pipeline(kit_job)
+					if my_pipeline is None:
+						my_pipeline = self.create_new_pipeline()
+					self.kit_pipeline_slots[my_pipeline].append(kit_job)
 
 	# TODO: does this need to be upgraded to handle multiple remotes?
 	def mirror_repository(self, repo_obj, base_path):

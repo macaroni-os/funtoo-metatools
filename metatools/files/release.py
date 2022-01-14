@@ -66,11 +66,6 @@ class Kit:
 	as an object model of the settings for the Kit.
 	"""
 
-	# These are populated later, when the KitGenerator initializes, and contain paths to eclasses defined in this kit, along with md5's for them:
-	eclass_paths = None
-	eclass_hashes = None
-	is_master = False
-
 	def __init__(self, locator, release=None, name=None, source : SourceCollection = None, stability=None, branch=None, eclasses=None, priority=None, aliases=None, masters=None, sync_url=None, settings=None):
 		self.kit_fixups: GitRepositoryLocator = locator
 		self.release = release
@@ -87,8 +82,6 @@ class Kit:
 		self.sync_url = sync_url.format(kit_name=name) if sync_url else None
 		self.settings = settings if settings is not None else {}
 		self._package_data = None
-		self.eclass_hashes = {}
-		self.eclass_paths = {}
 
 	@property
 	def package_data(self):
@@ -210,43 +203,7 @@ class ReleaseYAML(YAMLReader):
 
 	def start(self):
 		self.kits = self._kits()
-		self.set_kit_hierarchies()
 		self.remotes = self._remotes()
-
-	def set_kit_hierarchies(self):
-		"""
-		For each kit in self.kits, we want to give them references to their masters, if any. That way, they have a
-		model of this in self.masters_list. This also performs some validation -- like we currently don't allow multiple
-		definitions of a master. If something's a master, the YAML should only have one branch of it defined per
-		release since this kit is 'foundational' for the release.
-		"""
-
-		all_masters = set()
-		for kit_name, kit_list in self.kits.items():
-			for kit in kit_list:
-				all_masters |= set(kit.masters)
-
-		# validation --
-
-		for master in all_masters:
-			if not len(self.kits[master]):
-				raise ValueError(f"Master {master} defined in release does not seem to exist in kits YAML.")
-			elif len(self.kits[master]) > 1:
-				raise ValueError(f"This release defines {master} multiple times, but it is a master. Only define one master since it is foundational to the release.")
-
-		# Used in kit job planning, let's set an is_master boolean for each kit.
-		self.masters = {}
-		for master in all_masters:
-			self.kits[master][0].is_master = True
-
-		# We now know that we have only one master defined in the yaml. So we can reference it in position 0:
-
-		for kit_name, kit_list in self.kits.items():
-			for kit in kit_list:
-				for master in kit.masters:
-					kit.masters_list.append(self.kits[master][0])
-
-		# Now each repo can access its masters at self.masters_list.
 
 	def get_default_copyright_rst(self):
 		return self.get_elem("release/copyright")
