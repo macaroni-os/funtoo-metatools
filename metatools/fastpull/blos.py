@@ -276,7 +276,8 @@ class BaseLayerObjectStore:
 			raise BLOSNotFoundError(f"Object does not exist on disk. You you may want to remove the ref to this object.")
 
 		db_record = self.collection.find_one({"hashes.sha512": index})
-
+		if db_record is None:
+			raise BLOSNotFoundError("Object not found")
 		if not exists_on_disk and self.backfill in (BackFillStrategy.NONE, BackFillStrategy.DESIRED):
 			raise BLOSNotFoundError(f"Object exists on disk but no DB record exists. Backfill strategy is {self.backfill}.")
 
@@ -375,8 +376,11 @@ class BaseLayerObjectStore:
 		missing = self.desired_hashes - set(pregenned_hashes.keys())
 
 		if missing:
-			new_hashes = calc_hashes(temp_path, missing)
-			final_hashes.update(new_hashes)
+			try:
+				new_hashes = calc_hashes(temp_path, missing)
+				final_hashes.update(new_hashes)
+			except FileNotFoundError as fnfe:
+				log.error(f"File disappeared from under us: {temp_path}")
 
 		index = final_hashes['sha512']
 		disk_path = self.get_disk_path(index)
@@ -396,8 +400,8 @@ class BaseLayerObjectStore:
 		self.collection.update_one({'hashes.sha512': final_hashes['sha512']}, {"$set": {"hashes": final_hashes}}, upsert=True)
 		return BLOSObject(path=disk_path, genned_hashes=missing, authoritative_hashes=final_hashes)
 
-	def delete_object(hashes: dict):
+	def delete_object(self, my_sha512):
 		"""
 		This method is used to delete objects from the BLOS. It shouldn't generally need to be used.
 		"""
-		pass
+		self.collection.delete_one({"hashes.sha512" : my_sha512})

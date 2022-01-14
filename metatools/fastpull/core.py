@@ -70,8 +70,10 @@ class IntegrityScope:
 				log.debug(f"IntegrityScope:{self.scope}._get_file_by_url_new: existing object found for ref {request.url}")
 				return obj
 			except BLOSNotFoundError as bnfe:
-				log.error(f"IntegrityScope:{self.scope}._get_file_by_url_new: ref {request.url} (sha512: {existing_ref['sha512']} NOT FOUND in BLOS. This can indicate a BLOS problem or corruption, so aborting rather than fixing.")
-				raise bnfe
+				# TODO: tighten this down
+				log.error(f"IntegrityScope:{self.scope}._get_file_by_url_new: ref {request.url} (sha512: {existing_ref['sha512']} NOT FOUND in BLOS. For now, I will clean up the BLOS and try again.")
+				self.parent.blos.delete_object(existing_ref['sha512'])
+				#raise bnfe
 		blos_obj = await self.parent.spider.download(request, completion_pipeline=[self.parent.fetch_completion_callback])
 		assert isinstance(blos_obj, BLOSObject)
 		self.parent.put(self.scope, request.url, blos_object=blos_obj)

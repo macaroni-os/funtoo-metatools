@@ -3,6 +3,7 @@
 import argparse
 import sys
 
+import subpop
 from subpop.hub import Hub
 
 from metatools.config.merge import MergeConfig
@@ -25,7 +26,11 @@ class MergeError(Exception):
 
 async def main_thread(args):
 
-	await merge.launch(MergeConfig, release=args.release, prod=args.prod, push=not args.nopush, create_branches=args.create_branches)
+	try:
+		await merge.launch(MergeConfig, release=args.release, prod=args.prod, push=not args.nopush, create_branches=args.create_branches)
+	except subpop.config.ConfigurationError as ce:
+		sys.stdout.write(f"An error was encountered: {ce.__class__.__name__}: {' '.join(ce.args)}\nPlease make sure to run merge-kits with the cwd inside a kit-fixups repo.\n")
+		sys.exit(1)
 	controller = merge.kit.MetaRepoJobController()
 	await controller.generate()
 

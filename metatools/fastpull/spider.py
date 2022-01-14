@@ -130,13 +130,17 @@ class Download:
 				try:
 					async with aiohttp.ClientSession(connector=connector, timeout=self.spider.http_timeout) as http_session:
 						headers, auth = self.spider.get_headers_and_auth(self.request)
-						if rec_bytes:
-							headers["Range"] = f"bytes={rec_bytes}-"
-							log.warning(f"Resuming at {rec_bytes}")
+						#if rec_bytes:
+						#	headers["Range"] = f"bytes={rec_bytes}-"
+						#	log.warning(f"Resuming at {rec_bytes}")
 						async with http_session.get(self.request.url, headers=headers, auth=auth) as response:
 							if response.status not in [200, 206]:
 								reason = (await response.text()).strip()
-								if response.status in [400, 404, 410]:
+								if response.status == 416:
+									# range not satisfiable
+									log.error(f"Range not satisfiable for {self.request.url}: {headers['Range']}")
+									retry = False
+								elif response.status in [400, 404, 410]:
 									# These are legitimate responses that indicate that the file does not exist. Therefore, we
 									# should not retry, as we should expect to get the same result.
 									retry = False
@@ -153,10 +157,10 @@ class Download:
 									on_chunk(chunk)
 				except Exception as e:
 					# If we are "making progress on the download", then continue indefinitely --
-					if prev_rec_bytes < rec_bytes:
-						prev_rec_bytes = rec_bytes
-						log.warning("Attempting to resume download...")
-						continue
+					#if prev_rec_bytes < rec_bytes:
+					#	prev_rec_bytes = rec_bytes
+					#	log.warning("Attempting to resume download...")
+					#	continue
 
 					if isinstance(e, FetchError):
 						if e.retry is False:
