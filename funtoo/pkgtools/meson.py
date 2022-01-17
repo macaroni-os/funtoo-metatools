@@ -1,3 +1,4 @@
+import shutil
 from enum import Enum
 import glob
 import json
@@ -44,6 +45,9 @@ def init_build_info(src_dir):
 	:type src_dir: str
 	:rtype: None
 	"""
+	builddir = os.path.join(src_dir, "builddir")
+	if os.path.exists(builddir):
+		shutil.rmtree(builddir)
 	return_code = subprocess.Popen(
 		["meson", "builddir"],
 		cwd=src_dir,
