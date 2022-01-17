@@ -89,7 +89,7 @@ class Tree:
 			shell=True,
 		)
 		if retcode != 0:
-			raise GitTreeError(f"Autogen failed in {self.root} -- offset {src_offset}.")
+			raise GitTreeError(f"failed autogen in {self.root} -- offset {src_offset}.")
 		self.autogenned = src_offset
 
 	def cleanTree(self):

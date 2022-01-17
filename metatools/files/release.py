@@ -131,8 +131,26 @@ class Kit:
 	def get_kit_packages(self):
 		return self.get_kit_items()
 
-	def eclass_copy_steps(self):
+	def eclass_include_info(self):
+		"""
+		This method parses the release yaml and returns the logical information related to what eclasses, from what
+		source repositories, should be included. We also return a mask set of eclasses that should definitely not
+		be included, and any eclasses matching these names will be excluded. A special value of '*' means to include
+		the full tree of eclasses from a source repository.
 
+		What is returned is a dictionary in the following format::
+
+		  {
+		    "mask" : set() of masks,
+		  	"include" : {
+		  		"source_repo_name_1" : [
+		  			"name_of_eclass_without_.eclass_extension",
+		  		],
+		  		"source_repo_name_2: : [
+		  			"*",
+		  		]
+		  }
+		"""
 		if not self.eclasses:
 			return []
 
@@ -141,14 +159,10 @@ class Kit:
 		else:
 			mask_set = set()
 
-		if "include" in self.eclasses:
-			for repo_name in self.eclasses["include"]:
-				print("  include", repo_name)
-				for item in self.eclasses["include"][repo_name]:
-					if item == "*":
-						print("      ALL (*)")
-					else:
-						print("     ", item)
+		return {
+			"mask": mask_set,
+			"include": self.eclasses["include"] if "include" in self.eclasses else {}
+		}
 
 	def get_excludes(self):
 		"""

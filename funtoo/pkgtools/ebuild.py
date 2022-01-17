@@ -322,11 +322,15 @@ class BreezyBuild:
 				artifact.breezybuilds.append(self)
 
 			async def lil_coroutine(a):
-				status = await a.ensure_completed()
-				return a, status
+				try:
+					status = await a.ensure_completed()
+					return a, status
+				except Exception as e:
+					pkgtools.model.log.error(e, exc_info=True)
+					raise e
 
 			fetch_task = asyncio.Task(lil_coroutine(artifact))
-			fetch_task.add_done_callback(pkgtools.autogen._handle_task_result)
+			fetch_task.add_done_callback(pkgtools.autogen._artifact_handle_task_result)
 			fetch_tasks_dict[artifact] = fetch_task
 
 		# Wait for any artifacts that are still fetching:
@@ -347,8 +351,12 @@ class BreezyBuild:
 			hub.THREAD_CTX.genned_breezybuilds.add(self.output_ebuild_path)
 
 		async def wrapper(self):
-			await self.generate()
-			return self
+			try:
+				await self.generate()
+				return True
+			except Exception as e:
+				pkgtools.model.log.error(e, exc_info=True)
+				return False
 
 		# This will cause the BreezyBuild to start autogeneration immediately, appending the task to the thread-
 		# local context so we can grab the result later. The return value will be the BreezyBuild object itself,

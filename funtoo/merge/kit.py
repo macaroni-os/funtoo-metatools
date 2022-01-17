@@ -131,7 +131,11 @@ class KitGenerator:
 		for step in steps:
 			if step is not None:
 				merge.model.log.info(f"Running step {step.__class__.__name__} for {self.out_tree.root}")
-				await step.run(self)
+				try:
+					await step.run(self)
+				except Exception as e:
+					merge.model.log.error(f"Exiting due to {e}")
+					sys.exit(1)
 
 	def fetch_kit(self):
 		"""
@@ -309,7 +313,7 @@ class KitGenerator:
 
 			metadata_out = ""
 			if infos:
-				# if metdata extraction successful...
+				# if metadata extraction successful...
 				for key in AUXDB_LINES:
 					if infos[key] != "":
 						metadata_out += key + "=" + infos[key] + "\n"
@@ -409,29 +413,50 @@ class KitGenerator:
 		"""
 
 		# load on-disk JSON metadata cache into memory:
+
 		self.fetch_kit()
 
 		steps = [
 			merge.steps.CleanTree(),
 			merge.steps.GenerateRepoMetadata(self.kit.name, aliases=self.kit.aliases, masters=self.kit.masters, priority=self.kit.priority)
 		]
-		steps += self.package_yaml_packages_steps() + self.package_yaml_copyfiles_steps() + self.copy_from_fixups_steps()
+
+		await self.run(steps)
+
+		#######################################################################################################
+		# Destination kit has been wiped (no files) and has had initial overlay metadata created at this point.
+		# Before we start copying our forked things and autogens from kit-fixups, we want to first:
+		#
+		# 1. Copy eclasses we have referenced in our release YAML from source repositories.
+		# 2. Copy all packages from source repositories specified in packages.yaml.
+		# 3. Remove any excluded files that we didn't want to copy over.
+		#######################################################################################################
+
+		await self.run(self.copy_eclasses_steps())
+		await self.run(self.packages_yaml_steps())
+		await self.run([merge.steps.RemoveFiles(self.kit.get_excludes())])
+
+		#######################################################################################################
+		# Now that everything from source repositories (except licenses) has been handled, we will copy over
+		# all the forked things from kit-fixups, which will have a chance to overwrite any previously-copied
+		# things:
+		#######################################################################################################
+
+		await self.run(self.copy_from_fixups_steps())
+
+		##############################################################################
+		# Now, we can run any post-steps to get the tree in ready-to-commit condition:
+		##############################################################################
+
 		steps += [
-			merge.steps.RemoveFiles(self.kit.get_excludes()),
 			merge.steps.FindAndRemove(["__pycache__"]),
 			merge.steps.FindAndRemove(["COPYRIGHT.txt"]), # replaced with COPYRIGHT.rst
 			merge.steps.GenerateLicensingFile(text=self.kit.get_copyright_rst()),
 			merge.steps.Minify(),
 			merge.steps.ELTSymlinkWorkaround(),
 			merge.steps.CreateCategories(),
-			# TODO: move this to a post-step and only include active licenses.
-			# TODO: we should not hard-reference 'gentoo-staging' anymore.
-			merge.steps.SyncDir(self.kit.source.repositories["gentoo-staging"].tree.root, "licenses")
 		]
 		await self.run(steps)
-
-		# TODO: before genning cache, we need to copy over all local eclasses, plus any eclasses specified in
-		#       packages.yaml, release/*
 
 		############################################################################################################
 		# Use lots of CPU (potentially) to generate/update metadata cache:
@@ -443,9 +468,14 @@ class KitGenerator:
 		# Python USE settings auto-generation and other finalization steps:
 		############################################################################################################
 
-		post_steps = [
-			merge.steps.PruneLicenses()
-		] + self.python_auto_use_steps()
+		#TODO: add license processing here.
+
+		# TODO: move this to a post-step and only include active licenses.
+		# TODO: we should not hard-reference 'gentoo-staging' anymore.
+		#	merge.steps.SyncDir(self.kit.source.repositories["gentoo-staging"].tree.root, "licenses")
+		# 			merge.steps.PruneLicenses()
+
+		post_steps = self.python_auto_use_steps()
 
 		# We can now run all the steps that require access to metadata:
 
@@ -493,11 +523,35 @@ class KitGenerator:
 			steps += [merge.steps.GenPythonUse("funtoo/kits/python-kit/%s" % kit.branch)]
 		return steps
 
-	def package_yaml_packages_steps(self):
+	def copy_eclasses_steps(self):
+
+		kit_copy_info = self.kit.eclass_include_info()
+		mask = kit_copy_info["mask"]
+		file_mask = map(lambda x: f"{x}.eclass", list(mask))
+		steps = []
+		for srepo_name, eclass_name_list in kit_copy_info["include"].items():
+			copy_eclasses = set()
+			for eclass_item in eclass_name_list:
+				if eclass_item == "*":
+					steps.append(merge.steps.SyncDir(self.kit.source.repositories[srepo_name].tree, "eclass", exclude=file_mask))
+				else:
+					if eclass_item not in mask:
+						copy_eclasses.add(eclass_item)
+					else:
+						merge.model.log.warn(f"For kit {self.kit.name}, {eclass_item} is both included and excluded in the release YAML.")
+			if copy_eclasses:
+				copy_tuples = []
+				for item in copy_eclasses:
+					if item.split("/")[-1] not in mask:
+						file_path = f"eclass/{item}.eclass"
+						copy_tuples.append((file_path, file_path))
+				steps.append(merge.steps.CopyFiles(self.kit.source.repositories[srepo_name].tree, copy_tuples))
+		return steps
+
+	def packages_yaml_steps(self):
 		"""
-		This method returns steps required to copy over all 'eclasses' and 'copyfiles' entries in the
-		packages.yaml file for the kit, as well as all packages referenced in the 'packages' section
-		(from the appropriate source repository.)
+		This method returns all steps related to the 'packages' entries in the package.yaml file, and getting these
+		packages copied over from the source repositories.
 		"""
 		steps = []
 		# Copy over catpkgs listed in 'packages' section:
@@ -508,30 +562,25 @@ class KitGenerator:
 		return steps
 
 	def copy_from_fixups_steps(self):
+		"""
+		Copy eclasses, licenses, profile info, and ebuild/eclass fixups from the kit-fixups repository.
 
-		# Phase 3: copy eclasses, licenses, profile info, and ebuild/eclass fixups from the kit-fixups repository.
+		First, we are going to process the kit-fixups repository and look for ebuilds and eclasses to replace. Eclasses can be
+		overridden by using the following paths inside kit-fixups:
 
-		# First, we are going to process the kit-fixups repository and look for ebuilds and eclasses to replace. Eclasses can be
-		# overridden by using the following paths inside kit-fixups:
+		* kit-fixups/eclass/1.2-release <--------- global eclasses, get installed to all kits unconditionally for release (overrides those above)
+		* kit-fixups/<kit>/global/eclass <-------- global eclasses for a particular kit, goes in all branches (overrides those above)
+		* kit-fixups/<kit>/global/profiles <------ global profile info for a particular kit, goes in all branches (overrides those above)
+		* kit-fixups/<kit>/<branch>/eclass <------ eclasses to install in just a specific branch of a specific kit (overrides those above)
+		* kit-fixups/<kit>/<branch>/profiles <---- profile info to install in just a specific branch of a specific kit (overrides those above)
 
-		# kit-fixups/eclass/1.2-release <--------- global eclasses, get installed to all kits unconditionally for release (overrides those above)
-		# kit-fixups/<kit>/global/eclass <-------- global eclasses for a particular kit, goes in all branches (overrides those above)
-		# kit-fixups/<kit>/global/profiles <------ global profile info for a particular kit, goes in all branches (overrides those above)
-		# kit-fixups/<kit>/<branch>/eclass <------ eclasses to install in just a specific branch of a specific kit (overrides those above)
-		# kit-fixups/<kit>/<branch>/profiles <---- profile info to install in just a specific branch of a specific kit (overrides those above)
+		Note that profile repo_name and categories files are excluded from any copying.
 
-		# Note that profile repo_name and categories files are excluded from any copying.
+		Ebuilds can be installed to kits by putting them in the following location(s):
 
-		# Ebuilds can be installed to kits by putting them in the following location(s):
-
-		# kit-fixups/<kit>/global/cat/pkg <------- install cat/pkg into all branches of a particular kit
-		# kit-fixups/<kit>/<branch>/cat/pkg <----- install cat/pkg into a particular branch of a kit
-
-		# Remember that at this point, we may be missing a lot of eclasses and licenses from Gentoo. We will then perform a final sweep
-		# of all catpkgs in the dest_kit and auto-detect missing eclasses from Gentoo and copy them to our dest_kit. Remember that if you
-		# need a custom eclass from a third-party overlay, you will need to specify it in the overlay's overlays["ov_name"]["eclasses"]
-		# list. Or alternatively you can copy the eclasses you need to kit-fixups and maintain them there :)
-
+		* kit-fixups/<kit>/global/cat/pkg <------- install cat/pkg into all branches of a particular kit
+		* kit-fixups/<kit>/<branch>/cat/pkg <----- install cat/pkg into a particular branch of a kit
+		"""
 		steps = []
 		# Here is the core logic that copies all the fix-ups from kit-fixups (eclasses and ebuilds) into place:
 		eclass_release_path = "eclass/%s" % merge.model.release

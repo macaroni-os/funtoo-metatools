@@ -9,7 +9,7 @@ import dyne.org.funtoo.metatools.merge as merge
 
 import jinja2
 
-from metatools.tree import run_shell
+from metatools.tree import run_shell, GitTreeError
 
 
 class MergeStep:
@@ -58,8 +58,8 @@ class ThirdPartyMirrors(MergeStep):
 
 
 class SyncDir(MergeStep):
-	def __init__(self, srcroot, srcdir=None, destdir=None, exclude=None, delete=False):
-		self.srcroot = srcroot
+	def __init__(self, src_tree, srcdir=None, destdir=None, exclude=None, delete=False):
+		self.src_tree = src_tree
 		self.srcdir = srcdir
 		self.destdir = destdir
 		self.exclude = exclude if exclude is not None else []
@@ -67,9 +67,9 @@ class SyncDir(MergeStep):
 
 	async def run(self, kit_gen):
 		if self.srcdir:
-			src = os.path.join(self.srcroot, self.srcdir) + "/"
+			src = os.path.join(self.src_tree.root, self.srcdir) + "/"
 		else:
-			src = os.path.normpath(self.srcroot) + "/"
+			src = os.path.normpath(self.src_tree.root) + "/"
 		if self.destdir:
 			dest = os.path.join(kit_gen.out_tree.root, self.destdir) + "/"
 		else:
@@ -90,15 +90,15 @@ class SyncDir(MergeStep):
 
 class SyncFromTree(SyncDir):
 	# sync a full portage tree, deleting any excess files in the target dir:
-	def __init__(self, srctree, exclude=None):
+	def __init__(self, src_tree, exclude=None):
 		if exclude is None:
 			exclude = []
-		self.srctree = srctree
-		SyncDir.__init__(self, srctree.root, srcdir=None, destdir=None, exclude=exclude, delete=True)
+		self.src_tree = src_tree
+		SyncDir.__init__(self, src_tree, srcdir=None, destdir=None, exclude=exclude, delete=True)
 
 	async def run(self, kit_gen):
 		await SyncDir.run(self, kit_gen)
-		kit_gen.out_tree.logTree(self.srctree)
+		kit_gen.out_tree.logTree(self.src_tree)
 
 
 class GenerateRepoMetadata(MergeStep):
@@ -475,7 +475,6 @@ class InsertEbuilds(MergeStep):
 
 		if self.srctree.should_autogen:
 			await self.srctree.autogen(src_offset=self.ebuildloc)
-
 		kit_gen.out_tree.logTree(self.srctree)
 		# Figure out what categories to process:
 		src_cat_path = os.path.join(srctree_root, "profiles/categories")

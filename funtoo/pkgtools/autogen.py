@@ -172,11 +172,24 @@ def init_pkginfo_for_package(generator_sub, defaults=None, base_pkginfo=None, te
 
 def _handle_task_result(task: Task):
 	try:
+		success = task.result()
+		if not success:
+			sys.exit(1)
+	except asyncio.CancelledError:
+		pass
+	except Exception as e:
+		pkgtools.model.log.error(e, exc_info=True)
+		sys.exit(1)
+
+
+def _artifact_handle_task_result(task: Task):
+	try:
 		task.result()
 	except asyncio.CancelledError:
 		pass
 	except Exception as e:
-		raise e
+		pkgtools.model.log.error(e, exc_info=True)
+		sys.exit(1)
 
 
 async def execute_generator(
@@ -270,17 +283,30 @@ async def execute_generator(
 					def BreezyError(self, **kwargs):
 						return self.pkgtools.ebuild.BreezyError(**kwargs)
 
+				if "version" in pkginfo and pkginfo["version"] != "latest":
+					autogen_info = f"{pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}"
+				else:
+					autogen_info = f"{pkginfo['cat']}/{pkginfo['name']} (latest)"
+
+				exc = None
 				generate = getattr(generator_sub, "generate", None)
 				if generate is None:
-					raise AttributeError(f"generate() not found in {generator_sub}")
+					return autogen_info, AttributeError(f"generate() not found in {generator_sub}")
 				try:
 					await generate(AutoHub(autogen_id, pkgtools), **pkginfo)
 				except TypeError as te:
 					if not inspect.iscoroutinefunction(generate):
-						raise TypeError(f"generate() in {generator_sub} must be async")
-					else:
-						raise te
-				return pkginfo
+						pkgtools.model.log.error(f"generate() in {generator_sub} must be async")
+					exc = te
+				except Exception as e:
+
+					exc = e
+				if exc:
+					pkgtools.model.log.error(f"Autogen failure: {autogen_info}")
+					pkgtools.model.log.error(exc, exc_info=True)
+					return False
+				else:
+					return True
 
 			task = Task(gen_wrapper(pkginfo, generator_sub))
 			task.add_done_callback(_handle_task_result)

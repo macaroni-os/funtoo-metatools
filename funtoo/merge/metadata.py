@@ -2,7 +2,6 @@
 
 import glob
 import json
-import logging
 import os
 import re
 import subprocess
@@ -84,10 +83,10 @@ def display_error_summary():
 		if len(stat_list):
 			for stat_info in stat_list:
 				stat_info = NamespaceDict(stat_info)
-				logging.warning(f"The following kits had {name}:")
+				merge.model.log.warning(f"The following kits had {name}:")
 				branch_info = f"{stat_info.name} branch {stat_info.branch}".ljust(30)
-				logging.warning(f"* {branch_info} -- {stat_info.count} {shortname}.")
-			logging.warning(f"{name} errors logged to {merge.model.temp_path}.")
+				merge.model.log.warning(f"* {branch_info} -- {stat_info.count} {shortname}.")
+			merge.model.log.warning(f"{name} errors logged to {merge.model.temp_path}.")
 
 
 def strip_rev(s):
@@ -508,13 +507,17 @@ def load_json(fn, validate=True):
 	inspect, by default.
 	"""
 	with open(fn, "r") as f:
-		kit_cache_data = json.loads(f.read())
+		try:
+			kit_cache_data = json.loads(f.read())
+		except json.decoder.JSONDecodeError as jde:
+			merge.model.log.error(f"Unable to parse JSON in {fn}: {jde}")
+			raise jde
 		if validate:
 			if "cache_data_version" not in kit_cache_data:
-				logging.error("JSON invalid or missing cache_data_version.")
+				merge.model.log.error("JSON invalid or missing cache_data_version.")
 				return None
 			elif kit_cache_data["cache_data_version"] != CACHE_DATA_VERSION:
-				logging.error(f"Cache data version is {kit_cache_data['cache_data_version']} but needing {CACHE_DATA_VERSION}")
+				merge.model.log.error(f"Cache data version is {kit_cache_data['cache_data_version']} but needing {CACHE_DATA_VERSION}")
 				return None
 		return kit_cache_data
 

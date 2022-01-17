@@ -20,7 +20,7 @@ async def main_thread(args):
 		for kit_name, kit_list in merge.model.release_yaml.kits.items():
 			for kit in kit_list:
 				print(kit_name)
-				kit.eclass_copy_steps()
+				kit.eclass_include_info()
 	except subpop.config.ConfigurationError as ce:
 		sys.stdout.write(f"An error was encountered: {ce.__class__.__name__}: {' '.join(ce.args)}\nPlease make sure to run merge-kits with the cwd inside a kit-fixups repo.\n")
 		sys.exit(1)
@@ -33,8 +33,6 @@ CLI_CONFIG = {
 def parse_args():
 	ap = argparse.ArgumentParser()
 	for arg, kwargs in CLI_CONFIG.items():
-		if "os" in kwargs:
-			del kwargs["os"]
 		if "positional" in kwargs and kwargs["positional"]:
 			new_kwargs = kwargs.copy()
 			del new_kwargs["positional"]
