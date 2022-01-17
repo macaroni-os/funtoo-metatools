@@ -84,6 +84,10 @@ class Tree:
 			return
 		self.model.log.info(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
 		# use subprocess.call so we can see the output of autogen:
+		if self.model.prod:
+			scope = self.model.release
+		else:
+			scope = "local"
 		retcode = subprocess.call(
 			f"cd {autogen_path} && doit --fastpull_scope={self.model.release}",
 			shell=True,

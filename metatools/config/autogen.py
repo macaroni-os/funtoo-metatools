@@ -57,9 +57,6 @@ class AutogenConfig(MinimalConfig):
 
 	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None):
 		self.fastpull_scope = fastpull_scope
-		if fetch_cache_interval:
-			# use our default unless another timedelta specified:
-			self.fetch_cache_interval = fetch_cache_interval
 
 		self.config = yaml.safe_load(self.get_file("autogen"))
 		# Set to empty values if non-existent:
@@ -85,6 +82,11 @@ class AutogenConfig(MinimalConfig):
 		self.log.debug(f"Fetch cache interval set to {self.fetch_cache_interval}")
 		self.locator = OverlayLocator()
 		self.kit_fixups_repo = GitRepositoryLocator()
+
+		if fetch_cache_interval is not None:
+			# use our default unless another timedelta specified:
+			self.fetch_cache_interval = fetch_cache_interval
+
 		repo_name = None
 		repo_name_path = os.path.join(self.locator.root, "profiles/repo_name")
 		if os.path.exists(repo_name_path):

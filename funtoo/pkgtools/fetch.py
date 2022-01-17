@@ -98,6 +98,9 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 
 
 async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False, **content_kwargs):
+	# Respect doit --immediate option
+	if pkgtools.model.fetch_cache_interval is not None:
+		refresh_interval = pkgtools.model.fetch_cache_interval
 	result = await fetch_harness(pkgtools.http.get_page, fetchable, max_age=max_age, refresh_interval=refresh_interval, **content_kwargs)
 	if not is_json:
 		return result
