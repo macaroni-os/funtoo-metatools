@@ -80,9 +80,9 @@ class Tree:
 			return
 		autogen_path = os.path.join(self.root, src_offset)
 		if not os.path.exists(autogen_path):
-			print("Skipping autogen as src_offset %s (in %s) doesn't exist!" % (src_offset, autogen_path))
+			self.model.log.warning(f"Skipping autogen as src_offset {src_offset} (in {autogen_path}) doesn't exist!")
 			return
-		print(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
+		self.model.log.info(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
 		# use subprocess.call so we can see the output of autogen:
 		retcode = subprocess.call(
 			f"cd {autogen_path} && doit --fastpull_scope={self.model.release}",

@@ -501,7 +501,7 @@ class InsertEbuilds(MergeStep):
 		else:
 			dest_cat_set = set()
 		# Our main loop:
-		print("# Merging in ebuilds from %s" % srctree_root)
+		merge.model.log.info(f"Merging in ebuilds from {srctree_root}")
 		for cat in src_cat_set:
 			catdir = os.path.join(srctree_root, cat)
 			if not os.path.isdir(catdir):

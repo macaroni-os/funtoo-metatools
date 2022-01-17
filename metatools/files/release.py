@@ -151,8 +151,6 @@ class Kit:
 		  		]
 		  }
 		"""
-		if not self.eclasses:
-			return []
 
 		if "mask" in self.eclasses:
 			mask_set = set(list(self.eclasses["mask"]))

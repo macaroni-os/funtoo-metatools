@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import threading
 from collections import defaultdict
 from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
@@ -378,11 +379,14 @@ class KitGenerator:
 
 		eclasses += self.eclasses
 
-		count = 0
-		futures = []
-		fut_map = {}
+		total_count_lock = threading.Lock()
+		total_count = 0
 
 		with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
+			count = 0
+			futures = []
+			fut_map = {}
+
 			for ebpath in self.iter_ebuilds():
 				future = executor.submit(
 					self.get_ebuild_metadata,
@@ -393,16 +397,22 @@ class KitGenerator:
 				fut_map[future] = ebpath
 				futures.append(future)
 
-		for future in as_completed(futures):
-			count += 1
-			data = future.result()
-			if data is None:
-				sys.stdout.write("!")
-			else:
-				sys.stdout.write(".")
-				sys.stdout.flush()
+			for future in as_completed(futures):
+				count += 1
+				data = future.result()
+				if data is None:
+					sys.stdout.write("!")
+				else:
+					sys.stdout.write(".")
+					sys.stdout.flush()
 
-		print(f"{count} ebuilds processed.")
+			with total_count_lock:
+				total_count += count
+
+		if total_count:
+			merge.model.log.info(f"Metadata for {total_count} ebuilds processed.")
+		else:
+			merge.model.log.warning(f"No ebuilds were found when processing metadata.")
 
 	async def generate(self):
 
@@ -559,6 +569,7 @@ class KitGenerator:
 			self.active_repos.add(repo_name)
 			# TODO: add move maps below
 			steps += [merge.steps.InsertEbuilds(self.kit.source.repositories[repo_name].tree, skip=None, replace=True, move_maps=None, select=packages, scope=merge.model.release)]
+		print("PKGS", steps)
 		return steps
 
 	def copy_from_fixups_steps(self):
