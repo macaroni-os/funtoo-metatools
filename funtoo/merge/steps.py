@@ -4,6 +4,7 @@ import itertools
 import os
 import re
 import shutil
+import sys
 
 import dyne.org.funtoo.metatools.merge as merge
 
@@ -399,7 +400,7 @@ class ZapMatchingEbuilds(MergeStep):
 
 class InsertEbuilds(MergeStep):
 	"""
-	Insert ebuilds in source tre into destination tree.
+	Insert ebuilds in source tree into destination tree.
 
 	select: Ebuilds to copy over.
 	        By default, all ebuilds will be selected. This can be modified by setting select to a
@@ -573,6 +574,9 @@ class InsertEbuilds(MergeStep):
 		if script_out:
 			temp_out = os.path.join(merge.model.temp_path, kit_gen.out_tree.name + "_copyfiles.sh")
 			os.makedirs(os.path.dirname(temp_out), exist_ok=True)
+			sys.stdout.write(f"Written to {temp_out}:\n")
+			sys.stdout.write(script_out)
+			sys.stdout.write("\n")
 			with open(temp_out, "w") as f:
 				f.write("#!/bin/bash\n")
 				f.write(script_out)

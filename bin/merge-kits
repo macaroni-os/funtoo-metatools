@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 
 import argparse
+import asyncio
+import os
+import signal
 import sys
 
+import psutil
 import subpop
 from subpop.hub import Hub
 
@@ -24,16 +28,39 @@ class MergeError(Exception):
 # TODO: add a means to copy an entire kit, without listing everything in packages.yaml.
 
 
-async def main_thread(args):
+# Added this to properly and immediately terminate all tasks and subprocesses:
 
+async def do_process_teardown():
+	cur_proc = psutil.Process()
+	children = cur_proc.children()
+	for pid in children:
+		try:
+			pid.send_signal(signal.SIGKILL)
+		except ProcessLookupError:
+			pass
+
+	async def cleanup():
+		tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+		[task.cancel() for task in tasks]
+
+	await cleanup()
+
+	# Kill any active threads:
+	os.kill(os.getpid(), 9)
+
+
+async def main_thread(args):
 	try:
 		await merge.launch(MergeConfig, release=args.release, prod=args.prod, push=not args.nopush, create_branches=args.create_branches)
 	except subpop.config.ConfigurationError as ce:
 		sys.stdout.write(f"An error was encountered: {ce.__class__.__name__}: {' '.join(ce.args)}\nPlease make sure to run merge-kits with the cwd inside a kit-fixups repo.\n")
 		sys.exit(1)
 	controller = merge.kit.MetaRepoJobController()
-	await controller.generate()
-
+	try:
+		await controller.generate()
+	except KeyboardInterrupt:
+		merge.model.log.error("Keyboard interrupt -- shutting down.")
+		await do_process_teardown()
 
 
 CLI_CONFIG = {

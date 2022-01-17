@@ -458,7 +458,7 @@ class KitGenerator:
 		# Now, we can run any post-steps to get the tree in ready-to-commit condition:
 		##############################################################################
 
-		steps += [
+		steps = [
 			merge.steps.FindAndRemove(["__pycache__"]),
 			merge.steps.FindAndRemove(["COPYRIGHT.txt"]), # replaced with COPYRIGHT.rst
 			merge.steps.GenerateLicensingFile(text=self.kit.get_copyright_rst()),

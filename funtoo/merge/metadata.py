@@ -331,13 +331,14 @@ def extract_ebuild_metadata(kit_gen_obj, atom, ebuild_path=None, env=None, eclas
 			success = True
 		else:
 			output, err_out = proc.communicate()
+			output = output.decode("utf-8")
+			err_out = err_out.decode("utf-8")
 	if not success:
-		err_out = err_out.decode("utf-8")
-		kit_gen_obj.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": err_out}
-		merge.model.log.error(f"ebuild.sh failure: {err_out}")
+		kit_gen_obj.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": output}
+		merge.model.log.error(f"ebuild.sh failure: {output}")
 		return None
 	try:
-		lines = output.decode("utf-8").split("\n")
+		lines = output.split("\n")
 		line = 0
 		found = set()
 		while line < len(METADATA_LINES) and line < len(lines):
