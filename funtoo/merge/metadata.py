@@ -6,6 +6,7 @@ import os
 import re
 import subprocess
 from collections import defaultdict
+from shlex import quote
 
 import dyne.org.funtoo.metatools.merge as merge
 from dict_tools.data import NamespaceDict
@@ -14,8 +15,6 @@ from dict_tools.data import NamespaceDict
 # This file contains the more 'grizzly' low-level parts of the kit-cache generation code. It is used by
 # funtoo/merge/kit.py.
 #################################################################################################################
-
-from metatools.tree import run
 
 #################################################################################################################
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
@@ -306,37 +305,24 @@ def extract_ebuild_metadata(kit_gen_obj, atom, ebuild_path=None, env=None, eclas
 		env["EAPI"] = "0"
 	env["PORTAGE_GID"] = "250"
 	env["PORTAGE_BIN_PATH"] = "/usr/lib/portage/python3.7"
-	#env["PORTAGE_ECLASS_LOCATIONS"] = " ".join(eclass_paths)
 	env["EBUILD"] = ebuild_path
 	env["EBUILD_PHASE"] = "depend"
-	# TODO: turn off:
-	env["ECLASS_DEBUG_OUTPUT"] = "on"
+	# Normally keep this turned off:
+	# env["ECLASS_DEBUG_OUTPUT"] = "on"
 	# This tells ebuild.sh to write out the metadata to stdout (fd 1) which is where we will grab
 	# it from:
 	env["PORTAGE_PIPE_FD"] = "1"
-	cmdstr = "export PORTAGE_ECLASS_LOCATIONS=(\n"
-	for eclass_path in eclass_paths:
-		cmdstr += f"  {eclass_path}\n"
-	cmdstr += ")\n"
-	#echo LOCATIONS IS $PORTAGE_ECLASS_LOCATIONS[@]\n"
+	env["PORTAGE_ECLASS_LOCATIONS"] = " ".join(quote(x) for x in eclass_paths)
 	ebuild_sh_path = os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh")
-	cmdstr += f". {ebuild_sh_path}\n"
-	merge.model.log.info(cmdstr)
-	#result = run("/bin/bash -c \"" + cmdstr + "\"", env=env)
-
-	success = False
-	err_out = ""
+	cmdstr = f". {ebuild_sh_path}\nexit 0\n"
 	with subprocess.Popen(["/bin/bash", "-c", cmdstr], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
-		if proc.returncode == 0:
-			success = True
-		else:
-			output, err_out = proc.communicate()
-			output = output.decode("utf-8")
-			err_out = err_out.decode("utf-8")
-	if not success:
-		kit_gen_obj.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": output}
-		merge.model.log.error(f"ebuild.sh failure: {output}")
-		return None
+		return_code = proc.returncode
+		output, err_out = proc.communicate()
+		output = output.decode("utf-8")
+		err_out = err_out.decode("utf-8")
+	if return_code:
+		kit_gen_obj.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": err_out}
+		return return_code
 	try:
 		lines = output.split("\n")
 		line = 0
@@ -532,21 +518,32 @@ def get_atom(kit_gen_obj, atom, md5, manifest_md5):
 	Otherwise we treat this as a cache miss.
 	"""
 	existing = None
-	if atom in kit_gen_obj.kit_cache and kit_gen_obj.kit_cache[atom]["md5"] == md5:
-		existing = kit_gen_obj.kit_cache[atom]
-		bad = False
-		if "manifest_md5" not in existing:
+	if atom in kit_gen_obj.kit_cache:
+		if not kit_gen_obj.kit_cache[atom]:
+			merge.model.log.error(f"kit cache atom {atom} bad due to empty data")
 			bad = True
-		elif manifest_md5 != existing["manifest_md5"]:
+		elif kit_gen_obj.kit_cache[atom]["md5"] != md5:
+			merge.model.log.error(f"kit cache atom {atom} bad due to non-matching md5")
 			bad = True
-		elif existing["eclasses"]:
-			for eclass, md5 in existing["eclasses"]:
-				if eclass not in kit_gen_obj.eclasses.hashes:
-					bad = True
-					break
-				if kit_gen_obj.eclasses.hashes[eclass] != md5:
-					bad = True
-					break
+		else:
+			existing = kit_gen_obj.kit_cache[atom]
+			bad = False
+			if "manifest_md5" not in existing:
+				merge.model.log.error(f"kit cache atom {atom} bad due to missing manifest md5")
+				bad = True
+			elif manifest_md5 != existing["manifest_md5"]:
+				merge.model.log.error(f"kit cache atom {atom} bad due to non-matching manifest md5")
+				bad = True
+			elif existing["eclasses"]:
+				for eclass, md5 in existing["eclasses"]:
+					if eclass not in kit_gen_obj.eclasses.hashes:
+						merge.model.log.error(f"kit cache atom {atom} bad due to missing eclass {eclass}")
+						bad = True
+						break
+					if kit_gen_obj.eclasses.hashes[eclass] != md5:
+						merge.model.log.error(f"kit cache atom {atom} bad due to changed md5 for {eclass}")
+						bad = True
+						break
 		if bad:
 			# stale cache entry, don't use.
 			existing = None

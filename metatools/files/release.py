@@ -77,8 +77,6 @@ class Kit:
 		self.priority = priority
 		self.aliases = aliases if aliases else []
 		self.masters = masters if masters else []
-		# This will be initialized by ReleaseYAML.set_kit_hierarchies() later, once all Kits have been instantiated:
-		self.masters_list = []
 		self.sync_url = sync_url.format(kit_name=name) if sync_url else None
 		self.settings = settings if settings is not None else {}
 		self._package_data = None

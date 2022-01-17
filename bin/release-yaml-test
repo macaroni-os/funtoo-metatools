@@ -17,10 +17,13 @@ async def main_thread(args):
 
 	try:
 		await merge.launch(MergeConfig, release=args.release)
-		for kit_name, kit_list in merge.model.release_yaml.kits.items():
-			for kit in kit_list:
-				print(kit_name)
-				kit.eclass_include_info()
+		e1 = merge.kit.EclassHashCollection(path='/var/git/meta-repo/kits/core-kit')
+		e2 = merge.kit.EclassHashCollection(path='/var/git/meta-repo/kits/llvm-kit')
+		e3 = e1 + e2
+		print(e3.paths)
+		e3 += e1
+		print(e3.paths)
+
 	except subpop.config.ConfigurationError as ce:
 		sys.stdout.write(f"An error was encountered: {ce.__class__.__name__}: {' '.join(ce.args)}\nPlease make sure to run merge-kits with the cwd inside a kit-fixups repo.\n")
 		sys.exit(1)

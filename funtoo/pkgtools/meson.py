@@ -107,5 +107,6 @@ async def get_build_options_from_artifact(src_artifact, src_dir_glob="*"):
 	build_options = get_build_options(src_dir)
 
 	src_artifact.cleanup()
-
-	return build_options
+	# It is good to return a sorted list so any programmatic use of this data in ebuilds will
+	# produce the options in a deterministic order (avoiding randomized order):
+	return list(sorted(build_options, key=lambda x: x.name))
