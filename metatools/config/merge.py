@@ -29,6 +29,7 @@ class MergeConfig(MinimalConfig):
 	mirror_repos = False
 	nest_kits = True
 	git_class = AutoCreatedGitTree
+	fixups_url = None
 
 	# Not sure if this is used:
 	_third_party_mirrors = None
@@ -41,7 +42,7 @@ class MergeConfig(MinimalConfig):
 	current_source_def = None
 	log = None
 
-	async def initialize(self, prod=False, push=False, release=None, create_branches=False):
+	async def initialize(self, prod=False, push=False, release=None, create_branches=False, fixups_url=None):
 
 		self.log = logging.getLogger('metatools.merge')
 		self.log.propagate = False
@@ -54,15 +55,16 @@ class MergeConfig(MinimalConfig):
 		self.push = push
 		self.release = release
 		self.create_branches = create_branches
+		self.fixups_url = fixups_url
 
-		# Locate the root of the git repository we're currently in. We assume this is kit-fixups:
-		self.locator = GitRepositoryLocator()
-		self.context = self.locator.root
+		# TODO: refuse to use any source repository that has local changes (use git status --porcelain | wc -l)
+		self.context = os.path.join(self.source_trees, "kit-fixups")
+		self.kit_fixups = GitTree(name='kit-fixups', root=self.context, model=self, url=fixups_url)
+		self.kit_fixups.initialize()
+		self.locator = GitRepositoryLocator(start_path=self.kit_fixups.root)
 
 		# Next, find release.yaml in the proper directory in kit-fixups.
-
 		self.release_yaml = ReleaseYAML(self.locator, mode="prod" if prod else "dev", release=release)
-		self.kit_fixups = GitTree(name='kit-fixups', root=self.release_yaml.locator.root, model=self)
 
 		# TODO: add a means to override the remotes in the release.yaml using a local config file.
 

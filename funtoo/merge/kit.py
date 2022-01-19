@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import threading
+import traceback
 from collections import defaultdict
 from concurrent.futures import as_completed
 from concurrent.futures.thread import ThreadPoolExecutor
@@ -15,7 +16,7 @@ from subpop.util import AttrDict
 from funtoo.merge.metadata import AUXDB_LINES, get_catpkg_relations_from_depstring, get_filedata, extract_ebuild_metadata, strip_rev, get_atom, load_json, CACHE_DATA_VERSION
 from metatools.files.release import Kit, SourceCollection, SourceRepository
 from metatools.hashutils import get_md5
-from metatools.tree import run_shell, GitTree
+from metatools.tree import run_shell, GitTree, GitTreeError
 
 """
 This file exists to define objects related to the processing of kits and releases. It uses settings defined in 
@@ -128,15 +129,18 @@ class KitGenerator:
 		self.kit_cache[atom] = td_out
 		self.kit_cache_writes.add(atom)
 
-	# TODO: I removed this from GitTree and moved it here. All Steps should be adapted.
 	async def run(self, steps):
 		for step in steps:
 			if step is not None:
 				merge.model.log.info(f"Running step {step.__class__.__name__} for {self.out_tree.root}")
 				try:
 					await step.run(self)
-				except Exception as e:
-					merge.model.log.error(f"Exiting due to {e} {type(e)}")
+				except GitTreeError as gte:
+					merge.model.log.error(f"Exiting due to {gte}.")
+					sys.exit(1)
+				except Exception as ex:
+					exc_string = (''.join(traceback.format_exception(etype=type(ex), value=ex, tb=ex.__traceback__)))
+					merge.model.log.error(f"Exiting due to:\n{exc_string}")
 					sys.exit(1)
 
 	def fetch_kit(self):
@@ -146,7 +150,10 @@ class KitGenerator:
 		outpath = self.get_kit_cache_path()
 		kit_cache_data = None
 		if os.path.exists(outpath):
-			kit_cache_data = load_json(outpath)
+			try:
+				kit_cache_data = load_json(outpath)
+			except json.decoder.JSONDecodeError:
+				merge.model.log.warning(f"Kit cache at {outpath} may be empty and will be overwritten.")
 		if kit_cache_data is not None:
 			self.kit_cache = kit_cache_data["atoms"]
 			self.metadata_errors = {}
@@ -176,7 +183,6 @@ class KitGenerator:
 			extra_atoms = self.kit_cache_retrieved_atoms - all_keys
 			for key in remove_keys:
 				del self.kit_cache[key]
-			merge.model.log.warning(f"Removed {len(remove_keys)} keys.")
 			if len(extra_atoms):
 				merge.model.log.error("THERE ARE EXTRA ATOMS THAT WERE RETRIEVED BUT NOT IN CACHE!")
 				merge.model.log.error(f"{extra_atoms}")
@@ -187,7 +193,7 @@ class KitGenerator:
 				"atoms": self.kit_cache,
 				"metadata_errors": self.metadata_errors,
 			}
-			merge.model.log.warning(f"Flushed {self.kit.name}. {len(self.kit_cache)} atoms. {len(self.metadata_errors)} errors.")
+			merge.model.log.warning(f"Flushed {self.kit.name}. {len(self.kit_cache)} atoms. Removed {len(remove_keys)} keys. {len(self.metadata_errors)} errors.")
 			with open(outpath, "w") as f:
 				f.write(json.dumps(outdata))
 
@@ -237,7 +243,6 @@ class KitGenerator:
 
 	def gen_ebuild_metadata(self, atom, merged_eclasses, ebuild_path):
 		# merge.model.log.info(f"get_ebuild_metadata for {ebuild_path} (new)")
-		merge.model.log.warn(f"generating missing metadata for {atom}")
 		self.kit_cache_misses.add(atom)
 
 		env = {}
@@ -260,19 +265,22 @@ class KitGenerator:
 
 		if not isinstance(infos, dict):
 			# metadata extract failure
-			merge.model.log.error(f"metadata failure: {infos} {ebuild_path}")
 			return None, None
 		return env, infos
 
+	def write_repo_cache_entry(self, atom, metadata_out):
+		# if we successfully extracted metadata and we are told to write cache, write the cache entry:
+		metadata_outpath = os.path.join(self.out_tree.root, "metadata/md5-cache")
+		final_md5_outpath = os.path.join(metadata_outpath, atom)
+		os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
+		with open(os.path.join(metadata_outpath, atom), "w") as f:
+			f.write(metadata_out)
+
 	# TODO: eclass_paths needs to be supported so that we can find eclasses.
-	def get_ebuild_metadata(self, merged_eclasses, ebuild_path, write_cache=False):
+	def get_ebuild_metadata(self, merged_eclasses, ebuild_path):
 		"""
 		This function will grab metadata from a single ebuild pointed to by `ebuild_path` and
 		return it as a dictionary.
-
-		If `write_cache` is True, a `metadata/md5-cache/cat/pvr` file will be written out to the
-		repository as well. If `write_cache` is True, then `eclass_paths` and `eclass_hashes`
-		must be supplied.
 
 		This function sets up a clean environment and spawns a bash process which runs `ebuild.sh`,
 		which is a file from Portage that processes the ebuild and eclasses and outputs the metadata
@@ -300,12 +308,12 @@ class KitGenerator:
 		if existing:
 			self.kit_cache_retrieved_atoms.add(atom)
 			infos = existing["metadata"]
+			self.write_repo_cache_entry(atom, existing["metadata_out"])
 			return infos
 		# TODO: Note - this may be a 'dud' existing entry where there was a metadata failure previously.
 		else:
 			env, infos = self.gen_ebuild_metadata(atom, merged_eclasses, ebuild_path)
 			if infos is None:
-				merge.model.log.warn(f"didn't get valid metadata for {atom}")
 				self.update_atom(atom, {})
 				return {}
 
@@ -366,15 +374,7 @@ class KitGenerator:
 		if manifest_md5 is not None and "SRC_URI" in infos:
 			td_out["files"] = get_filedata(infos["SRC_URI"], manifest_path)
 		self.update_atom(atom, td_out)
-
-		if write_cache:
-			# if we successfully extracted metadata and we are told to write cache, write the cache entry:
-			metadata_outpath = os.path.join(self.out_tree.root, "metadata/md5-cache")
-			final_md5_outpath = os.path.join(metadata_outpath, atom)
-			os.makedirs(os.path.dirname(final_md5_outpath), exist_ok=True)
-			with open(os.path.join(metadata_outpath, atom), "w") as f:
-				f.write(metadata_out)
-
+		self.write_repo_cache_entry(atom, metadata_out)
 		return infos
 
 	def gen_cache(self):
@@ -395,8 +395,7 @@ class KitGenerator:
 				future = executor.submit(
 					self.get_ebuild_metadata,
 					self.merged_eclasses,
-					ebpath,
-					write_cache=True,
+					ebpath
 				)
 				fut_map[future] = ebpath
 				futures.append(future)
@@ -573,7 +572,6 @@ class KitGenerator:
 			self.active_repos.add(repo_name)
 			# TODO: add move maps below
 			steps += [merge.steps.InsertEbuilds(self.kit.source.repositories[repo_name].tree, skip=None, replace=True, move_maps=None, select=packages, scope=merge.model.release)]
-		print("PKGS", steps)
 		return steps
 
 	def copy_from_fixups_steps(self):

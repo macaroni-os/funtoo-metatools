@@ -5,6 +5,7 @@ import json
 import os
 import re
 import subprocess
+import traceback
 from collections import defaultdict
 from shlex import quote
 
@@ -314,16 +315,16 @@ def extract_ebuild_metadata(kit_gen_obj, atom, ebuild_path=None, env=None, eclas
 	env["PORTAGE_PIPE_FD"] = "1"
 	env["PORTAGE_ECLASS_LOCATIONS"] = " ".join(quote(x) for x in eclass_paths)
 	ebuild_sh_path = os.path.join(env["PORTAGE_BIN_PATH"], "ebuild.sh")
-	cmdstr = f". {ebuild_sh_path}\nexit 0\n"
+	cmdstr = f". {ebuild_sh_path}\n"
 	with subprocess.Popen(["/bin/bash", "-c", cmdstr], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
 		return_code = proc.returncode
 		output, err_out = proc.communicate()
 		output = output.decode("utf-8")
 		err_out = err_out.decode("utf-8")
-	if return_code:
-		kit_gen_obj.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": err_out}
-		return return_code
 	try:
+		if return_code:
+			# Not expecting a non-zero return code:
+			raise ValueError()
 		lines = output.split("\n")
 		line = 0
 		found = set()
@@ -333,14 +334,15 @@ def extract_ebuild_metadata(kit_gen_obj, atom, ebuild_path=None, env=None, eclas
 			line += 1
 		if line != len(METADATA_LINES):
 			missing = set(METADATA_LINES) - found
-			kit_gen_obj.metadata_errors[atom] = {"status": "missing " + " ".join(missing), "output": err_out}
-			return None
+			raise ValueError()
 		# Success! Clear previous error, if any:
 		if atom in kit_gen_obj.metadata_errors:
 			del kit_gen_obj.metadata_errors[atom]
 		return infos
-	except (FileNotFoundError, IndexError) as e:
-		kit_gen_obj.metadata_errors[atom] = {"status": "exception", "exception": str(e)}
+	except (FileNotFoundError, IndexError, ValueError) as ex:
+		exc_string = (''.join(traceback.format_exception(etype=type(ex), value=ex, tb=ex.__traceback__)))
+		kit_gen_obj.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": err_out, "exception": exc_string}
+		merge.model.log.error(f"{atom} metadata error: {err_out}")
 		return None
 
 
@@ -520,28 +522,28 @@ def get_atom(kit_gen_obj, atom, md5, manifest_md5):
 	existing = None
 	if atom in kit_gen_obj.kit_cache:
 		if not kit_gen_obj.kit_cache[atom]:
-			merge.model.log.error(f"kit cache atom {atom} bad due to empty data")
+			merge.model.log.error(f"Kit cache atom {atom} invalid due to empty data")
 			bad = True
 		elif kit_gen_obj.kit_cache[atom]["md5"] != md5:
-			merge.model.log.error(f"kit cache atom {atom} bad due to non-matching md5")
+			merge.model.log.error(f"Kit cache atom {atom} ignored due to non-matching MD5 (if this recurs: non-deterministic ebuild?)")
 			bad = True
 		else:
 			existing = kit_gen_obj.kit_cache[atom]
 			bad = False
 			if "manifest_md5" not in existing:
-				merge.model.log.error(f"kit cache atom {atom} bad due to missing manifest md5")
+				merge.model.log.error(f"Kit cache atom {atom} ignored due to missing manifest md5 (incomplete? bug?)")
 				bad = True
 			elif manifest_md5 != existing["manifest_md5"]:
-				merge.model.log.error(f"kit cache atom {atom} bad due to non-matching manifest md5")
+				merge.model.log.error(f"Kit cache atom {atom} ignored due to non-matching manifest MD5 (if this recurs: may indicate bug.)")
 				bad = True
 			elif existing["eclasses"]:
 				for eclass, md5 in existing["eclasses"]:
-					if eclass not in kit_gen_obj.eclasses.hashes:
-						merge.model.log.error(f"kit cache atom {atom} bad due to missing eclass {eclass}")
+					if eclass not in kit_gen_obj.merged_eclasses.hashes:
+						merge.model.log.error(f"Kit cache atom {atom} can't be used due to missing eclass {eclass}")
 						bad = True
 						break
-					if kit_gen_obj.eclasses.hashes[eclass] != md5:
-						merge.model.log.error(f"kit cache atom {atom} bad due to changed md5 for {eclass}")
+					if kit_gen_obj.merged_eclasses.hashes[eclass] != md5:
+						merge.model.log.warning(f"Kit cache atom {atom} can't be used due to changed MD5 for {eclass}")
 						bad = True
 						break
 		if bad:

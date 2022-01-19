@@ -89,7 +89,7 @@ class Tree:
 		else:
 			scope = "local"
 		retcode = subprocess.call(
-			f"cd {autogen_path} && doit --fastpull_scope={self.model.release}",
+			f"cd {autogen_path} && doit --fastpull_scope={scope}",
 			shell=True,
 		)
 		if retcode != 0:

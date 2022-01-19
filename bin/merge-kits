@@ -51,9 +51,9 @@ async def do_process_teardown():
 
 async def main_thread(args):
 	try:
-		await merge.launch(MergeConfig, release=args.release, prod=args.prod, push=not args.nopush, create_branches=args.create_branches)
+		await merge.launch(MergeConfig, release=args.release, prod=args.prod, push=not args.nopush, create_branches=args.create_branches, fixups_url=args.fixups_url)
 	except subpop.config.ConfigurationError as ce:
-		sys.stdout.write(f"An error was encountered: {ce.__class__.__name__}: {' '.join(ce.args)}\nPlease make sure to run merge-kits with the cwd inside a kit-fixups repo.\n")
+		sys.stdout.write(f"An error was encountered: {ce.__class__.__name__}: {' '.join(ce.args)}\nPlease specify --fixups_url <clone_url> to clone your fixups repo.\n")
 		sys.exit(1)
 	controller = merge.kit.MetaRepoJobController()
 	try:
@@ -64,6 +64,7 @@ async def main_thread(args):
 
 
 CLI_CONFIG = {
+	"fixups_url": {"type": str},
 	"force": {"action": "store_true", "default": False},
 	"nopush": {"action": "store_true", "default": False},
 	"prod": {"action": "store_true", "default": False},
