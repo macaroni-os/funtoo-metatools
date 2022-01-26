@@ -293,20 +293,18 @@ async def execute_generator(
 				if generate is None:
 					return autogen_info, AttributeError(f"generate() not found in {generator_sub}")
 				try:
-					await generate(AutoHub(autogen_id, pkgtools), **pkginfo)
-				except TypeError as te:
-					if not inspect.iscoroutinefunction(generate):
-						pkgtools.model.log.error(f"generate() in {generator_sub} must be async")
-					exc = te
+					try:
+						await generate(AutoHub(autogen_id, pkgtools), **pkginfo)
+					except TypeError as te:
+						if not inspect.iscoroutinefunction(generate):
+							pkgtools.model.log.error(f"generate() in {generator_sub} must be async")
+							return False
+						else:
+							raise te
 				except Exception as e:
-
-					exc = e
-				if exc:
-					pkgtools.model.log.error(f"Autogen failure: {autogen_info}")
-					pkgtools.model.log.error(exc, exc_info=True)
+					pkgtools.model.log.error(e, exc_info=True)
 					return False
-				else:
-					return True
+				return True
 
 			task = Task(gen_wrapper(pkginfo, generator_sub))
 			task.add_done_callback(_handle_task_result)
