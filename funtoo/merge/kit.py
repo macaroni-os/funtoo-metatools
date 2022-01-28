@@ -199,7 +199,7 @@ async def generate_kit(ctx):
 	elif ctx.kit.kind == "sourced":
 		steps += [merge.steps.CleanTree()]
 		pre_steps, post_steps = merge.foundations.get_kit_pre_post_steps(ctx)
-		from_tree = merge.model.SOURCE_REPOS[ctx.source]
+		from_tree = merge.model.SOURCE_REPOS[ctx.kit.source]
 		steps += [
 			merge.steps.SyncFromTree(from_tree)
 		]
