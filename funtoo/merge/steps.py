@@ -472,8 +472,7 @@ class InsertEbuilds(MergeStep):
 		else:
 			srctree_root = self.srctree.root
 
-		if self.srctree.should_autogen:
-			await self.srctree.autogen(src_offset=self.ebuildloc)
+		await self.srctree.autogen(src_offset=self.ebuildloc)
 
 		desttree.logTree(self.srctree)
 		# Figure out what categories to process:

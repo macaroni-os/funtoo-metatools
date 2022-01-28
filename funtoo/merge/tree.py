@@ -70,10 +70,6 @@ class Tree:
 				return
 			self.merged.append([srctree.name, srctree.head()])
 
-	@property
-	def should_autogen(self):
-		return self.name == "kit-fixups"
-
 	async def autogen(self, src_offset=None):
 		if src_offset is None:
 			src_offset = ""
