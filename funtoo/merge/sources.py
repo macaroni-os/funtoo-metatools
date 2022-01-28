@@ -37,6 +37,7 @@ def initialize_repo(repo_dict):
 		merge.model.SOURCE_REPOS[repo_key] = repo_obj
 	logging.warning(f"Git updates for {repo_dict['name']} complete.")
 
+
 async def initialize_sources(source):
 	if merge.model.CURRENT_SOURCE_DEF == source:
 		return
