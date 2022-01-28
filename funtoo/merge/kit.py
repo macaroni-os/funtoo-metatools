@@ -201,7 +201,7 @@ async def generate_kit(ctx):
 		pre_steps, post_steps = merge.foundations.get_kit_pre_post_steps(ctx)
 		sourced_tree_list = list(merge.model.SOURCE_REPOS.keys())
 		if len(sourced_tree_list) != 1:
-			raise ValueError(f"'sourced' tree {ctx.name} has {len(sourced_tree_list)} sources -- it should have only ONE source.")
+			raise ValueError(f"'sourced' tree {ctx.kit.name} has {len(sourced_tree_list)} sources -- it should have only ONE source. {merge.model.SOURCE_REPOS}")
 		from_tree = merge.model.SOURCE_REPOS[sourced_tree_list[0]]
 		steps += [
 			merge.steps.SyncFromTree(from_tree)
