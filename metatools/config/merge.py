@@ -1,12 +1,10 @@
 import logging
 import os
-import threading
 from datetime import datetime
 
 from metatools.config.base import MinimalConfig
 from metatools.context import GitRepositoryLocator
 from metatools.files.release import ReleaseYAML
-from metatools.hashutils import get_md5
 from metatools.pretty_logging import TornadoPrettyLogFormatter
 from metatools.tree import AutoCreatedGitTree, GitTree
 

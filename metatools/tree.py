@@ -69,10 +69,6 @@ class Tree:
 				return
 			self.merged.append([srctree.name, srctree.head()])
 
-	@property
-	def should_autogen(self):
-		return self.name == "kit-fixups"
-
 	async def autogen(self, src_offset=None):
 		if src_offset is None:
 			src_offset = ""
@@ -330,10 +326,13 @@ class GitTree(Tree):
 				if self.branch not in init_branches:
 					if self.create_branches:
 						self._create_branches()
-					raise ShellError(f"Could not find remote branch: {self.branch} in git tree {self.root}.")
+						init_branches = [self.branch]
+					else:
+						raise ShellError(f"Could not find remote branch: {self.branch} in git tree {self.root}.")
 				# Put the branch we want at the end, so we end up with it active/
-				init_branches.remove(self.branch)
-				init_branches += [self.branch]
+				else:
+					init_branches.remove(self.branch)
+					init_branches += [self.branch]
 		else:
 			init_branches.append(self.branch)
 

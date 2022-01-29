@@ -20,13 +20,9 @@ import dyne.org.funtoo.metatools.merge as merge
 class MergeError(Exception):
 	pass
 
-# TODO: we need to set the IntegrityScope which gets passed to 'doit'.
-# TODO: we likely should deprecate indy kits in favor of autogenned kits using indy kits as a source kit.
-# TODO: allow certain kits like llvm-kit to be generated *before* other kits.
-# TODO: clean up main_thread() and in general make things cleaner.
-# TODO: drop all indy-kit-specific code to make things cleaner.
-# TODO: add a means to copy an entire kit, without listing everything in packages.yaml.
 
+# TODO: add a means to copy an entire kit, without listing everything in packages.yaml.
+#       (This will be added with 'sourced' kits.)
 
 # Added this to properly and immediately terminate all tasks and subprocesses:
 
