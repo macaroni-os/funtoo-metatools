@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import json
+import logging
 import os
 import sys
 from collections import defaultdict
@@ -139,7 +140,7 @@ async def checkout_kit(ctx, pull=None):
 		pass
 
 	root = get_kit_root(ctx.kit.name)
-
+	logging.warning(f"git class {ctx.kit.name} {branch}" )
 	out_tree = git_class(ctx.kit.name, branch=branch, root=root, **kwargs)
 	out_tree.initialize()
 
@@ -262,6 +263,7 @@ async def generate_kit(ctx):
 	python_settings = merge.foundations.python_kit_settings()
 
 	for py_branch, py_settings in python_settings.items():
+
 		meta_steps += [merge.steps.GenPythonUse(py_settings, "funtoo/kits/python-kit/%s" % py_branch)]
 
 	# We can now run all the steps that require access to metadata:

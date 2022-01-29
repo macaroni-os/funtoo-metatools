@@ -26,7 +26,7 @@ def run_shell(cmd_list, abort_on_failure=True, chdir=None):
 	else:
 		cmd_str = cmd_list
 	if debug:
-		logging.info(f"executing: {cmd_str}")
+		logging.warning(f"executing: {cmd_str}")
 
 	if chdir:
 		cmd_str = f"( cd {chdir}; {cmd_str})"
@@ -213,6 +213,9 @@ class AutoCreatedGitTree(Tree):
 		self.commit_sha1 = commit_sha1
 		self.merged = []
 
+	def _create_branch(self):
+		run_shell(f"git checkout master; git checkout -b {self.branch}", chdir=self.root)
+
 	def _initialize_tree(self):
 		if not os.path.exists(self.root):
 			os.makedirs(self.root)
@@ -227,6 +230,9 @@ class AutoCreatedGitTree(Tree):
 		if not self.has_cleaned:
 			run_shell("(cd %s &&  git reset --hard && git clean -fdx )" % self.root)
 			self.has_cleaned = True
+
+		if not self.localBranchExists(self.branch):
+			self._create_branch()
 
 		# point to specified sha1:
 
