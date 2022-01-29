@@ -34,6 +34,7 @@ def initialize_repo(repo_dict):
 			reclone=False,
 		)
 		repo_obj.initialize()
+		logging.warning(f"SOURCE REPO INITIALIZED: {repo_key}")
 		merge.model.SOURCE_REPOS[repo_key] = repo_obj
 	logging.warning(f"Git updates for {repo_dict['name']} complete.")
 
@@ -42,7 +43,9 @@ async def initialize_sources(source):
 	if merge.model.CURRENT_SOURCE_DEF == source:
 		return
 	repos = list(merge.foundations.get_repos(source))
+	logging.warning(f"sources: {list(repos)}")
 	repo_futures = []
+
 	with ThreadPoolExecutor(max_workers=1) as executor:
 		for repo_dict in repos:
 			fut = executor.submit(initialize_repo, repo_dict)
@@ -51,6 +54,7 @@ async def initialize_sources(source):
 			# Getting .result() will also cause any exception to be thrown:
 			repo_dict = repo_fut.result()
 			continue
+
 	merge.model.CURRENT_SOURCE_DEF = source
 
 

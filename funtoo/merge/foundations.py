@@ -255,6 +255,7 @@ def get_repos(source_name):
 	Given a source definition, return a list of repositories with all data included (like urls
 	from the source definitions, etc.)
 	"""
+	# TODO: this is not properly getting the branch
 
 	sdefs = source_defs(source_name)
 
@@ -269,8 +270,9 @@ def get_repos(source_name):
 			branch = merge.model.MERGE_CONFIG.get_option("branches", ov_name)
 			if branch is not None:
 				repo_dict["branch"] = branch
-			else:
+			elif "branch" not in repo_dict:
 				repo_dict["branch"] = "master"
+		logging.warning(f"YIELDING SOURCE REPO {repo_dict}")
 		yield repo_dict
 
 

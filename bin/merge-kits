@@ -50,11 +50,11 @@ async def main_thread():
 	for source in thread_keys:
 		kit_dict_list = thread_groups[source]
 		regen_futures = []
+		# Initialize sources based on the settings of the first kit in the group (they are all identical)
+		kit_dict = kit_dict_list[0]
 		with ThreadPoolExecutor(max_workers=4) as executor:
 
-			# Initialize sources based on the settings of the first kit in the group (they are all identical)
-			kit_dict = kit_dict_list[0]
-
+			# TODO: this is not working for 'sourced' repos
 			await merge.sources.initialize_sources(kit_dict["source"])
 
 			for kit_dict in kit_dict_list:
