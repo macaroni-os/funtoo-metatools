@@ -116,7 +116,6 @@ async def checkout_kit(ctx, pull=None):
 	# For Sabayon, if ctx.kit has a URL, we use that. This allows us to checkout anything as a "kit"
 	# for leveraging our kit-cache pipeline.
 
-	kind = ctx.kit.kind
 	branch = ctx.kit.branch
 	kwargs = {}
 

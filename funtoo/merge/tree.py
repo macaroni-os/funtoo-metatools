@@ -329,11 +329,13 @@ class GitTree(Tree):
 					if self.create_branches:
 						logging.info(f"Creating branch {self.branch}")
 						self._create_branches()
+						init_branches += [ self.branch ]
 					else:
 						raise ShellError(f"Could not find remote branch: {self.branch} in git tree {self.root}.")
-				# Put the branch we want at the end, so we end up with it active/
-				init_branches.remove(self.branch)
-				init_branches += [self.branch]
+				else:
+					# Put the branch we want at the end, so we end up with it active/
+					init_branches.remove(self.branch)
+					init_branches += [self.branch]
 		else:
 			init_branches.append(self.branch)
 
