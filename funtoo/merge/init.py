@@ -58,4 +58,4 @@ def __init__(model, prod=None, push=False, release=None, **kwargs):
 	model.THIRD_PARTY_MIRRORS = None
 	model.MIRROR = False
 	model.NEST_KITS = False
-	model.CREATE_BRANCHES = False
+	model.CREATE_BRANCHES = True
