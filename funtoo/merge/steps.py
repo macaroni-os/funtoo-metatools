@@ -474,8 +474,7 @@ class InsertEbuilds(MergeStep):
 		else:
 			srctree_root = self.srctree.root
 
-		if self.srctree.should_autogen:
-			await self.srctree.autogen(src_offset=self.ebuildloc)
+		await self.srctree.autogen(src_offset=self.ebuildloc)
 		kit_gen.out_tree.logTree(self.srctree)
 		# Figure out what categories to process:
 		src_cat_path = os.path.join(srctree_root, "profiles/categories")
