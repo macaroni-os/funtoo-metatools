@@ -347,7 +347,7 @@ class BaseLayerObjectStore:
 		log.debug("BLOS.get_object: found object.")
 		return BLOSObject(path=disk_path, checked_hashes=disk_hashes, authoritative_hashes=returned_hashes)
 
-	def insert_object(self, temp_path, pregenned_hashes=None):
+	def insert_object(self, download, pregenned_hashes=None):
 
 		"""
 		This will be used to directly add an object to fastpull, by pointing to the file to insert, and its
@@ -356,7 +356,8 @@ class BaseLayerObjectStore:
 
 		If the object already exists, the get_object() call is used to return the object.
 
-		Returns a BLOSObject containing the object inserted (or already inserted.)
+		Returns a BLOSObject containing the object inserted (or already inserted) or will return None in
+		cases where the file to-be-inserted could not be found.
 		"""
 
 		if pregenned_hashes is None:
@@ -377,10 +378,11 @@ class BaseLayerObjectStore:
 
 		if missing:
 			try:
-				new_hashes = calc_hashes(temp_path, missing)
+				new_hashes = calc_hashes(download.temp_path, missing)
 				final_hashes.update(new_hashes)
 			except FileNotFoundError as fnfe:
-				log.error(f"File disappeared from under us: {temp_path}")
+				log.error(f"File disappeared from under us: {download.request.url}")
+				return None
 
 		index = final_hashes['sha512']
 		disk_path = self.get_disk_path(index)
@@ -389,9 +391,9 @@ class BaseLayerObjectStore:
 			log.debug(f"no mongo db record but disk file already exists: {disk_path}")
 		try:
 			os.makedirs(os.path.dirname(disk_path), exist_ok=True)
-			os.link(temp_path, disk_path)
+			os.link(download.temp_path, disk_path)
 		except FileNotFoundError:
-			raise BLOSNotFoundError(f"Error copying {temp_path} to {disk_path} -- file not found.")
+			raise BLOSNotFoundError(f"Error copying {download.temp_path} to {disk_path} -- file not found.")
 		except FileExistsError:
 			# possible race? multiple threads inserting same download shouldn't really happen
 			pass

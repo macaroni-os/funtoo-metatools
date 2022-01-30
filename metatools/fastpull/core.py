@@ -11,6 +11,7 @@ from metatools.fastpull.spider import FetchRequest, Download
 
 log = logging.getLogger('metatools.autogen')
 
+
 class IntegrityScope:
 
 	def __init__(self, parent, scope, validate_hashes=None):
@@ -176,6 +177,9 @@ class IntegrityDatabase:
 		for it.
 		"""
 
-		blos_object = self.blos.insert_object(download.temp_path)
+		blos_object = self.blos.insert_object(download)
 		self.spider.cleanup(download)
-		return blos_object
+		if blos_object is not None:
+			return blos_object
+		else:
+			raise ValueError(f"Was unable to retrieve object associated with {download.request.url} upon download completion.")

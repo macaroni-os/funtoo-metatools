@@ -2,7 +2,9 @@ import asyncio
 import hashlib
 import logging
 import os
+import random
 import socket
+import string
 import threading
 from asyncio import Semaphore
 from collections import defaultdict
@@ -99,9 +101,11 @@ class Download:
 	@property
 	def temp_path(self):
 		if self._temp_path is None:
-			# Use MD5 to create the path for the temporary file to avoid collisions.
+			# Use MD5 to create the path for the temporary file to avoid collisions, but also add a random string to allow
+			# multiple downloads of the same file from different instances or autogens to avoid collision.
+			rand_str = ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(8))
 			temp_name = hashlib.md5(self.request.url.encode('utf-8')).hexdigest()
-			self._temp_path = os.path.join(self.spider.temp_path, temp_name)
+			self._temp_path = os.path.join(self.spider.temp_path, f"{rand_str}-{temp_name}")
 		return self._temp_path
 
 	async def _http_fetch_stream(self, on_chunk, chunk_size=262144):
