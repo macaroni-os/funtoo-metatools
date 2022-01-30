@@ -13,7 +13,6 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from yaml import safe_load
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
-import dyne.org.funtoo.metatools.merge as merge
 
 from subpop.util import load_plugin
 
@@ -64,7 +63,7 @@ def generate_manifests():
 	written once for each catpkg, rather than written as each individual ebuild is autogenned (which would create a
 	race condition writing to each Manifest file.)
 	"""
-	for manifest_file, manifest_lines in pkgtools.model.MANIFEST_LINES.items():
+	for manifest_file, manifest_lines in pkgtools.model.manifest_lines.items():
 		manifest_lines = sorted(list(manifest_lines))
 		with open(manifest_file, "w") as myf:
 			pos = 0
@@ -78,7 +77,7 @@ def queue_all_indy_autogens():
 	"""
 	This will find all independent autogens and queue them up in the pending queue.
 	"""
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % hub.CONTEXT.start)
+	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % pkgtools.model.locator.start_path)
 	files = o.split("\n")
 	for file in files:
 		file = file.strip()
@@ -165,7 +164,7 @@ def init_pkginfo_for_package(generator_sub, defaults=None, base_pkginfo=None, te
 	# for all our generate() calls to complete, outside this for loop.
 
 	# This is the path where the autogen lives. Either the autogen.py or the autogen.yaml:
-	common_prefix = os.path.commonprefix([hub.CONTEXT.root, gen_path])
+	common_prefix = os.path.commonprefix([pkgtools.model.locator.root, gen_path])
 	path_from_root = gen_path[len(common_prefix):].lstrip("/")
 	pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
 	return pkginfo
@@ -173,11 +172,24 @@ def init_pkginfo_for_package(generator_sub, defaults=None, base_pkginfo=None, te
 
 def _handle_task_result(task: Task):
 	try:
+		success = task.result()
+		if not success:
+			sys.exit(1)
+	except asyncio.CancelledError:
+		pass
+	except Exception as e:
+		pkgtools.model.log.error(e, exc_info=True)
+		sys.exit(1)
+
+
+def _artifact_handle_task_result(task: Task):
+	try:
 		task.result()
 	except asyncio.CancelledError:
 		pass
 	except Exception as e:
-		raise e
+		pkgtools.model.log.error(e, exc_info=True)
+		sys.exit(1)
 
 
 async def execute_generator(
@@ -187,6 +199,7 @@ async def execute_generator(
 	defaults=None,
 	pkginfo_list=None,
 	gen_path=None,
+	autogen_id=None
 ):
 	"""
 	This function will return an async function that requires no arguments, that is ready to run in its own
@@ -196,21 +209,17 @@ async def execute_generator(
 	performance and allowing the use of thread-local storage to keep track of things specific to this autogen
 	run.
 	"""
-
 	if not generator_sub_path:
 		raise TypeError("generator_sub_path not set to a path.")
-
 	generator_sub = load_plugin(f"{generator_sub_path}/{generator_sub_name}.py", generator_sub_name)
 	# Do hub injection:
 	generator_sub.hub = hub
-
-	# The generate_wrapper wraps the call to `generate()` (in autogen.py or the generator) and performs setup
-	# and post-tasks:
 
 	async def generator_thread_task(pkginfo_list):
 
 		hub.THREAD_CTX.running_autogens = []
 		hub.THREAD_CTX.running_breezybuilds = []
+		hub.THREAD_CTX.genned_breezybuilds = set()
 
 		# Do our own internal processing to get pkginfo_list ready for generate().
 
@@ -235,9 +244,9 @@ async def execute_generator(
 		for pkginfo in pkginfo_list:
 			try:
 				if "version" in pkginfo and pkginfo["version"] != "latest":
-					logging.info(f"autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']} -- {pkginfo}")
+					logging.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
 				else:
-					logging.info(f"autogen: {pkginfo['cat']}/{pkginfo['name']} (latest) -- {pkginfo}")
+					logging.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
 			except KeyError as ke:
 				raise pkgtools.ebuild.BreezyError(
 					f"{generator_sub_name} encountered a key error: missing value. pkginfo is {pkginfo}. Missing in pkginfo: {ke}"
@@ -249,18 +258,53 @@ async def execute_generator(
 			# hub.THREAD_CTX.running_breezybuilds. This will happen during this task execution:
 
 			async def gen_wrapper(pkginfo, generator_sub):
-				# For now, all generate() methods in autogens are expecting the hub.
+
+				# AutoHub is an evolution of the Hub. The hub is becoming less and less important
+				# in subpop but has a purpose as a convenient thing in metatools autogens. We want
+				# people to use the hub to directly instantiate objects easily, and also access all
+				# of pkgtools. We want ad-hoc autogens to be instantiated as hub.Artifact() not
+				# hub.pkgtools.ebuild.Artifact().
+
+				class AutoHub:
+
+					autogen_id = None
+					pkgtools = None
+
+					def __init__(self, autogen_id, pkgtools):
+						self.autogen_id = autogen_id
+						self.pkgtools = pkgtools
+
+					def Artifact(self, **kwargs):
+						return self.pkgtools.ebuild.Artifact(key=self.autogen_id, **kwargs)
+
+					def BreezyBuild(self, **kwargs):
+						return self.pkgtools.ebuild.BreezyBuild(**kwargs)
+
+					def BreezyError(self, **kwargs):
+						return self.pkgtools.ebuild.BreezyError(**kwargs)
+
+				if "version" in pkginfo and pkginfo["version"] != "latest":
+					autogen_info = f"{pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}"
+				else:
+					autogen_info = f"{pkginfo['cat']}/{pkginfo['name']} (latest)"
+
+				exc = None
 				generate = getattr(generator_sub, "generate", None)
 				if generate is None:
-					raise AttributeError(f"generate() not found in {generator_sub}")
+					return autogen_info, AttributeError(f"generate() not found in {generator_sub}")
 				try:
-					await generate(hub, **pkginfo)
-				except TypeError as te:
-					if not inspect.iscoroutinefunction(generate):
-						raise TypeError(f"generate() in {generator_sub} must be async")
-					else:
-						raise te
-				return pkginfo
+					try:
+						await generate(AutoHub(autogen_id, pkgtools), **pkginfo)
+					except TypeError as te:
+						if not inspect.iscoroutinefunction(generate):
+							pkgtools.model.log.error(f"generate() in {generator_sub} must be async")
+							return False
+						else:
+							raise te
+				except Exception as e:
+					pkgtools.model.log.error(e, exc_info=True)
+					return False
+				return True
 
 			task = Task(gen_wrapper(pkginfo, generator_sub))
 			task.add_done_callback(_handle_task_result)
@@ -338,7 +382,7 @@ def queue_all_yaml_autogens():
 	to `parse_yaml_rule`.) This queues up all generators to execute.
 	"""
 
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % hub.CONTEXT.start)
+	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % pkgtools.model.locator.start_path)
 	files = o.split("\n")
 
 	for file in files:
@@ -347,7 +391,7 @@ def queue_all_yaml_autogens():
 			continue
 		yaml_base_path = os.path.dirname(file)
 		# This will be [ "category", "pkgname" ] or [ "category" ] if it's nestled inside a category dir:
-		yaml_base_path_split = yaml_base_path[len(hub.CONTEXT.root)+1:].split("/")
+		yaml_base_path_split = yaml_base_path[len(pkgtools.model.locator.root) + 1:].split("/")
 		if len(yaml_base_path_split):
 			cat = yaml_base_path_split[0]
 		else:
@@ -370,7 +414,8 @@ def queue_all_yaml_autogens():
 						# generator.
 						logging.debug(f"Found generator {sub_name} in local tree.")
 					else:
-						sub_path = os.path.join(hub.GITREPO, "generators")
+						# Use a generator globally defined in the root of kit-fixups.
+						sub_path = os.path.join(pkgtools.model.kit_fixups_repo.root, "generators")
 				else:
 					# Fallback: Use an ad-hoc 'generator.py' generator in the same dir as autogen.yaml:
 					sub_name = "generator"
@@ -401,8 +446,15 @@ async def execute_all_queued_generators():
 	with ThreadPoolExecutor(max_workers=8) as executor:
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
+
+			# The "autogen_id" entry here is going to be used like an ID for distfile integrity Artifacts that aren't
+			# attached to a specific BreezyBuild.
+
+			base = os.path.commonprefix([task_args["gen_path"], pkgtools.model.locator.root])
+			task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base)+1:]}"
+
 			async_func, pkginfo_list = await execute_generator(**task_args)
-			future = loop.run_in_executor(executor, pkgtools.thread.run_async_adapter, async_func, pkginfo_list)
+			future = loop.run_in_executor(executor, hub.run_async_adapter, async_func, pkginfo_list)
 			futures.append(future)
 
 		results, exceptions = await gather_pending_tasks(futures)
@@ -410,18 +462,11 @@ async def execute_all_queued_generators():
 			print(exceptions)
 
 
-async def start(start_path=None, out_path=None):
-
-	"""
-	This method will start the auto-generation of packages in an ebuild repository.
-	"""
-	pkgtools.repository.set_context(start_path=start_path, out_path=out_path)
-	# TODO:
+async def start():
 	# This is a hack to iterate through all plugins to ensure they are all loaded prior to starting threads, so we
 	# don't experience race conditions loading modules, as this clobbers sys.modules in a non-threadsafe way currently.
 	for plugin in pkgtools:
 		pass
-	getattr(merge, "deepdive")
 	queue_all_indy_autogens()
 	queue_all_yaml_autogens()
 	await execute_all_queued_generators()

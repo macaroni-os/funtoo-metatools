@@ -1,0 +1,222 @@
+FastPull Object Store
+=====================
+
+This document is intended to fully document the design of the FastPull Object Store ("FPOS"). The FPOS is designed
+to store source code and other artifacts. These artifacts may be in turn referenced by ebuilds and associated Manifest
+files, or they may be downloaded as part of auto-generation but not directly be consumed by ebuilds. FPOS provides
+persistent storage of these artifacts in a scalable fashion and collects relevant, useful information related to these
+artifacts.
+
+The goal of the FPOS is to provide a framework for downloading, storing, retrieving and verifying the integrity of
+artifacts.
+
+Scopes
+======
+
+When the FPOS is used to store data for a specific project, such as Funtoo Linux, will use a "scope" to specify a
+distinct domain of FPOS that will be managed with certain assurances. A scope is a string in reverse-domain format,
+with optional specifier information provided by a colon-delimited list of further string data, with a format of
+":product:version" being recommended::
+
+  org.funtoo:linux:1.4-release
+
+This scope will be used for storing and retrieving all Artifact information related to Funtoo Linux 1.4, for
+example.
+
+TODO: multi-tenancy -- one shared BLOS for multiple hosts? Probably should include hostname!
+
+URLs
+====
+
+URLs are used not only to download files, of course, but are also used as distinct identifiers for a specific
+artifact. Within a scope, for any single URL, there will only be one 'active' binary Artifact, and any such artifact
+requested by this URL will return a binary file with consistent cryptographic message digest. This ensures that all
+components of the software that are part of the scope will be working with a consistent set of artifacts.
+
+Base Layer Object Store
+=======================
+
+The base layer object store (BLOS) of FPOS will store at minimum the following information::
+
+  {
+    "hashes" : {
+      "sha512" : "abcdef...",
+      "size" : 1234
+    }
+    "fetched_on" : <timestamp>,
+    "url" : <url>
+  }
+
+This information contains the SHA512 cryptographic hash of the downloaded file, its size in bytes, the timestamp of
+when the file download completed, and the URL used for downloading the file. The BLOS may store additional information
+related to the file -- for example, legacy versions of fastpull used a `rand_id` -- a random string -- that was
+associated with each file store.
+
+In addition, at a specific path on disk, the downloaded file will be stored in the following directory structure --
+expressed in Python code::
+
+  def get_disk_path(self, base_path, sha512):
+    return os.path.join(base_path, sha512[:2], sha512[2:4], sha512[4:6], sha512)
+
+The base layer of FPOS is simply intended to be an object store, and record what URL was originally used to populate
+the object store, and when this population happened. It can be leveraged by multiple scopes in the scope layer (see
+next section.)
+
+FastPull Download API
+======================
+
+It is recommended that the BLOS API perform transparent downloading and self-population of resources in a transparent
+way when a URL is requested that is not yet downloaded. This simplifies interaction with the BLOS, but creates the
+need to return relevant information when a requested URL retrieval fails for whatever reason.
+
+Scope Layer
+===========
+
+The scope layer of the database must store the following information as individual records (hereafter called a
+"record") for requested files::
+
+  {
+    "scope" : "org.funtoo:linux:1.4-release",
+    "url" : <url>,
+    "hashes" : {
+        "sha512" : <sha512>,
+    }
+  }
+
+The purpose of the scope layer is to create a "link" to the BLOS for a specific scope. The meaning of "url" here is
+quite different than that in the base layer. Here, "url" means "The URL which will be used by the API to select the
+resource for this scope." This is not necessarily the URL that was used to originally download the artifact.
+That information is stored in the BLOS. There may be multiple scope layer references to the BLOS, and each scope layer
+reference can have a different "url" field -- these two layers are linked by the "sha512" field, not the "url" field.
+
+You can think of the Scope Layer as "symbolic links" into the BLOS, using the SHA512 hash, and it is possible to alter
+the authoritative binary data for a specific URL by altering entries in the Scope Layer. Also note that the Scope layer
+can support multiple scopes using a single collection, all potentially leveraging the same underlying BLOS.
+
+What can the scope layer be used for? Well, many different types of persistent artifact storage. It could be used
+to store artifacts that were downloaded by a metatools autogen and included in an ebuild. It could be used to store
+artifacts that were downloaded by an autogen but not directly referenced by an ebuild. It could also be used to store
+distfiles downloaded for a collection of static ebuilds that weren't autogenerated at all.
+
+Using FPOS tools, it is possible to 'demote' a specific Artifact so that is no longer active and will no longer be
+the authoritative binary representation for this artifact.
+
+Refs
+====
+
+The Scope Layer may store additional metadata called "refs". "Refs" specify what components of the scope originally
+requested the resource. "Refs" are free-form dictionary key-value pairs that are stored in the "refs" list, and might
+look something like this::
+
+  "refs" : [
+		{
+		    "type" : "autogen",
+		    "autogen_path" : "kit-fixups/text-kit/curated/dev-texlive",
+			"kit" : "text-kit",
+			"catpkg" : "dev-texlive/texlive-langchinese",
+			"accessed_on" : ISODate("2019-06-21T21:58:43Z"),
+			"final_name": "foo-1.0.tar.gz"
+		}
+	]
+
+It is highly recommended to add an "accessed_on" field to each ref, which records a timestamp specifying the most
+recent date that the ref has requested the resource, and to update this field with every request. It is also highly
+recommended to use the field "final_name" to record the expected name of the file once downloaded.
+
+A single scope may have variant ref formats, so the contents of the dictionary do not need to be consistent from ref
+to ref. Different parts of your project may have different important metadata to store, and this is permitted.
+
+Missing Fetches
+===============
+
+A request for a URL on the scope layer may result in a record being created, but with the `sha512` field empty.
+This will denote a file that was requested, but could not be retrieved. In this case, "refs" must be stored with the
+entry to indicate what has requested the file, and additional information returned by the BLOS layer related to the
+failed retrieval of the artifact
+
+TODO: add support for requested resources that FAILED to populate the BLOS
+
+This is an old docstring that may not be relevant but is being preserved:
+"""
+The DeepDive database is designed to get wiped and re-loaded to contain only the metadata for all ebuilds processed
+in the last merge-kits run.
+
+In contrast, the Distfile Integrity database is intended to be persistent and store cryptographic hashes related
+to distfiles used by catpkgs. This allows us to autogen ebuilds without having the actual distfile present, and ensures
+that distfile hashes don't magically change if a newly-fetched distfile has been modified upstream.
+
+When using the fastpull database with autogen, we need the Distfile Integrity Database to retrieve existing
+distfiles that have been stored in fastpull. We need a way to map the distfile filename (which is not stored
+in fastpull) to a SHA1 that exists in fastpull. The Distfile Integrity Database provides this mapping.
+
+The Distfile Integrity database associates distfile file names with catpkgs. The catpkg is the 'namespace' for
+any files. Additionally, when run in production mode, the release, kit and branch are recorded in the database.
+
+The one challenge that appears necessary to resolve with the Distfile Integrity Database is that we can potentially have
+multiple 'doit' processes accessing it at the same time and reading and writing to it, due to 'merge-kits'
+multi-threaded architecture.
+
+However, this is not needed -- due to the design of 'merge-kits', and the fact that 'doit'
+will be running on a particular release, kit and branch, any reads and writes will not clobber one another, and thus
+we don't need to arbitrate/lock access to the Distfile Integrity DB. The Architecture makes it safe.
+"""
+
+more docstrings:
+
+This sub deals with the higher-level logic related to downloading of distfiles. Where the 'fetch.py'
+sub deals with grabbing HTTP data from APIs, this is much more geared towards grabbing tarballs that
+are bigger, and organizing them into a distfiles directory. This includes calculating cryptographic
+hashes on the resultant downloads and ensuring they match what we expect.
+
+The implementation is based around a class called `Download`.
+
+Why do we have a class called 'Download'? Imagine we have an autogen, and it has two Artifacts
+referencing the same file (this can and does happen.) Do we want to download the same file twice?
+No -- it would be far better if we downloaded the file once, and then provided the results to
+each Artifact, saying in effect 'here is the file you wanted to download.' This is why the
+Download class exists.
+
+Because autogen uses asyncio, it's possible for two autogens to try downloading the same file
+at the same time. If they create a `Download` object, this special class will do the magic of looking
+for any active downloads of the same file, and if one exists, it will not fire
+off a new download but instead wait for the existing download to complete. So the 'downloader'
+(code trying to download the file) can remain ignorant of the fact that the download was already
+started previously.
+
+
+	"""
+	When we need to download an artifact, we create a download. Multiple, co-existing Artifact
+	objects can reference the same file. Rather than have them try to download the same file
+	at the same time, they leverage a "Download" which eliminates conflicts and manages the
+	retrieval of the file.
+
+	The Download object will record all Artifacts that need this file, and arbitrate the download
+	of this file and update the Artifacts with the completion data when the download is complete.
+
+	A Download will be shared only if the Artifacts fetching the file are storing it as the same
+	final_name. So it's possible that if the final_name differs that files could be theoretically
+	downloaded multiple times or simultaneously and redundantly (but this rarely if ever happens,
+	just worth mentioning and a possible improvement in the future.)
+
+	The
+	"""
+
+
+	# TODO: There is a minor problem with this part of the code in regard to autogens that do a fetch of an artifact, but
+    #       do not pass the artifact to a BreezyBuild. The rust and go autogens currently do this.
+    #       .
+    #       What happens is that while these artifacts gets stored in fastpull, they don't get "pulled" from fastpull if
+    #       you wipe ~/repo_tmp/fetch -- instead they get re-downloaded.
+    #       .
+    #       This is because the lack of the distfile integrity entry means that the artifact can only be looked for 'by name'.
+    #       So the actual filename has to exist in ~/repo_tmp/fetch or it will be re-downloaded.
+    #       .
+    #       Some thought needs to go into this, how it should be resolved, and what optimal design is in this case.
+    #       One idea is to require a catpkg to be specified with every fetch operation, so the distfile integrity catpkg
+    #       can be used.
+    #       .
+    #       Now, these artifacts will never need to be fetched by the end-user, since they are not referenced by ebuilds
+    #       directly. However, it is annoying on an intellectual level :)
+    #       .
+    #       The problem can be considered a more fundamental design problem, related to the lack of clear hierarchy due to
+    #       Hatchisms in the design.

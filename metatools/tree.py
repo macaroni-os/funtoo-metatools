@@ -5,8 +5,6 @@ import subprocess
 
 debug = True
 
-import dyne.org.funtoo.metatools.merge as merge
-
 
 class ShellError(Exception):
 	pass
@@ -26,7 +24,7 @@ def run_shell(cmd_list, abort_on_failure=True, chdir=None):
 	else:
 		cmd_str = cmd_list
 	if debug:
-		logging.warning(f"executing: {cmd_str}")
+		logging.info(f"executing: {cmd_str}")
 
 	if chdir:
 		cmd_str = f"( cd {chdir}; {cmd_str})"
@@ -49,14 +47,15 @@ def headSHA1(tree):
 
 
 class Tree:
-	def __init__(self, root=None):
+	def __init__(self, root=None, model=None):
 		self.root = root
 		self.autogenned = False
 		self.name = None
 		self.merged = []
-		self.forcepush = False
-		self.mirror = False
+		self.forcepush = "--no-force"
 		self.url = None
+		self.model = model
+		assert model is not None
 
 	def logTree(self, srctree):
 		# record name and SHA of src tree in dest tree, used for git commit message/auditing:
@@ -77,20 +76,24 @@ class Tree:
 			return
 		autogen_path = os.path.join(self.root, src_offset)
 		if not os.path.exists(autogen_path):
-			print("Skipping autogen as src_offset %s (in %s) doesn't exist!" % (src_offset, autogen_path))
+			self.model.log.warning(f"Skipping autogen as src_offset {src_offset} (in {autogen_path}) doesn't exist!")
 			return
-		print(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
+		self.model.log.info(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
 		# use subprocess.call so we can see the output of autogen:
+		if self.model.prod:
+			scope = self.model.release
+		else:
+			scope = "local"
 		retcode = subprocess.call(
-			f"cd {autogen_path} && doit --release {merge.model.RELEASE} --fastpull",
+			f"cd {autogen_path} && doit --fastpull_scope={scope}",
 			shell=True,
 		)
 		if retcode != 0:
-			raise GitTreeError(f"Autogen failed in {self.root} -- offset {src_offset}.")
+			raise GitTreeError(f"failed autogen in {self.root} -- offset {src_offset}.")
 		self.autogenned = src_offset
 
 	def cleanTree(self):
-		print("Cleaning tree %s" % self.root)
+		self.model.log.info("Cleaning tree %s" % self.root)
 		run_shell("(cd %s &&  git reset --hard && git clean -fdx )" % self.root)
 		self.autogenned = False
 
@@ -106,12 +109,6 @@ class Tree:
 			return False
 		else:
 			return True
-
-	async def run(self, steps):
-		for step in steps:
-			if step is not None:
-				print("Running step", step.__class__.__name__, self.root)
-				await step.run(self)
 
 	def head(self):
 		return headSHA1(self.root)
@@ -189,7 +186,7 @@ class Tree:
 
 	def mirrorLocalBranches(self):
 		# This is a special push command that will push local tags and branches *only*
-		run_shell("(cd %s && git push %s %s +refs/heads/* +refs/tags/*)" % (self.root, self.forcepush, self.url))
+		run_shell(f"(cd {self.root} && git push {self.forcepush} {self.url} +refs/heads/* +refs/tags/*)")
 
 
 class GitTreeError(Exception):
@@ -204,8 +201,8 @@ class AutoCreatedGitTree(Tree):
 	stuff"-type tree.
 	"""
 
-	def __init__(self, name: str, branch: str = "master", root: str = None, commit_sha1: str = None, **kwargs):
-		super().__init__(root=root)
+	def __init__(self, name: str, branch: str = "master", root: str = None, commit_sha1: str = None, model=None, **kwargs):
+		super().__init__(root=root, model=model)
 		self.branch = branch
 		self.name = self.reponame = name
 		self.has_cleaned = False
@@ -256,7 +253,7 @@ class GitTree(Tree):
 		commit_sha1: str = None,
 		root: str = None,
 		reponame: str = None,
-		mirror: str = None,
+		mirrors: list = None,
 		forcepush: bool = False,
 		origin_check: bool = False,
 		create_branches: bool = False,
@@ -264,9 +261,10 @@ class GitTree(Tree):
 		reclone: bool = False,
 		pull: bool = True,
 		checkout_all_branches: bool = True,
+		model=None
 	):
 
-		super().__init__(root=root)
+		super().__init__(root=root, model=model)
 
 		self.name = name
 		self.url = url
@@ -277,7 +275,7 @@ class GitTree(Tree):
 		self.reponame = reponame
 		self.has_cleaned = False
 		self.initialized = False
-		self.mirror = mirror
+		self.mirrors = mirrors if mirrors else []
 		self.origin_check = origin_check
 		self.create_branches = create_branches
 		self.destfix = destfix
@@ -293,9 +291,14 @@ class GitTree(Tree):
 
 	# if we don't specify root destination tree, assume we are source only:
 
+	def hasLocalChanges(self):
+		result = run(f"(cd {self.root} && git status --porcelain)")
+		out = result.stdout.strip()
+		return len(out) > 0
+
 	def _initialize_tree(self):
 		if self.root is None:
-			base = merge.model.MERGE_CONFIG.source_trees
+			base = self.model.source_trees
 			self.root = "%s/%s" % (base, self.name)
 
 		if os.path.isdir("%s/.git" % self.root) and self.reclone:
@@ -317,6 +320,9 @@ class GitTree(Tree):
 				print("Error: tree %s does not exist, but no clone URL specified. Exiting." % self.root)
 				raise ShellError("Aborted due to failed command.")
 
+		if self.hasLocalChanges():
+			self.cleanTree()
+
 		init_branches = []
 
 		# We allow this to be turned off for GitTrees like kit-fixups, where you really don't need any branches
@@ -333,13 +339,12 @@ class GitTree(Tree):
 					init_branches.append("/".join(branch.split("/")[1:]))
 				if self.branch not in init_branches:
 					if self.create_branches:
-						logging.info(f"Creating branch {self.branch}")
 						self._create_branches()
-						init_branches += [ self.branch ]
+						init_branches = [self.branch]
 					else:
 						raise ShellError(f"Could not find remote branch: {self.branch} in git tree {self.root}.")
+				# Put the branch we want at the end, so we end up with it active/
 				else:
-					# Put the branch we want at the end, so we end up with it active/
 					init_branches.remove(self.branch)
 					init_branches += [self.branch]
 		else:
@@ -347,7 +352,7 @@ class GitTree(Tree):
 
 		for branch in init_branches:
 			if not self.localBranchExists(branch):
-				run_shell(f"( cd {self.root} && git checkout {branch})")
+				self.gitCheckout(branch, from_init=True)
 
 		# if we've gotten here, we can assume that the repo exists at self.root.
 		if self.url is not None and self.origin_check:
@@ -373,10 +378,6 @@ class GitTree(Tree):
 					raise GitTreeError("%s: Git origin mismatch." % self.root)
 				elif self.destfix is None:
 					pass
-		# first, we will clean up any messes:
-		if not self.has_cleaned:
-			self.cleanTree()
-			self.has_cleaned = True
 
 		# git fetch will run as part of this:
 		self.gitCheckout(self.branch, from_init=True)
@@ -490,11 +491,11 @@ class GitTree(Tree):
 
 
 class RsyncTree(Tree):
-	def __init__(self, name, url="rsync://rsync.us.gentoo.org/gentoo-portage/"):
+	def __init__(self, name, url="rsync://rsync.us.gentoo.org/gentoo-portage/", model=None):
 		super().__init__()
 		self.name = name
 		self.url = url
-		base = merge.model.MERGE_CONFIG.source_trees
+		base = model.source_trees
 		self.root = "%s/%s" % (base, self.name)
 		if not os.path.exists(base):
 			os.makedirs(base)

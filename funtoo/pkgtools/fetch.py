@@ -1,33 +1,17 @@
 #!/usr/bin/env python3
 import asyncio
 import json
-import logging
+
 import re
-import sys
+
+from metatools.fastpull.spider import FetchError
 
 """
-This sub implements high-level fetching logic. Not the lower-level HTTP stuff. Things involving
+This sub implements high-level fetching pkgtools.model.log.c. Not the lower-level HTTP stuff. Things involving
 retrying, using our fetch cache, etc.
 """
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
-
-
-class FetchError(Exception):
-
-	"""
-	When this exception is raised, we can set retry to True if the failure is something that could conceivably be
-	retried, such as a network failure. However, if we are reading from a cache, then it's just going to fail again,
-	and thus retry should have the default value of False.
-	"""
-
-	def __init__(self, fetchable, msg, retry=False):
-		self.fetchable = fetchable
-		self.msg = msg
-		self.retry = retry
-
-	def __repr__(self):
-		return f"{self.fetchable}: {self.msg}"
 
 
 class CacheMiss(Exception):
@@ -37,7 +21,7 @@ class CacheMiss(Exception):
 async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=None, **content_kwargs):
 
 	"""
-	This method is used to execute any fetch-related method, and will handle all the logic of reading from and
+	This method is used to execute any fetch-related method, and will handle all the pkgtools.model.log.c of reading from and
 	writing to the fetch cache, as needed, based on the current fetch policy. Arguments include ``fetch_method``
 	which is the actual method used to fetch -- the function itself -- which should be a function or method that
 	accepts a single non-keyword argument of the URL to fetch, and it should return the result of the fetch
@@ -60,12 +44,12 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 	attempts = 0
 	fail_reason = None
 	if refresh_interval is None:
-		if pkgtools.model.FETCH_CACHE_INTERVAL is not None:
-			# pkgtools.modle.FETCH_CACHE_INTERVAL defaults to 15 minutes and will allow caching of stuff within that window
+		if pkgtools.model.fetch_cache_interval is not None:
+			# pkgtools.model.fetch_cache_interval defaults to 15 minutes and will allow caching of stuff within that window
 			# by default unless overridden by the doit --immediate option, or if there was an explicit refresh interval passed
 			# to this function.
-			refresh_interval = pkgtools.model.FETCH_CACHE_INTERVAL
-	while attempts < pkgtools.model.FETCH_ATTEMPTS:
+			refresh_interval = pkgtools.model.fetch_cache_interval
+	while attempts < pkgtools.model.fetch_attempts:
 		attempts += 1
 		try:
 			if refresh_interval is not None:
@@ -77,7 +61,7 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 					result = await pkgtools.fetch_cache.fetch_cache_read(
 						fetch_method.__name__, fetchable, content_kwargs, refresh_interval=refresh_interval
 					)
-					sys.stdout.write(f'>{fetchable} (cached)\n')
+					pkgtools.model.log.info(f'Fetched {fetchable} (cached)')
 					return result["body"]
 				except CacheMiss:
 					# We'll continue and attempt a live fetch of the resource...
@@ -86,11 +70,11 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 			await pkgtools.fetch_cache.fetch_cache_write(fetch_method.__name__, fetchable, content_kwargs, body=result)
 			return result
 		except FetchError as e:
-			if e.retry and attempts + 1 < pkgtools.model.FETCH_ATTEMPTS:
-				logging.error(f"Fetch method {fetch_method.__name__}: {e.msg}; retrying...")
+			if e.retry and attempts + 1 < pkgtools.model.fetch_attempts:
+				pkgtools.model.log.error(f"Fetch method {fetch_method.__name__}: {e.msg}; retrying...")
 				continue
 			# if we got here, we are on our LAST retry attempt or retry is False:
-			logging.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
+			pkgtools.model.log.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
 			# TODO: these should be logged persistently so they can be investigated.
 			try:
 				got = await pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable, content_kwargs)
@@ -114,6 +98,9 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 
 
 async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False, **content_kwargs):
+	# Respect doit --immediate option
+	if pkgtools.model.fetch_cache_interval is not None:
+		refresh_interval = pkgtools.model.fetch_cache_interval
 	result = await fetch_harness(pkgtools.http.get_page, fetchable, max_age=max_age, refresh_interval=refresh_interval, **content_kwargs)
 	if not is_json:
 		return result
@@ -121,8 +108,8 @@ async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False
 		json_data = json.loads(result)
 		return json_data
 	except json.JSONDecodeError as e:
-		logging.warning(repr(e))
-		logging.warning("JSON appears corrupt -- trying to get cached version of resource...")
+		pkgtools.model.log.warning(repr(e))
+		pkgtools.model.log.warning("JSON appears corrupt -- trying to get cached version of resource...")
 		try:
 			result = await pkgtools.fetch_cache.fetch_cache_read("get_page", fetchable, max_age=max_age)
 			return json.loads(result)

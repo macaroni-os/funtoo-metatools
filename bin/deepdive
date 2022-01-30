@@ -8,7 +8,7 @@ hub = Hub()
 import dyne.org.funtoo.metatools.merge as merge
 import logging
 from dict_tools.data import NamespaceDict
-from funtoo.merge.tree import GitTree
+from metatools.tree import GitTree
 import sys
 
 async def insert_kit(ctx):

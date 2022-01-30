@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+
+import argparse
+import sys
+
+import subpop
+from subpop.hub import Hub
+
+from metatools.config.merge import MergeConfig
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.merge as merge
+
+
+async def main_thread(args):
+
+	try:
+		await merge.launch(MergeConfig, release=args.release)
+		e1 = merge.kit.EclassHashCollection(path='/var/git/meta-repo/kits/core-kit')
+		e2 = merge.kit.EclassHashCollection(path='/var/git/meta-repo/kits/llvm-kit')
+		e3 = e1 + e2
+		print(e3.paths)
+		e3 += e1
+		print(e3.paths)
+
+	except subpop.config.ConfigurationError as ce:
+		sys.stdout.write(f"An error was encountered: {ce.__class__.__name__}: {' '.join(ce.args)}\nPlease make sure to run merge-kits with the cwd inside a kit-fixups repo.\n")
+		sys.exit(1)
+
+CLI_CONFIG = {
+	"release": {"positional": True},
+}
+
+
+def parse_args():
+	ap = argparse.ArgumentParser()
+	for arg, kwargs in CLI_CONFIG.items():
+		if "positional" in kwargs and kwargs["positional"]:
+			new_kwargs = kwargs.copy()
+			del new_kwargs["positional"]
+			ap.add_argument(arg, **new_kwargs)
+		else:
+			ap.add_argument("--" + arg, **kwargs)
+	return ap.parse_args()
+
+
+if __name__ == "__main__":
+	args = parse_args()
+	hub.LOOP.run_until_complete(main_thread(args))
+	sys.exit(0)
+
+# vim: ts=4 sw=4 noet

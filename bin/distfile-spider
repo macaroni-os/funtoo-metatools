@@ -20,7 +20,6 @@ from subpop.hub import Hub
 
 hub = Hub()
 
-import dyne.org.funtoo.metatools.merge as merge
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 import threading
 
@@ -48,8 +47,8 @@ async def do_distfile_fetch(distinct_key, distinct_file_list):
 		all_src_uris = all_src_uris | set(file["src_uri"])
 		refs.append({"kit": datums["kit"], "catpkg": datums["catpkg"]})
 
-	src_uris = merge.fastpull.expand_uris(list(all_src_uris))
-	fp_path = merge.fastpull.get_disk_path(sha512)
+	src_uris = merge.parent.expand_uris(list(all_src_uris))
+	fp_path = merge.parent.get_disk_path(sha512)
 	keep_going = True
 	if not os.path.exists(fp_path):
 
@@ -60,7 +59,7 @@ async def do_distfile_fetch(distinct_key, distinct_file_list):
 			try:
 				print(src_uris[0])
 				a = pkgtools.ebuild.Artifact(url=src_uris[0], final_name=name, expect={"sha512": sha512, "size": size})
-				await merge.fastpull.inject_into_fastpull(a)
+				await a.inject_into_fastpull()
 				print("done", src_uris[0])
 			except pkgtools.ebuild.DigestFailure as af:
 				logging.error(af)

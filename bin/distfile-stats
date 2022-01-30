@@ -13,7 +13,7 @@ from argparse import ArgumentParser
 from subpop.hub import Hub
 from dict_tools.data import NamespaceDict
 
-from funtoo.merge.tree import GitTree
+from metatools.tree import GitTree
 
 hub = Hub()
 
@@ -110,7 +110,7 @@ async def distfile_stats():
 						continue
 
 					sz_bytes = int(file["size"])
-					dp = merge.fastpull.get_disk_path(file["hashes"]["sha512"])
+					dp = merge.parent.get_disk_path(file["hashes"]["sha512"])
 					if os.path.exists(dp):
 						stats.bytes_exist += sz_bytes
 						stats.files_exist += 1

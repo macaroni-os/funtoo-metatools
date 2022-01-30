@@ -3,28 +3,40 @@
 import os
 import asyncio
 import sys
+import threading
 from asyncio import Task
+from subprocess import getstatusoutput
+from typing import Optional
+
 import jinja2
 import logging
 
-import dyne.org.funtoo.metatools.merge as merge
+log = logging.getLogger('metatools.autogen')
+
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
+from metatools.fastpull.blos import BLOSObject
+from metatools.fastpull.spider import FetchError, FetchRequest
 
-class DigestFailure(Exception):
-	def __init__(self, artifact=None, kind=None, expected=None, actual=None):
-		self.artifact = artifact
-		self.kind = kind
-		self.expected = expected
-		self.actual = actual
-
-	@property
-	def message(self):
-		out = f"Digest Failure for {self.artifact.final_name}:\n"
-		out += f"    Kind: {self.kind}\n"
-		out += f"Expected: {self.expected}\n"
-		out += f"  Actual: {self.actual}"
-		return out
+# This is not currently used, as what the Spider downloads at any given moment is considered to
+# be authoritative. This may be used for tools that repopulate the the BLOS, but is not otherwise
+# needed.
+#
+# class DigestFailure(Exception):
+# 	def __init__(self, artifact=None, kind=None, expected=None, actual=None):
+# 		self.artifact = artifact
+# 		self.kind = kind
+# 		self.expected = expected
+# 		self.actual = actual
+#
+# 	@property
+# 	def message(self):
+# 		out = f"Digest Failure for {self.artifact.final_name}:\n"
+# 		out += f"    Kind: {self.kind}\n"
+# 		out += f"Expected: {self.expected}\n"
+# 		out += f"  Actual: {self.actual}"
+# 		return out
+#
 
 
 class BreezyError(Exception):
@@ -35,17 +47,44 @@ class BreezyError(Exception):
 class Fetchable:
 	def __init__(self, url=None, **kwargs):
 		self.url = url
+		assert self.url is not None
+		try:
+			assert self.url.split(':')[0] in ['http', 'https', 'ftp']
+		except (IndexError, AssertionError):
+			raise ValueError(f"url= argument of Artifact is '{url}', which appears invalid.")
 
 
 class Artifact(Fetchable):
-	def __init__(self, url=None, final_name=None, final_path=None, expect=None, extra_http_headers=None, **kwargs):
+	"""
+	An artifact is a tarball or other archive that is used by a BreezyBuild, and ultimately referenced in an ebuild. It's also
+	possible that an artifact could be fetched by an autogen directly, but not included in an ebuild.
+
+	If an artifact is going to be incorporated into an ebuild, it's passed to the ``artifacts=[]`` keyword argument of the
+	``BreezyBuild`` constructor. When it is passed in this way, we perform extra processing. We will store the resultant download
+	in the "fastpull" database (an archive of fetched artifacts, indexed by their SHA512 hash), and we will also generate an
+	entry in the "distfile integrity database" for each catpkg. This "distfile integrity database" is what links the BreezyBuild's
+	catpkg, via the filename, to the entries in the fastpull database. So, for example:
+
+	"sys-apps/foo-1.0.ebuild" references "foo-1.0.tar.gz".
+	The distfile integrity database entry for "sys-apps/foo" has an entry for "foo-1.0.tar.gz" which points it to <SHA512>.
+	The fastpull database stores an entry for <SHA512>.
+
+	When an artifact is used in a stand-alone fashion
+
+	"""
+	def __init__(self, url=None, key=None, final_name=None, extra_http_headers=None, **kwargs):
 		super().__init__(url=url, **kwargs)
+		self.key = key
 		self._final_name = final_name
-		self._final_data = None
-		self._final_path = final_path
 		self.breezybuilds = []
-		self.expect = expect
 		self.extra_http_headers = extra_http_headers
+		self.blos_object: Optional[BLOSObject] = None
+
+	@property
+	def final_data(self):
+		if self.blos_object:
+			return self.blos_object.authoritative_hashes
+		return None
 
 	@property
 	def catpkgs(self):
@@ -55,19 +94,12 @@ class Artifact(Fetchable):
 		return outstr.strip()
 
 	@property
-	def temp_path(self):
-		return os.path.join(merge.model.MERGE_CONFIG.fetch_download_path, f"{self.final_name}.__download__")
-
-	@property
 	def extract_path(self):
-		return pkgtools.download.extract_path(self)
+		return os.path.join(pkgtools.model.temp_path, "artifact_extract", self.final_name)
 
 	@property
 	def final_path(self):
-		if self._final_path:
-			return self._final_path
-		else:
-			return os.path.join(merge.model.MERGE_CONFIG.fetch_download_path, self.final_name)
+		return self.blos_object.path
 
 	@property
 	def final_name(self):
@@ -84,14 +116,14 @@ class Artifact(Fetchable):
 
 	@property
 	def hashes(self):
-		return self._final_data["hashes"]
+		return self.blos_object.authoritative_hashes
 
 	@property
 	def size(self):
-		return self._final_data["size"]
+		return self.blos_object.authoritative_hashes['size']
 
 	def hash(self, h):
-		return self._final_data["hashes"][h]
+		return self.blos_object.authoritative_hashes[h]
 
 	@property
 	def src_uri(self):
@@ -101,113 +133,62 @@ class Artifact(Fetchable):
 			return self.url + " -> " + self._final_name
 
 	def extract(self):
-		return pkgtools.download.extract(self)
+		# TODO: maybe refactor these next 2 lines
+		if not self.exists:
+			self.fetch()
+		ep = self.extract_path
+		os.makedirs(ep, exist_ok=True)
+		cmd = "tar -C %s -xf %s" % (ep, self.final_path)
+		s, o = getstatusoutput(cmd)
+		if s != 0:
+			raise pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
 
 	def cleanup(self):
-		return pkgtools.download.cleanup(self)
+		# TODO: check for path stuff like ../.. in final_name to avoid security issues.
+		getstatusoutput("rm -rf " + os.path.join(pkgtools.model.temp_path, "artifact_extract", self.final_name))
 
 	def exists(self):
 		return self.is_fetched()
-
-	def record_final_data(self, final_data):
-		self._final_data = final_data
-
-	def validate_digests(self):
-		"""
-		The self.expect dictionary can be used to specify digests that we should expect to find in any completed
-		or fetched Artifact. This method will throw a DigestFailure() exception when these expectations are not
-		met.
-		"""
-		if self.expect is None:
-			return
-		for key, val in self.expect.items():
-			if key == "size":
-				if val != self.size:
-					raise DigestFailure(artifact=self, kind="size", expected=val, actual=self.size)
-			else:
-				actual_hash = self.hash(key)
-				if val != actual_hash:
-					raise DigestFailure(artifact=self, kind=val, expected=val, actual=actual_hash)
-
-	@property
-	def fastpull_path(self):
-		sh = self._final_data["hashes"]["sha512"]
-		return merge.fastpull.get_disk_path(sh)
-
-	async def ensure_completed(self) -> bool:
-		"""
-		This function ensures that we can 'complete' the artifact -- meaning we have its hash data in the integrity database.
-		If this hash data is not found, then we need to fetch the artifact.
-
-		This function returns True if we do indeed have the artifact available to us, and False if there was some error
-		which prevents this.
-
-		So basically, this tries to use the distfile integrity database first to get the hash information, but will fall
-		back to fetching. When this method is used instead of ensure_fetched(), we can get by without the file even
-		existing on disk, as long as we have a distfile integrity entry. So it's preferred if that's all you need.
-		"""
-
-		if not len(self.breezybuilds):
-			# Since we are using this outside of the context of an autogen, and there is no associated BreezyBuild,
-			# using the distfile integrity database doesn't make sense. So just ensure the file is fetched:
-			return await self.ensure_fetched()
-		integrity_item = merge.deepdive.get_distfile_integrity(self.breezybuilds[0].catpkg, distfile=self.final_name)
-		if integrity_item is not None:
-			self._final_data = integrity_item["final_data"]
-			# Will throw an exception if our new final data doesn't match any expected values.
-			self.validate_digests()
-			return True
-		else:
-			return await self.ensure_fetched()
-
-	async def try_fetch(self):
-		"""
-		This is like ensure_fetched, but will return an exception if the download fails.
-		"""
-		await self.ensure_fetched(throw=True)
 
 	async def ensure_fetched(self, throw=False) -> bool:
 		"""
 		This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
 		calculate its hashes or extract it.
 
-		Returns a boolean with True indicating success and False failure.
+		Returns a boolean with True indicating success and False failure in the default behavior with ``throw=False``,
+		otherwise the original exception will be raised.
 		"""
-		if self.is_fetched():
-			if self._final_data is not None:
-				# Nothing to do.
-				return True
-			else:
-				# This condition handles a situation where the distfile integrity database has been wiped. We need to
-				# re-populate the data. We already have the file.
-				if len(self.breezybuilds):
-					self._final_data = merge.deepdive.get_distfile_integrity(self.breezybuilds[0].catpkg, distfile=self.final_name)
-					if self._final_data is None:
-						self._final_data = pkgtools.download.calc_hashes(self.final_path)
-						# Will throw an exception if our new final data doesn't match any expected values.
-						self.validate_digests()
-						merge.deepdive.store_distfile_integrity(self.breezybuilds[0].catpkg, self.final_name, self._final_data)
-				else:
-					self._final_data = pkgtools.download.calc_hashes(self.final_path)
-					# Will throw an exception if our new final data doesn't match any expected values.
-					self.validate_digests()
-				return True
-		else:
-			active_dl = pkgtools.download.get_download(self.final_name)
-			if active_dl is not None:
-				# Active download -- wait for it to finish:
-				logging.info(f"Waiting for {self.final_name} download to finish")
-				success = await active_dl.wait_for_completion(self)
-				if success:
-					self._final_data = active_dl.final_data
-			else:
-				# No active download for this file -- start one:
-				dl_file = pkgtools.download.Download(self)
-				success = await dl_file.download(throw=throw)
-			if success:
-				# Will throw an exception if our new final data doesn't match any expected values.
-				self.validate_digests()
-			return success
+
+		if self.blos_object is not None:
+			return True
+		try:
+			# TODO: add extra headers, retry,
+			req = FetchRequest(self.url,
+				extra_headers=self.extra_http_headers,
+				# TODO: we currently don't support authenticating to retrieve an Artifact (just HTTP requests for API)
+				username=None,
+				password=None
+			)
+			log.debug(f'Artifact.ensure_fetched:{threading.get_ident()} now fetching {self.url} using FetchRequest {req}')
+			# TODO: this used to be indexed by catpkg, and by final_name. So we are now indexing by source URL.
+			# TODO: what exceptions are we interested in here?
+			self.blos_object = await pkgtools.model.fastpull_session.get_file_by_url(req)
+		except FetchError as fe:
+			# We encountered some error retrieving the resource.
+			if throw:
+				raise fe
+			log.error(f"Fetch error: {fe}")
+			return False
+		return True
+
+	async def ensure_completed(self) -> bool:
+		return await self.ensure_fetched()
+
+	async def try_fetch(self):
+		"""
+		This is like ensure_fetched, but will return an exception if the download fails.
+		"""
+		await self.ensure_fetched(throw=True)
 
 
 def aggregate(meta_list):
@@ -248,8 +229,7 @@ class BreezyBuild:
 		template_path: str = None,
 		**kwargs,
 	):
-		self.source_tree = hub.CONTEXT
-		self.output_tree = hub.OUTPUT_CONTEXT
+		self.source_tree = self.output_tree = pkgtools.model.locator.root
 		self._pkgdir = None
 		self.template_args = kwargs
 		for kwarg in ["cat", "name", "version", "path"]:
@@ -302,6 +282,7 @@ class BreezyBuild:
 				self._revision = int(self._revision)
 			else:
 				raise TypeError(f"Unrecognized type for revision= argument for {self.catpkg}: {repr(type(self._revision))}")
+			pkgtools.model.log.debug(f"Fixup-revision: {self.catpkg}: {type(self._revision)} {self._revision}")
 
 	def iter_artifacts(self):
 		if type(self.artifacts) == list:
@@ -326,13 +307,6 @@ class BreezyBuild:
 		So this means we want to create some associations. We want to record that the Artifact is associated with the
 		catpkg of this BreezyBuild. We use this for writing new entries to the Distfile Integrity database for
 		to-be-fetched artifacts.
-
-		The `ensure_completed()` call will ensure the Artifact has hashes from the Distfile Integrity Database or is
-		fetched and hashes calculated.
-
-		TODO: if the file exists on disk, but there is no Distfile Integrity entry, we need to make sure that hashes
-		      are not just calculated -- the distfile integrity entry should be created as well.
-
 		"""
 
 		fetch_tasks_dict = {}
@@ -348,11 +322,15 @@ class BreezyBuild:
 				artifact.breezybuilds.append(self)
 
 			async def lil_coroutine(a):
-				status = await a.ensure_completed()
-				return a, status
+				try:
+					status = await a.ensure_completed()
+					return a, status
+				except Exception as e:
+					pkgtools.model.log.error(e, exc_info=True)
+					raise e
 
 			fetch_task = asyncio.Task(lil_coroutine(artifact))
-			fetch_task.add_done_callback(pkgtools.autogen._handle_task_result)
+			fetch_task.add_done_callback(pkgtools.autogen._artifact_handle_task_result)
 			fetch_tasks_dict[artifact] = fetch_task
 
 		# Wait for any artifacts that are still fetching:
@@ -360,16 +338,25 @@ class BreezyBuild:
 		completion_list = aggregate(results)
 		for artifact, status in completion_list:
 			if status is False:
-				logging.error(f"Artifact for url {artifact.url} referenced in {artifact.catpkgs} could not be fetched.")
+				log.error(f"Artifact for url {artifact.url} referenced in {artifact.catpkgs} could not be fetched.")
 				sys.exit(1)
 
 	def push(self):
 		#
 		# https://stackoverflow.com/questions/1408171/thread-local-storage-in-python
 
+		if self.output_ebuild_path in hub.THREAD_CTX.genned_breezybuilds:
+			raise BreezyError(f"{self.output_ebuild_path} has already been generated -- you may have duplicate .push() calls or duplicate entries in your YAML.")
+		else:
+			hub.THREAD_CTX.genned_breezybuilds.add(self.output_ebuild_path)
+
 		async def wrapper(self):
-			await self.generate()
-			return self
+			try:
+				await self.generate()
+				return True
+			except Exception as e:
+				pkgtools.model.log.error(e, exc_info=True)
+				return False
 
 		# This will cause the BreezyBuild to start autogeneration immediately, appending the task to the thread-
 		# local context so we can grab the result later. The return value will be the BreezyBuild object itself,
@@ -382,15 +369,14 @@ class BreezyBuild:
 	@property
 	def pkgdir(self):
 		if self._pkgdir is None:
-			self._pkgdir = os.path.join(self.source_tree.root, self.cat, self.name)
+			self._pkgdir = os.path.join(self.source_tree, self.cat, self.name)
 			os.makedirs(self._pkgdir, exist_ok=True)
 		return self._pkgdir
 
 	@property
 	def output_pkgdir(self):
 		if self._pkgdir is None:
-			logging.info(f"OUTPUT PKGDIR: {self.output_tree.root} {self.cat} {self.name}")
-			self._pkgdir = os.path.join(self.output_tree.root, self.cat, self.name)
+			self._pkgdir = os.path.join(self.output_tree, self.cat, self.name)
 			os.makedirs(self._pkgdir, exist_ok=True)
 		return self._pkgdir
 
@@ -427,7 +413,7 @@ class BreezyBuild:
 	def template_path(self):
 		if self._template_path:
 			return self._template_path
-		tpath = os.path.join(self.source_tree.root, self.cat, self.name, "templates")
+		tpath = os.path.join(self.source_tree, self.cat, self.name, "templates")
 		return tpath
 
 	async def record_manifest_lines(self):
@@ -444,7 +430,7 @@ class BreezyBuild:
 			success = await artifact.ensure_completed()
 			if not success:
 				raise BreezyError(f"Something prevented us from storing Manifest data for {key}.")
-			pkgtools.model.MANIFEST_LINES[key].add(
+			pkgtools.model.manifest_lines[key].add(
 				"DIST %s %s BLAKE2B %s SHA512 %s\n"
 				% (artifact.final_name, artifact.size, artifact.hash("blake2b"), artifact.hash("sha512"))
 			)
@@ -461,7 +447,7 @@ class BreezyBuild:
 					except Exception as te:
 						raise BreezyError(f"Unknown error processing {template_file}: {repr(te)}")
 			except FileNotFoundError as e:
-				logging.error(f"Could not find template: {template_file}")
+				log.error(f"Could not find template: {template_file}")
 				raise BreezyError(f"Template file not found: {template_file}")
 		else:
 			template = jinja2.Template(self.template_text)
@@ -471,7 +457,7 @@ class BreezyBuild:
 				myf.write(template.render(**self.template_args).encode("utf-8"))
 			except Exception as te:
 				raise BreezyError(f"Error rendering template: {repr(te)}")
-		logging.info("Created: " + os.path.relpath(self.output_ebuild_path))
+		log.info("Created: " + os.path.relpath(self.output_ebuild_path))
 
 	async def generate(self):
 		"""

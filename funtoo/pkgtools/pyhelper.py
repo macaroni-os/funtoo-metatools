@@ -139,7 +139,6 @@ def create_ebuild_cond_dep(pkginfo, pydeplabel, atoms):
 		usespec = list(pydeplabel.specifiers)[0]
 
 	for atom in atoms:
-		logging.info(f"PROCESSING ATOM {atom}")
 		out_atoms.append(expand_pydep(pkginfo, atom))
 
 	if usespec:
