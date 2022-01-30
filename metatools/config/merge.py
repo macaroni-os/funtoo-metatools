@@ -34,7 +34,9 @@ class MergeConfig(MinimalConfig):
 
 	# Things used during runtime processing:
 	kit_fixups: GitTree = None
+	# TODO: should probably review the error/warning stats variables here:
 	metadata_error_stats = []
+	processing_warning_stats = []
 	processing_error_stats = []
 	start_time: datetime = None
 	current_source_def = None

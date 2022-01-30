@@ -318,6 +318,8 @@ class ReleaseYAML(YAMLReader):
 					# use pre-defined repository as base and augment with any local tweaks
 					repo_name = list(repo_def.keys())[0]
 					repo_dict = repo_def[repo_name]
+					if repo_name not in repositories:
+						raise KeyError(f"Referenced repository '{repo_name}' in source collection '{collection_name}' not found in repositories list.")
 					repo_def = repositories[repo_name].copy()
 					repo_def.update(repo_dict)
 				if repo_name in names:

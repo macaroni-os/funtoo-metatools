@@ -291,6 +291,11 @@ class GitTree(Tree):
 
 	# if we don't specify root destination tree, assume we are source only:
 
+	def hasLocalChanges(self):
+		result = run(f"(cd {self.root} && git status --porcelain)")
+		out = result.stdout.strip()
+		return len(out) > 0
+
 	def _initialize_tree(self):
 		if self.root is None:
 			base = self.model.source_trees
@@ -314,6 +319,9 @@ class GitTree(Tree):
 				# we've run out of options
 				print("Error: tree %s does not exist, but no clone URL specified. Exiting." % self.root)
 				raise ShellError("Aborted due to failed command.")
+
+		if self.hasLocalChanges():
+			self.cleanTree()
 
 		init_branches = []
 
@@ -344,7 +352,7 @@ class GitTree(Tree):
 
 		for branch in init_branches:
 			if not self.localBranchExists(branch):
-				run_shell(f"( cd {self.root} && git checkout {branch})")
+				self.gitCheckout(branch, from_init=True)
 
 		# if we've gotten here, we can assume that the repo exists at self.root.
 		if self.url is not None and self.origin_check:
@@ -370,10 +378,6 @@ class GitTree(Tree):
 					raise GitTreeError("%s: Git origin mismatch." % self.root)
 				elif self.destfix is None:
 					pass
-		# first, we will clean up any messes:
-		if not self.has_cleaned:
-			self.cleanTree()
-			self.has_cleaned = True
 
 		# git fetch will run as part of this:
 		self.gitCheckout(self.branch, from_init=True)
