@@ -15,6 +15,7 @@ import aiohttp
 
 log = logging.getLogger('metatools.autogen')
 
+
 class FetchRequest:
 
 	def __init__(self, url, retry=True, extra_headers=None, mirror_urls=None, username=None, password=None, expected_hashes=None):

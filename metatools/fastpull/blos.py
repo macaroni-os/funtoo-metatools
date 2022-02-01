@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+
 import logging
 import os
 from enum import Enum
@@ -9,6 +10,7 @@ from metatools.config.mongodb import get_collection
 from metatools.hashutils import calc_hashes
 
 log = logging.getLogger('metatools.autogen')
+
 
 class BLOSError(Exception):
 	pass
