@@ -4,6 +4,7 @@ import json
 
 import re
 
+from metatools.fetch_cache import CacheMiss
 from metatools.fastpull.spider import FetchError
 
 """
@@ -14,14 +15,10 @@ retrying, using our fetch cache, etc.
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
-class CacheMiss(Exception):
-	pass
-
-
-async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=None, **content_kwargs):
+async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None):
 
 	"""
-	This method is used to execute any fetch-related method, and will handle all the pkgtools.model.log.c of reading from and
+	This method is used to execute any fetch-related method, and will handle all the aspects of reading from and
 	writing to the fetch cache, as needed, based on the current fetch policy. Arguments include ``fetch_method``
 	which is the actual method used to fetch -- the function itself -- which should be a function or method that
 	accepts a single non-keyword argument of the URL to fetch, and it should return the result of the fetch
@@ -40,7 +37,6 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 	if the live fetch fails (and is thus more resilient).
 	"""
 
-	url = fetchable if type(fetchable) == str else fetchable.url
 	attempts = 0
 	fail_reason = None
 	if refresh_interval is None:
@@ -58,16 +54,16 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 				# This call will return our cached resource if it's available and refresh_interval hasn't yet expired, i.e.
 				# it is not yet 'stale'.
 				try:
-					result = await pkgtools.fetch_cache.fetch_cache_read(
-						fetch_method.__name__, fetchable, content_kwargs, refresh_interval=refresh_interval
+					result = await pkgtools.model.fetch_cache.read(
+						fetch_method.__name__, url, refresh_interval=refresh_interval
 					)
-					pkgtools.model.log.info(f'Fetched {fetchable} (cached)')
+					pkgtools.model.log.info(f'Fetched {url} (cached)')
 					return result["body"]
 				except CacheMiss:
 					# We'll continue and attempt a live fetch of the resource...
 					pass
-			result = await fetch_method(fetchable, **content_kwargs)
-			await pkgtools.fetch_cache.fetch_cache_write(fetch_method.__name__, fetchable, content_kwargs, body=result)
+			result = await fetch_method(url)
+			await pkgtools.model.fetch_cache.write(fetch_method.__name__, url, body=result)
 			return result
 		except FetchError as e:
 			if e.retry and attempts + 1 < pkgtools.model.fetch_attempts:
@@ -77,31 +73,31 @@ async def fetch_harness(fetch_method, fetchable, max_age=None, refresh_interval=
 			pkgtools.model.log.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
 			# TODO: these should be logged persistently so they can be investigated.
 			try:
-				got = await pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable, content_kwargs)
+				got = await pkgtools.model.fetch_cache.read(fetch_method.__name__, url)
 				return got["body"]
 			except CacheMiss as ce:
 				# raise original exception
 				raise e
 		except asyncio.CancelledError as e:
-			raise FetchError(fetchable, f"Fetch of {url} cancelled.")
+			raise FetchError(url, f"Fetch of {url} cancelled.")
 
 	# If we've gotten here, we've performed all of our attempts to do live fetching.
 	try:
-		result = await pkgtools.fetch_cache.fetch_cache_read(fetch_method.__name__, fetchable, content_kwargs, max_age=max_age)
+		result = await pkgtools.model.fetch_cache.read(fetch_method.__name__, url, max_age=max_age)
 		return result["body"]
 	except CacheMiss:
-		await pkgtools.fetch_cache.record_fetch_failure(fetch_method.__name__, fetchable, content_kwargs, fail_reason=fail_reason)
+		await pkgtools.model.fetch_cache.record_fetch_failure(fetch_method.__name__, url, fail_reason=fail_reason)
 		raise FetchError(
-			fetchable,
+			url,
 			f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.",
 		)
 
 
-async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False, **content_kwargs):
+async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False):
 	# Respect doit --immediate option
 	if pkgtools.model.fetch_cache_interval is not None:
 		refresh_interval = pkgtools.model.fetch_cache_interval
-	result = await fetch_harness(pkgtools.http.get_page, fetchable, max_age=max_age, refresh_interval=refresh_interval, **content_kwargs)
+	result = await fetch_harness(pkgtools.http.get_page, fetchable, max_age=max_age, refresh_interval=refresh_interval)
 	if not is_json:
 		return result
 	try:
@@ -111,7 +107,7 @@ async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False
 		pkgtools.model.log.warning(repr(e))
 		pkgtools.model.log.warning("JSON appears corrupt -- trying to get cached version of resource...")
 		try:
-			result = await pkgtools.fetch_cache.fetch_cache_read("get_page", fetchable, max_age=max_age)
+			result = await pkgtools.model.fetch_cache.read("get_page", fetchable, max_age=max_age)
 			return json.loads(result)
 		except CacheMiss:
 			# bumm3r.

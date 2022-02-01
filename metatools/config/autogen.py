@@ -2,31 +2,22 @@ import logging
 import os
 from collections import defaultdict
 from datetime import timedelta
-
-import pymongo
 import yaml
 
 from metatools.config.base import MinimalConfig
-from metatools.config.mongodb import get_collection
 from metatools.context import OverlayLocator, GitRepositoryLocator
 from metatools.fastpull.blos import BaseLayerObjectStore
 from metatools.fastpull.core import IntegrityDatabase
 from metatools.fastpull.spider import WebSpider
+from metatools.fetch_cache import MongoDBFetchCache
 from metatools.pretty_logging import TornadoPrettyLogFormatter
-
-
-def fetch_cache():
-	fc = get_collection('fetch_cache')
-	fc.create_index([("method_name", pymongo.ASCENDING), ("url", pymongo.ASCENDING)])
-	fc.create_index("last_failure_on", partialFilterExpression={"last_failure_on": {"$exists": True}})
-	return fc
 
 
 class AutogenConfig(MinimalConfig):
 	"""
 	This class is used for the autogen workflow -- i.e. the 'doit' command.
 	"""
-	fetch_cache = fetch_cache()
+	fetch_cache = MongoDBFetchCache()
 	fetch_cache_interval = timedelta(minutes=15)
 	check_disk_hashes = False
 	manifest_lines = defaultdict(set)
