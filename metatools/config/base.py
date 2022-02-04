@@ -53,6 +53,8 @@ class MinimalConfig(SubPopModel):
 	This class contains configuration settings common to all the metatools plugins and tools.
 	"""
 
+	db_name = "metatools2"
+
 	def __init__(self):
 		super().__init__()
 

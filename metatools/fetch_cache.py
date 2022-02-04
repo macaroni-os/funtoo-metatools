@@ -34,16 +34,13 @@ class MongoDBFetchCache(FetchCache):
 		case that we're recording that we successfully downloaded an Artifact (tarball), we don't store the tarball
 		in MongoDB but we do store its metadata (hashes and filesize.)
 	
-		Note that ``content_kwargs`` is a new feature, where we will cache specific keyword arguments, such as encoding,
-		used for the fetch. These keyword arguments can potentially alter the results of the cached value.
-	
 		If metadata_only is True, we are simply updating metadata rather than the content in the fetch cache.
 	
 		"""
 		url = fetchable
 		metadata = None
 		now = datetime.utcnow()
-		selector = {"method_name": method_name, "url": url, "content_kwargs": None}
+		selector = {"method_name": method_name, "url": url}
 		if not metadata_only:
 			self.fc.update_one(
 				selector,

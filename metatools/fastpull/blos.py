@@ -408,4 +408,4 @@ class BaseLayerObjectStore:
 		"""
 		This method is used to delete objects from the BLOS. It shouldn't generally need to be used.
 		"""
-		self.collection.delete_one({"hashes.sha512" : my_sha512})
+		self.collection.delete_one({"hashes.sha512": my_sha512})
