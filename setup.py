@@ -23,7 +23,7 @@ setuptools.setup(
 	],
 	python_requires=">=3.7",
 	install_requires=[
-		"subpop >= 1.0.0",
+		"subpop >= 2.0.0",
 		"aiodns",
 		"aiofiles",
 		"aiohttp",
@@ -36,6 +36,7 @@ setuptools.setup(
 		"tornado",
 		"toml",
 		"xmltodict",
+		"colorama",
 	],
 	packages=setuptools.find_packages(),
 	data_files=pkgr.generate_data_files(),
