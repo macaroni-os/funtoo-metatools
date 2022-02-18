@@ -162,10 +162,6 @@ class DerivedKeySpecification(KeySpecification):
 class StorageBackend:
 	store = None
 
-	def __init__(self, collection, prefix=None):
-		self.collection = collection
-		self.prefix = prefix
-
 	def create(self, store):
 		self.store = store
 
@@ -185,8 +181,7 @@ class StorageBackend:
 class FileStorageBackend(StorageBackend):
 	root = None
 
-	def __init__(self, collection, db_base_path):
-		super().__init__(collection)
+	def __init__(self, db_base_path):
 		self.db_base_path = db_base_path
 
 	def create(self, store):

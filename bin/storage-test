@@ -5,7 +5,7 @@ from metatools.store import FileStorageBackend, Store, DerivedKeySpecification
 if __name__ == "__main__":
 	store = Store(
 		collection="catpkgs",
-		backend=FileStorageBackend(collection="foo", db_base_path="/var/tmp/db_test"),
+		backend=FileStorageBackend(db_base_path="/var/tmp/db_test"),
 		key_spec=DerivedKeySpecification(["pkginfo.cat", "pkginfo.pkg"])
 	)
 

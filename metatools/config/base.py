@@ -67,6 +67,10 @@ class MinimalConfig(SubPopModel):
 			return "/var/tmp/repo_tmp"
 
 	@property
+	def store_path(self):
+		return os.path.join(self.work_path, "stores")
+
+	@property
 	def fetch_download_path(self):
 		return os.path.join(self.work_path, "fetch")
 

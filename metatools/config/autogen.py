@@ -9,7 +9,7 @@ from metatools.context import OverlayLocator, GitRepositoryLocator
 from metatools.fastpull.blos import BaseLayerObjectStore
 from metatools.fastpull.core import IntegrityDatabase
 from metatools.fastpull.spider import WebSpider
-from metatools.fetch_cache import MongoDBFetchCache
+from metatools.fetch_cache import MongoDBFetchCache, FileStoreFetchCache
 from metatools.pretty_logging import TornadoPrettyLogFormatter
 
 
@@ -17,7 +17,7 @@ class AutogenConfig(MinimalConfig):
 	"""
 	This class is used for the autogen workflow -- i.e. the 'doit' command.
 	"""
-	fetch_cache = MongoDBFetchCache()
+	fetch_cache = None
 	fetch_cache_interval = timedelta(minutes=15)
 	check_disk_hashes = False
 	manifest_lines = defaultdict(set)
@@ -48,7 +48,7 @@ class AutogenConfig(MinimalConfig):
 
 	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None):
 		self.fastpull_scope = fastpull_scope
-
+		self.fetch_cache = FileStoreFetchCache(db_base_path=self.store_path)
 		self.config = yaml.safe_load(self.get_file("autogen"))
 		# Set to empty values if non-existent:
 		if self.config is None:
