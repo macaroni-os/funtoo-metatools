@@ -61,15 +61,12 @@ JSON_OPTIONS = JSONOptions(
 			type_registry=TypeRegistry(type_codecs=[], fallback_encoder=None))
 
 
+
 class NotFoundError(Exception):
 	pass
 
 
-class KeySpecification:
-	pass
-
-
-def extract_keyspec_from_data(index_field, data):
+def extract_data_by_keyspec(index_field, data):
 	"""
 	This method accepts a string like "foo.bar", and will traverse dict hierarchy ``metadata`` to retrieve the specified
 	element. Each '.' represents a depth in the dictionary hierarchy.
@@ -80,7 +77,7 @@ def extract_keyspec_from_data(index_field, data):
 		if index_part not in cur_data:
 			raise KeyError(f"Attempting to retrieve field {index_field}, but does not exist ({index_part})")
 		elif not isinstance(cur_data, Mapping):
-			raise KeyError(f"Attempting to retrieve field {index_field}, but did not find it in supplied metadata.")
+			raise KeyError(f"Attempting to retrieve field {index_field}, but did not find it in supplied data.")
 		cur_data = cur_data[index_part]
 	return cur_data
 
@@ -112,21 +109,31 @@ def expand_keyspec(keyspec):
 	return out
 
 
+class KeySpecification:
+	pass
+
+
 class HashKeySpecification(KeySpecification):
 
 	def __init__(self, key_spec):
 		self.key_spec = key_spec
 
-	def data_as_hash(self, data):
-		return extract_keyspec_from_data(self.key_spec, data)
-
-	def specdict_as_hash(self, spec_dict):
-		if self.key_spec not in spec_dict:
-			raise KeyError(f"Was expecting {self.key_spec} to be specified for query.")
-		return spec_dict[self.key_spec]
-
 	def __repr__(self):
 		return f"HashKey({self.key_spec}"
+
+	def data_as_hash(self, data):
+		return extract_data_by_keyspec(self.key_spec, data)
+
+	def validate_specdict(self, spec_dict):
+		if self.key_spec not in spec_dict:
+			raise KeyError(f"Was expecting {self.key_spec} to be specified for query.")
+
+	def validate_data(self, data):
+		extract_data_by_keyspec(self.key_spec, data)
+
+	def specdict_as_hash(self, spec_dict):
+		self.validate_specdict(spec_dict)
+		return spec_dict[self.key_spec]
 
 
 class DerivedKeySpecification(KeySpecification):
@@ -143,11 +150,15 @@ class DerivedKeySpecification(KeySpecification):
 	def compound_value(self, data):
 		value = OrderedDict()
 		for key_spec in self.key_spec_list:
-			index_data = extract_keyspec_from_data(key_spec, data)
+			index_data = extract_data_by_keyspec(key_spec, data)
 			value[key_spec] = index_data
 		return value
 
-	def specdict_as_hash(self, spec_dict):
+	def validate_data(self, data):
+		for key_spec in self.key_spec_list:
+			extract_data_by_keyspec(key_spec, data)
+
+	def validate_specdict(self, spec_dict):
 		expected_set = set(self.key_spec_list)
 		provided_set = set(spec_dict.keys())
 		unrecognized = provided_set - expected_set
@@ -156,6 +167,9 @@ class DerivedKeySpecification(KeySpecification):
 			raise KeyError(f"Unrecognized key specifications in query: {unrecognized}")
 		if missing:
 			raise KeyError(f"Missing key specifications in query: {missing}")
+
+	def specdict_as_hash(self, spec_dict):
+		self.validate_specdict(spec_dict)
 		return self.data_as_hash(expand_keyspec(spec_dict))
 
 
@@ -165,13 +179,10 @@ class StorageBackend:
 	def create(self, store):
 		self.store = store
 
-	def write(self, data):
+	def write(self, data, blob_path=None):
 		pass
 
-	def update(self, data):
-		pass
-
-	def read(self, data):
+	def read(self, spec_dict, get_blob=False):
 		pass
 
 	def delete(self, data):
@@ -200,31 +211,38 @@ class FileStorageBackend(StorageBackend):
 			in_string = f.read().decode("utf-8")
 			return loads(in_string, json_options=JSON_OPTIONS)
 
-	def write(self, data):
+	def write(self, data, blob_path=None):
 		sha = self.store.key_spec.data_as_hash(data)
 		dir_index = f"{sha[0:2]}/{sha[2:4]}/{sha[4:6]}"
 		out_path = f"{self.root}/{dir_index}/{sha}"
 		os.makedirs(os.path.dirname(out_path), exist_ok=True)
-		with open(out_path, 'wb') as f:
-			f.write(self.encode_data(data))
+		self._write_phase2(out_path, data, blob_path)
 
-	def update(self, data):
-		sha = self.store.key_spec.data_as_hash(data)
-		dir_index = f"{sha[0:2]}/{sha[2:4]}/{sha[4:6]}"
-		out_path = f"{self.root}/{dir_index}/{sha}"
-		if not os.path.exists(out_path):
-			raise NotFoundError(f"keys {self.store.key_spec} not found to update.")
+	def _write_phase2(self, out_path, data, blob_path=None):
 		os.makedirs(os.path.dirname(out_path), exist_ok=True)
 		with open(out_path, 'wb') as f:
 			f.write(self.encode_data(data))
+		if blob_path:
+			blob_outpath = out_path + ".blob"
+			if os.path.exists(blob_outpath):
+				os.unlink(blob_outpath)
+			os.link(blob_path, blob_outpath)
+			return blob_path
 
-	def read(self, spec_dict):
+	def read(self, spec_dict, get_blob=False):
 		sha = self.store.key_spec.specdict_as_hash(spec_dict)
 		dir_index = f"{sha[0:2]}/{sha[2:4]}/{sha[4:6]}"
 		in_path = f"{self.root}/{dir_index}/{sha}"
 		if not os.path.exists(in_path):
-			raise NotFoundError(f"keys {self.store.key_spec} not found.")
-		return self.decode_data(in_path)
+			if not get_blob:
+				return None
+			else:
+				return None, None
+		if not get_blob:
+			return self.decode_data(in_path)
+		else:
+			blob_path = in_path + ".blob"
+			return self.decode_data(in_path), blob_path if os.path.exists(blob_path) else None
 
 	def delete(self, spec_dict):
 		sha = self.store.key_spec.specdict_as_hash(spec_dict)
@@ -232,48 +250,9 @@ class FileStorageBackend(StorageBackend):
 		in_path = f"{self.root}/{dir_index}/{sha}"
 		if os.path.exists(in_path):
 			os.unlink(in_path)
-
-"""
-class MongoStorageBackend(StorageBackend):
-	client = None
-	db = None
-	mongo_collection = None
-
-	def __init__(self, collection, base_db_name):
-		super().__init__(collection)
-		self.base_db_name = base_db_name
-
-	def gen_indexes(self):
-		ix_spec = []
-		for key in self.store.key_fields:
-			ix_spec.append((key, pymongo.ASCENDING))
-		self.mongo_collection.create_index(ix_spec, unique=True)
-
-	def create(self, store):
-		self.store = store
-		self.client = MongoClient()
-		self.db = getattr(self.client, self.base_db_name)
-		self.mongo_collection = getattr(self.db, self.collection)
-		self.gen_indexes()
-
-	def write(self, metadata):
-		# We don't use the key -- we just verify we have all required components:
-		self.store.extract_key_from_metadata(metadata)
-		self.mongo_collection.insert_one(metadata, upsert=True)
-
-	def update(self, data):
-		# We don't use the key -- we just verify we have all required components:
-		key = self.store.key_spec.specdict_from_data(data)
-		self.mongo_collection.update_one(data, upsert=True)
-
-	def read(self, spec_dict):
-		found = self.mongo_collection.find_one(spec_dict)
-		if found is None:
-			raise NotFoundError(f"key {spec_dict} not found.")
-
-	def delete(self, spec_dict):
-		self.mongo_collection.delete_one(spec_dict)
-"""
+		blob_path = in_path + ".blob"
+		if os.path.exists(blob_path):
+			os.unlink(blob_path)
 
 
 class Store:
@@ -282,40 +261,28 @@ class Store:
 	collection = None
 	prefix = None
 	key_spec = None
+	required_spec = None
 
-	def __init__(self, collection=None, prefix=None, key_spec=None, backend=None):
+	def __init__(self, collection=None, prefix=None, key_spec=None, required_spec=None, backend=None):
 		if collection is not None:
 			self.collection = collection
 		if prefix is not None:
 			self.prefix = prefix
 		if key_spec is not None:
 			self.key_spec = key_spec
+		if required_spec is not None:
+			self.required_spec = required_spec
 		if backend is not None:
 			self.backend = backend
 		self.backend.create(self)
 
-	def write(self, data: dict):
-		"""
-		This method will extract index fields from metadata to use as a key, and then store the metadata.
-		"""
-		return self.backend.write(data)
+	def write(self, data, blob_path=None):
+		if self.required_spec:
+			self.required_spec.validate_data(data)
+		return self.backend.write(data, blob_path=blob_path)
 
-	def update(self, data: dict):
-		"""
-		This method will update the metadata associated with an entry.
-		"""
-		return self.backend.update(data)
-
-	def read(self, key_spec: dict):
-		"""
-		This method will look for index fields in ``metadata`` and use this as a key to retrieve from the store.
-		TODO: provide a way to specify additional criteria.
-		"""
-		return self.backend.read(key_spec)
+	def read(self, spec_dict: dict, get_blob=False):
+		return self.backend.read(spec_dict, get_blob=get_blob)
 
 	def delete(self, key_spec: dict):
-		"""
-		This method will extract an index from metadata to create a key and use this to delete any associated data
-		from the store.
-		"""
 		return self.backend.delete(key_spec)

@@ -59,6 +59,7 @@ class AutogenConfig(MinimalConfig):
 		# This turns on periodic logging of active downloads (to get rid of 'dots')
 		await self.spider.start_asyncio_tasks()
 		self.fpos = IntegrityDatabase(
+			db_base_path=self.store_path,
 			blos=self.blos,
 			spider=self.spider,
 			hashes=self.hashes

@@ -3,11 +3,9 @@
 import logging
 from datetime import datetime
 
-import pymongo
-
-from metatools.config.mongodb import get_collection
 from metatools.fastpull.blos import BLOSNotFoundError, BLOSObject
 from metatools.fastpull.spider import FetchRequest, Download
+from metatools.store import Store, FileStorageBackend, DerivedKeySpecification
 
 log = logging.getLogger('metatools.autogen')
 
@@ -20,6 +18,12 @@ class IntegrityScope:
 		self.validate_hashes = validate_hashes
 		self.parent = parent
 		self.scope = scope
+		self.store = Store(
+			collection="integrity",
+			prefix=self.scope,
+			backend=FileStorageBackend(db_base_path=self.parent.db_base_path),
+			key_spec=DerivedKeySpecification(["url"])
+		)
 
 	async def get_file_by_url(self, request: FetchRequest) -> BLOSObject:
 		"""
@@ -64,8 +68,8 @@ class IntegrityScope:
 		the root cause of the fetch error can be propagated to the caller.
 		"""
 
-		existing_ref = self.parent.get(self.scope, request.url)
-		if existing_ref:
+		existing_ref = self.store.read({"url": request.url})
+		if existing_ref is not None:
 			try:
 				obj = self.parent.blos.get_object(hashes={'sha512': existing_ref['sha512']})
 				log.debug(f"IntegrityScope:{self.scope}._get_file_by_url_new: existing object found for ref {request.url}")
@@ -77,7 +81,7 @@ class IntegrityScope:
 				#raise bnfe
 		blos_obj = await self.parent.spider.download(request, completion_pipeline=[self.parent.fetch_completion_callback])
 		assert isinstance(blos_obj, BLOSObject)
-		self.parent.put(self.scope, request.url, blos_object=blos_obj)
+		self.store.write({"url": request.url, "sha512": blos_obj.authoritative_hashes['sha512'], "updated_on": datetime.utcnow()})
 		return blos_obj
 
 	async def _get_file_by_url_with_expected_hashes(self, request: FetchRequest) -> BLOSObject:
@@ -106,7 +110,7 @@ class IntegrityScope:
 
 class IntegrityDatabase:
 
-	def __init__(self, blos=None, spider=None, hashes: set = None):
+	def __init__(self, db_base_path, blos=None, spider=None, hashes: set = None):
 		"""
 		``blos`` is an instance of a Base Layer Object Store (used to store distfiles, indexed by their hashes,
 		and also takes care of all integrity checking tasks for us.
@@ -123,10 +127,9 @@ class IntegrityDatabase:
 		the ref by the URL, then from the returned record, use the sha512 to see if the BLOS entry exists.
 		"""
 		assert hashes
+		self.db_base_path = db_base_path
 		self.hashes = hashes
 		self.blos = blos
-		self.collection = c = get_collection('fastpull')
-		c.create_index([("scope", pymongo.ASCENDING), ("url", pymongo.ASCENDING)], unique=True)
 		self.spider = spider
 		self.scopes = {}
 
@@ -139,26 +142,6 @@ class IntegrityDatabase:
 			self.scopes[scope_id] = IntegrityScope(self, scope_id)
 		log.debug(f"FastPull Integrity Scope: {scope_id}")
 		return self.scopes[scope_id]
-
-	def get(self, scope, url):
-		"""
-		This method returns a ref in an IntegrityScope for a particular URL.
-		"""
-		return self.collection.find_one({"url": url, "scope": scope})
-
-	def put(self, scope, url, blos_object: BLOSObject = None):
-		"""
-		This method is used to create a ref in an IntegrityScope between a URL and a binary object in the BLOS.
-		"""
-		log.debug(f"Scope.put: scope='{scope}' url='{url}' sha512='{blos_object.authoritative_hashes['sha512']}'")
-		try:
-			self.collection.update_one(
-				{"url": url, "scope": scope},
-				{"$set": {"sha512": blos_object.authoritative_hashes['sha512'], "updated_on": datetime.utcnow()}},
-				upsert=True
-			)
-		except pymongo.errors.DuplicateKeyError:
-			raise KeyError(f"Duplicate key error when inserting {scope} {url}")
 
 	def fetch_completion_callback(self, download: Download) -> None:
 		"""

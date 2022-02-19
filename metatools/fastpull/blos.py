@@ -1,13 +1,9 @@
 #!/usr/bin/env python3
 
 import logging
-import os
-from enum import Enum
 
-import pymongo
-
-from metatools.config.mongodb import get_collection
 from metatools.hashutils import calc_hashes
+from metatools.store import Store, FileStorageBackend, HashKeySpecification
 
 log = logging.getLogger('metatools.autogen')
 
@@ -51,12 +47,6 @@ class BLOSIncompleteRecord(BLOSError):
 	pass
 
 
-class BackFillStrategy(Enum):
-	NONE = 0
-	DESIRED = 1
-	ALL = 2
-
-
 class BLOSObject:
 
 	def __init__(self, path: str = None, checked_hashes: set = None, genned_hashes: set = None, authoritative_hashes: dict = None):
@@ -71,9 +61,8 @@ class BaseLayerObjectStore:
 	req_blos_hashes = None
 	desired_hashes = None
 	disk_verify = None
-	backfill = BackFillStrategy.DESIRED
 
-	def __init__(self, blos_path=None,
+	def __init__(self, db_base_path=None,
 					hashes=None,
 					req_client_hashes=None,
 					req_blos_hashes=None,
@@ -116,10 +105,11 @@ class BaseLayerObjectStore:
 		associated with each file store.
 		"""
 
-		self.collection = get_collection('blos')
-		self.collection.create_index([("hashes.sha512", pymongo.ASCENDING)])
-		self.blos_path = blos_path
-		os.makedirs(self.blos_path, exist_ok=True)
+		self.store = Store(
+			collection="blos",
+			backend=FileStorageBackend(db_base_path=db_base_path),
+			key_spec=HashKeySpecification(["hashes.sha512"])
+		)
 
 		# Always require a sha512, since it is used for indexing the files on disk.
 		self.req_client_hashes |= {'sha512'}
@@ -241,9 +231,6 @@ class BaseLayerObjectStore:
 
 		"""
 
-	def get_disk_path(self, sha512):
-		return os.path.join(self.blos_path, sha512[:2], sha512[2:4], sha512[4:6], sha512)
-
 	def get_object(self, hashes: dict):
 		"""
 		Returns a FastPullObject representing the object by cryptographic hash if it exists.
@@ -269,24 +256,12 @@ class BaseLayerObjectStore:
 			raise BLOSInvalidRequest(f"Missing hashes in request: {missing}")
 
 		index = hashes['sha512']
-		exists_on_disk = False
-		disk_path = self.get_disk_path(index)
-		if os.path.exists(disk_path):
-			exists_on_disk = True
-
-		if not exists_on_disk:
-			raise BLOSNotFoundError(f"Object does not exist on disk. You you may want to remove the ref to this object.")
-
-		db_record = self.collection.find_one({"hashes.sha512": index})
+		db_record, blob_path = self.store.read({"hashes.sha512": index}, get_blob=True)
 		if db_record is None:
 			raise BLOSNotFoundError("Object not found")
-		if not exists_on_disk and self.backfill in (BackFillStrategy.NONE, BackFillStrategy.DESIRED):
-			raise BLOSNotFoundError(f"Object exists on disk but no DB record exists. Backfill strategy is {self.backfill}.")
 
 		db_hash_names = set(db_record["hashes"].keys())
 		missing_expected_client_hashes = self.req_blos_hashes - db_hash_names
-		if self.backfill == BackFillStrategy.NONE and missing_expected_client_hashes:
-			raise BLOSIncompleteRecord(f"BLOS record is missing digest: {missing_expected_client_hashes}")
 
 		# If we have gotten here, we have validated that we have all the hashes we absolutely need from client.
 		# We will now check that all our hashes are in harmony. This will take into account client-supplied
@@ -296,7 +271,7 @@ class BaseLayerObjectStore:
 		invalid_hashes = {}
 
 		# This calculates all the hashes we need from the object on disk:
-		disk_hashes = calc_hashes(disk_path, self.disk_verify)
+		disk_hashes = calc_hashes(blob_path, self.disk_verify)
 
 		corrupt = False
 		for hash_name in common_hashes:
@@ -324,30 +299,21 @@ class BaseLayerObjectStore:
 					invalid_hashes[hash_name]["diskhash"] = diskhash
 
 		if corrupt:
-			os.unlink(disk_path)
 			raise BLOSCorruptionError(invalid_hashes)
 		elif invalid_hashes:
 			raise BLOSHashError(invalid_hashes)
 
-		# We will record any new hashes we do not yet have, which we have happened to have just calculated --
-		# according to our backfill strategy. We will also return our official hashes as authoritative hashes
-		# to the caller.
+		# We will record any new hashes we do not yet have, which we have happened to have just calculated.
 
 		returned_hashes = db_record['hashes']
-		if self.backfill != BackFillStrategy.NONE:
-			to_be_recorded_db_hashes = self.desired_hashes & set(disk_hashes.keys())
-			if to_be_recorded_db_hashes:
-				for hash in to_be_recorded_db_hashes:
-					returned_hashes[hash] = disk_hashes[hash]
-				if self.backfill == BackFillStrategy.ALL and not db_record:
-					self.collection.insert_one({
-						"hashes": returned_hashes
-					})
-				else:
-					self.collection.update_one({"hashes.sha512": index}, {"$set": {"hashes": returned_hashes}})
-		# All done.
+		to_be_recorded_db_hashes = self.desired_hashes & set(disk_hashes.keys())
+		if to_be_recorded_db_hashes:
+			for hash in to_be_recorded_db_hashes:
+				returned_hashes[hash] = disk_hashes[hash]
+			self.store.write({"hashes": returned_hashes})
+
 		log.debug("BLOS.get_object: found object.")
-		return BLOSObject(path=disk_path, checked_hashes=disk_hashes, authoritative_hashes=returned_hashes)
+		return BLOSObject(path=blob_path, checked_hashes=disk_hashes, authoritative_hashes=returned_hashes)
 
 	def insert_object(self, download, pregenned_hashes=None):
 
@@ -386,26 +352,17 @@ class BaseLayerObjectStore:
 				log.error(f"File disappeared from under us: {download.request.url}")
 				return None
 
-		index = final_hashes['sha512']
-		disk_path = self.get_disk_path(index)
-
-		if os.path.exists(disk_path):
-			log.debug(f"no mongo db record but disk file already exists: {disk_path}")
 		try:
-			os.makedirs(os.path.dirname(disk_path), exist_ok=True)
-			os.link(download.temp_path, disk_path)
+			disk_path = self.store.write({"hashes": final_hashes}, blob_path=download.temp_path)
+			return BLOSObject(path=disk_path, genned_hashes=missing, authoritative_hashes=final_hashes)
 		except FileNotFoundError:
-			raise BLOSNotFoundError(f"Error copying {download.temp_path} to {disk_path} -- file not found.")
+			raise BLOSNotFoundError(f"Error copying {download.temp_path} into BLOS -- file not found.")
 		except FileExistsError:
 			# possible race? multiple threads inserting same download shouldn't really happen
 			pass
-
-		log.debug(f"BLOS.insert_object: creating record for {disk_path}: {final_hashes}")
-		self.collection.update_one({'hashes.sha512': final_hashes['sha512']}, {"$set": {"hashes": final_hashes}}, upsert=True)
-		return BLOSObject(path=disk_path, genned_hashes=missing, authoritative_hashes=final_hashes)
 
 	def delete_object(self, my_sha512):
 		"""
 		This method is used to delete objects from the BLOS. It shouldn't generally need to be used.
 		"""
-		self.collection.delete_one({"hashes.sha512": my_sha512})
+		self.store.delete({"hashes.sha512": my_sha512})
