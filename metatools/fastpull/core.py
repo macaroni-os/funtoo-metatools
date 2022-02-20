@@ -3,9 +3,9 @@
 import logging
 from datetime import datetime
 
-from metatools.fastpull.blos import BLOSNotFoundError, BLOSObject
+from metatools.blos import BaseLayerObjectStore
 from metatools.fastpull.spider import FetchRequest, Download
-from metatools.store import Store, FileStorageBackend, DerivedKeySpecification
+from metatools.store import Store, FileStorageBackend, DerivedKeySpecification, StoreObject
 
 log = logging.getLogger('metatools.autogen')
 
@@ -25,10 +25,10 @@ class IntegrityScope:
 			key_spec=DerivedKeySpecification(["url"])
 		)
 
-	async def get_file_by_url(self, request: FetchRequest) -> BLOSObject:
+	async def get_file_by_url(self, request: FetchRequest) -> StoreObject:
 		"""
 
-		This method will attempt to return a BLOSObject reference to binary data which is associated with
+		This method will attempt to return a StoreObject reference to binary data which is associated with
 		a URL, referenced by ``request.url``, in this ``IntegrityScope``. Typically, this means that a
 		tarball is being requested, and we may have this tarball already available locally, or we may
 		need to use the ``Spider`` to download it. This is the method used to retrieve ``Artifact``s
@@ -68,49 +68,21 @@ class IntegrityScope:
 		the root cause of the fetch error can be propagated to the caller.
 		"""
 
-		existing_ref = self.store.read({"url": request.url})
+		existing_ref: StoreObject = self.store.read({"url": request.url})
 		if existing_ref is not None:
-			try:
-				obj = self.parent.blos.get_object(hashes={'sha512': existing_ref['sha512']})
+			obj = self.parent.blos.read({"hashes.sha512": existing_ref.data['sha512']})
+			if obj is not None:
 				log.debug(f"IntegrityScope:{self.scope}._get_file_by_url_new: existing object found for ref {request.url}")
 				return obj
-			except BLOSNotFoundError as bnfe:
-				# TODO: tighten this down
-				log.error(f"IntegrityScope:{self.scope}._get_file_by_url_new: ref {request.url} (sha512: {existing_ref['sha512']} NOT FOUND in BLOS. For now, I will clean up the BLOS and try again.")
-				self.parent.blos.delete_object(existing_ref['sha512'])
-				#raise bnfe
-		blos_obj = await self.parent.spider.download(request, completion_pipeline=[self.parent.fetch_completion_callback])
-		assert isinstance(blos_obj, BLOSObject)
-		self.store.write({"url": request.url, "sha512": blos_obj.authoritative_hashes['sha512'], "updated_on": datetime.utcnow()})
-		return blos_obj
-
-	async def _get_file_by_url_with_expected_hashes(self, request: FetchRequest) -> BLOSObject:
-		"""
-		This method attempts to return a reference to a file (``BLOSObject``) associated with the URL
-		in ``request.url``, and also performs additional verification to ensure that ``request.expected_hashes``
-		match the hashes we see along the way. So various additional checks are performed, making it more
-		complex than just retrieving a file for which we don't have any expected hashes.
-
-		NOTE: We don't really need this functionality in the core of metatools, as whatever the Spider downloads
-		is considered to be 'authoritative'. It could be used for re-populating the BLOS if it is wiped, and
-		checking to see if hashes match what we originally downloaded.
-		"""
-		raise NotImplementedError()
-
-	def remove_record(self, authoritative_url):
-		"""
-		This will remove a record from the scope for the specified URL, if one exists. A
-		FastPullUpdateFailure will be raised if the record does not exist.
-		"""
-		pass
-
-	def update_record(self, authoritative_url):
-		pass
+		new_ref = await self.parent.spider.download(request, completion_pipeline=[self.parent.fetch_completion_callback])
+		assert isinstance(new_ref, StoreObject)
+		self.store.write({"url": request.url, "sha512": new_ref.data["hashes"]["sha512"], "updated_on": datetime.utcnow()})
+		return new_ref
 
 
 class IntegrityDatabase:
 
-	def __init__(self, db_base_path, blos=None, spider=None, hashes: set = None):
+	def __init__(self, db_base_path, blos: BaseLayerObjectStore = None, spider=None, hashes: set = None):
 		"""
 		``blos`` is an instance of a Base Layer Object Store (used to store distfiles, indexed by their hashes,
 		and also takes care of all integrity checking tasks for us.
@@ -129,7 +101,7 @@ class IntegrityDatabase:
 		assert hashes
 		self.db_base_path = db_base_path
 		self.hashes = hashes
-		self.blos = blos
+		self.blos: BaseLayerObjectStore = blos
 		self.spider = spider
 		self.scopes = {}
 
@@ -143,7 +115,7 @@ class IntegrityDatabase:
 		log.debug(f"FastPull Integrity Scope: {scope_id}")
 		return self.scopes[scope_id]
 
-	def fetch_completion_callback(self, download: Download) -> None:
+	def fetch_completion_callback(self, download: Download) -> StoreObject:
 		"""
 		This method is intended to be called *once* when an actual in-progress download of a tarball (by
 		the Spider) has completed. It performs several important finalization actions upon successful
@@ -160,9 +132,6 @@ class IntegrityDatabase:
 		for it.
 		"""
 
-		blos_object = self.blos.insert_object(download)
+		store_obj: StoreObject = self.blos.insert_download(download)
 		self.spider.cleanup(download)
-		if blos_object is not None:
-			return blos_object
-		else:
-			raise ValueError(f"Was unable to retrieve object associated with {download.request.url} upon download completion.")
+		return store_obj

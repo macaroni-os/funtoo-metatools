@@ -13,11 +13,12 @@ from collections import OrderedDict
 import jinja2
 import logging
 
+from metatools.store import StoreObject
+
 log = logging.getLogger('metatools.autogen')
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
-from metatools.fastpull.blos import BLOSObject
 from metatools.fastpull.spider import FetchError, FetchRequest
 
 # This is not currently used, as what the Spider downloads at any given moment is considered to
@@ -80,12 +81,12 @@ class Artifact(Fetchable):
 		self._final_name = final_name
 		self.breezybuilds = []
 		self.extra_http_headers = extra_http_headers
-		self.blos_object: Optional[BLOSObject] = None
+		self.blos_object: Optional[StoreObject] = None
 
 	@property
 	def final_data(self):
 		if self.blos_object:
-			return self.blos_object.authoritative_hashes
+			return self.blos_object.data["hashes"]
 		return None
 
 	@property
@@ -101,7 +102,7 @@ class Artifact(Fetchable):
 
 	@property
 	def final_path(self):
-		return self.blos_object.path
+		return self.blos_object.blob.path
 
 	@property
 	def final_name(self):
@@ -118,14 +119,14 @@ class Artifact(Fetchable):
 
 	@property
 	def hashes(self):
-		return self.blos_object.authoritative_hashes
+		return self.blos_object.data["hashes"]
 
 	@property
 	def size(self):
-		return self.blos_object.authoritative_hashes['size']
+		return self.blos_object.data["hashes"]["size"]
 
 	def hash(self, h):
-		return self.blos_object.authoritative_hashes[h]
+		return self.blos_object.data["hashes"][h]
 
 	@property
 	def src_uri(self):

@@ -1,7 +1,7 @@
 import hashlib
 import os
 from collections import OrderedDict
-from typing import Mapping
+from typing import Mapping, Optional
 
 from bson import UuidRepresentation
 from bson.codec_options import TypeRegistry
@@ -61,7 +61,6 @@ JSON_OPTIONS = JSONOptions(
 			type_registry=TypeRegistry(type_codecs=[], fallback_encoder=None))
 
 
-
 class NotFoundError(Exception):
 	pass
 
@@ -115,7 +114,8 @@ class KeySpecification:
 
 class HashKeySpecification(KeySpecification):
 
-	def __init__(self, key_spec):
+	def __init__(self, key_spec: str):
+		assert isinstance(key_spec, str)
 		self.key_spec = key_spec
 
 	def __repr__(self):
@@ -173,19 +173,36 @@ class DerivedKeySpecification(KeySpecification):
 		return self.data_as_hash(expand_keyspec(spec_dict))
 
 
+class BLOBReference:
+	pass
+
+
+class BLOBDiskReference:
+	def __init__(self, path):
+		self.path = path
+
+
+class StoreObject:
+
+	def __init__(self, data, blob_path=None):
+		self.data = data
+		if blob_path:
+			self.blob = BLOBDiskReference(path=blob_path)
+
+
 class StorageBackend:
 	store = None
 
 	def create(self, store):
 		self.store = store
 
-	def write(self, data, blob_path=None):
+	def write(self, data, blob_path=None) -> Optional[StoreObject]:
 		pass
 
-	def read(self, spec_dict, get_blob=False):
+	def read(self, spec_dict) -> Optional[StoreObject]:
 		pass
 
-	def delete(self, data):
+	def delete(self, data) -> None:
 		pass
 
 
@@ -202,23 +219,23 @@ class FileStorageBackend(StorageBackend):
 			self.root = os.path.join(self.root, self.store.prefix)
 		os.makedirs(self.root, exist_ok=True)
 
-	def encode_data(self, data):
+	def encode_data(self, data) -> bytes:
 		# We sort the keys so we always have a consistent representation of dictionary keys on disk.
 		return dumps(data, json_options=JSON_OPTIONS, sort_keys=True).encode('utf-8')
 
-	def decode_data(self, path):
+	def decode_data(self, path) -> OrderedDict:
 		with open(path, "rb") as f:
 			in_string = f.read().decode("utf-8")
 			return loads(in_string, json_options=JSON_OPTIONS)
 
-	def write(self, data, blob_path=None):
+	def write(self, data, blob_path=None) -> Optional[StoreObject]:
 		sha = self.store.key_spec.data_as_hash(data)
 		dir_index = f"{sha[0:2]}/{sha[2:4]}/{sha[4:6]}"
 		out_path = f"{self.root}/{dir_index}/{sha}"
 		os.makedirs(os.path.dirname(out_path), exist_ok=True)
-		self._write_phase2(out_path, data, blob_path)
+		return self._write_phase2(out_path, data, blob_path)
 
-	def _write_phase2(self, out_path, data, blob_path=None):
+	def _write_phase2(self, out_path, data, blob_path=None) -> Optional[StoreObject]:
 		os.makedirs(os.path.dirname(out_path), exist_ok=True)
 		with open(out_path, 'wb') as f:
 			f.write(self.encode_data(data))
@@ -226,25 +243,32 @@ class FileStorageBackend(StorageBackend):
 			blob_outpath = out_path + ".blob"
 			if os.path.exists(blob_outpath):
 				os.unlink(blob_outpath)
-			os.link(blob_path, blob_outpath)
-			return blob_path
+			# Downloading two different URLs which point to the exact same binary can result in races. This happens with
+			# crates:
+			#
+			#     File "/home/drobbins/development/funtoo-metatools/metatools/store.py", line 236, in write
+			#         return self._write_phase2(out_path, data, blob_path)
+			#       File "/home/drobbins/development/funtoo-metatools/metatools/store.py", line 246, in _write_phase2
+			#         os.link(blob_path, blob_outpath)
+			#     FileExistsError: [Errno 17] File exists:
+			try:
+				os.link(blob_path, blob_outpath)
+			except FileExistsError:
+				pass
+		else:
+			blob_outpath = None
+		return StoreObject(data=data, blob_path=blob_outpath)
 
-	def read(self, spec_dict, get_blob=False):
+	def read(self, spec_dict) -> Optional[StoreObject]:
 		sha = self.store.key_spec.specdict_as_hash(spec_dict)
 		dir_index = f"{sha[0:2]}/{sha[2:4]}/{sha[4:6]}"
 		in_path = f"{self.root}/{dir_index}/{sha}"
 		if not os.path.exists(in_path):
-			if not get_blob:
-				return None
-			else:
-				return None, None
-		if not get_blob:
-			return self.decode_data(in_path)
-		else:
-			blob_path = in_path + ".blob"
-			return self.decode_data(in_path), blob_path if os.path.exists(blob_path) else None
+			return None
+		blob_path = in_path + ".blob"
+		return StoreObject(data=self.decode_data(in_path), blob_path=blob_path if os.path.exists(blob_path) else None)
 
-	def delete(self, spec_dict):
+	def delete(self, spec_dict) -> None:
 		sha = self.store.key_spec.specdict_as_hash(spec_dict)
 		dir_index = f"{sha[0:2]}/{sha[2:4]}/{sha[4:6]}"
 		in_path = f"{self.root}/{dir_index}/{sha}"
@@ -276,13 +300,13 @@ class Store:
 			self.backend = backend
 		self.backend.create(self)
 
-	def write(self, data, blob_path=None):
+	def write(self, data, blob_path=None) -> Optional[StoreObject]:
 		if self.required_spec:
 			self.required_spec.validate_data(data)
 		return self.backend.write(data, blob_path=blob_path)
 
-	def read(self, spec_dict: dict, get_blob=False):
-		return self.backend.read(spec_dict, get_blob=get_blob)
+	def read(self, spec_dict: dict) -> Optional[StoreObject]:
+		return self.backend.read(spec_dict)
 
-	def delete(self, key_spec: dict):
+	def delete(self, key_spec: dict) -> None:
 		return self.backend.delete(key_spec)

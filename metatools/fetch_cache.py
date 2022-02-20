@@ -4,7 +4,7 @@ from datetime import datetime
 import pymongo
 
 from metatools.config.mongodb import get_collection
-from metatools.store import Store, FileStorageBackend, DerivedKeySpecification, NotFoundError
+from metatools.store import Store, FileStorageBackend, DerivedKeySpecification, NotFoundError, StoreObject
 
 
 class FetchCache:
@@ -49,20 +49,20 @@ class FileStoreFetchCache(FetchCache):
 		# content_kwargs is stored at None if there are none, not an empty dict:
 		selector = {"method_name": method_name, "url": url}
 		try:
-			result = self.store.read(selector)
+			result: StoreObject = self.store.read(selector)
 		except NotFoundError:
 			raise CacheMiss()
-		if result is None or "fetched_on" not in result:
+		if result is None or "fetched_on" not in result.data:
 			raise CacheMiss()
 		elif refresh_interval is not None:
-			if datetime.utcnow() - result["fetched_on"] <= refresh_interval:
-				return result
+			if datetime.utcnow() - result.data["fetched_on"] <= refresh_interval:
+				return result.data
 			else:
 				raise CacheMiss()
-		elif max_age is not None and datetime.utcnow() - result["fetched_on"] > max_age:
+		elif max_age is not None and datetime.utcnow() - result.data["fetched_on"] > max_age:
 			raise CacheMiss()
 		else:
-			return result
+			return result.data
 
 	async def record_fetch_failure(self, method_name, fetchable, failure_reason):
 		if type(fetchable) == str:

@@ -2,14 +2,15 @@ import logging
 import os
 from collections import defaultdict
 from datetime import timedelta
+
 import yaml
 
+from metatools.blos import BaseLayerObjectStore
 from metatools.config.base import MinimalConfig
 from metatools.context import OverlayLocator, GitRepositoryLocator
-from metatools.fastpull.blos import BaseLayerObjectStore
 from metatools.fastpull.core import IntegrityDatabase
 from metatools.fastpull.spider import WebSpider
-from metatools.fetch_cache import MongoDBFetchCache, FileStoreFetchCache
+from metatools.fetch_cache import FileStoreFetchCache
 from metatools.pretty_logging import TornadoPrettyLogFormatter
 
 
@@ -29,6 +30,7 @@ class AutogenConfig(MinimalConfig):
 	fastpull_scope = None
 	fastpull_session = None
 	hashes = None
+	blos = None
 
 	config_files = {
 		"autogen": "~/.autogen"
@@ -54,7 +56,7 @@ class AutogenConfig(MinimalConfig):
 		if self.config is None:
 			self.config = {}
 		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
-		self.blos = BaseLayerObjectStore(self.fastpull_path, hashes=self.hashes)
+		self.blos = BaseLayerObjectStore(db_base_path=self.store_path, hashes=self.hashes)
 		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
 		# This turns on periodic logging of active downloads (to get rid of 'dots')
 		await self.spider.start_asyncio_tasks()
