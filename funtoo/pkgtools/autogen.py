@@ -5,16 +5,13 @@ import inspect
 import logging
 import os
 import subprocess
-import sys
 from asyncio import FIRST_EXCEPTION, Task
 from collections import defaultdict
 from concurrent.futures.thread import ThreadPoolExecutor
 
-from yaml import safe_load
-
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
-
 from subpop.util import load_plugin
+from yaml import safe_load
 
 """
 The `PENDING_QUE` will be built up to contain a full list of all the catpkgs we want to autogen in the full run
@@ -23,13 +20,10 @@ are defined multiple times and other errors that we should catch before processi
 by the generator (pop plugin) that will be used to generate a list of catpkgs. Before we start, we have
 everything organized so that we only need to call `execute_generator` once for each generator. It will start
 work for all catpkgs in that generator, and wait for completion of this work before returning.
-
-Similarly to how we queue up all work before we start, `ERRORS` will contain a list of all errors encountered
-during processing.
 """
 
 PENDING_QUE = []
-ERRORS = []
+AUTOGEN_FAILURES = []
 
 
 SUB_FP_MAP_LOCK = asyncio.Lock()
@@ -102,40 +96,31 @@ def queue_all_indy_autogens():
 		logging.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
-async def gather_pending_tasks(task_list, throw=True):
+async def gather_pending_tasks(task_list):
 	"""
 	This function collects completed asyncio coroutines, catches any exceptions recorded during their execution.
 	"""
-	exceptions = []
 	results = []
 	cur_tasks = task_list
 	if not len(cur_tasks):
 		return [], []
 	while True:
 		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
+		# TODO: Due to the way we are setting a _handle for each Task, which is handling any exceptions, I don't think
+		#       we still need to handle any exceptions here.
 		for done_item in done_list:
-			if throw:
-				try:
-					result = done_item.result()
-					results.append(result)
-				except Exception as e:
-					bzb = getattr(done_item, "bzb", None)
-					if bzb is not None:
-						raise pkgtools.ebuild.BreezyError(f"Exception generating {bzb.catpkg}: {str(e)}")
-					else:
-						raise e
-			else:
-				try:
-					result = done_item.result()
-					results.append(result)
-				except Exception as e:
-					exceptions.append((e, sys.exc_info()))
+			try:
+				result = done_item.result()
+				results.append(result)
+			except Exception as e:
+				pkgtools.model.log.error("Unexpected Exception!")
+				raise e
 		if not len(cur_tasks):
 			break
-	return results, exceptions
+	return results
 
 
-def init_pkginfo_for_package(generator_sub, defaults=None, base_pkginfo=None, template_path=None, gen_path=None):
+def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginfo=None, template_path=None, gen_path=None):
 	"""
 	This function generates the final pkginfo that is passed to the generate() function in the generator sub
 	for each catpkg being generated.
@@ -159,7 +144,7 @@ def init_pkginfo_for_package(generator_sub, defaults=None, base_pkginfo=None, te
 	pkginfo.update(base_pkginfo)
 	if template_path:
 		pkginfo["template_path"] = template_path
-
+	pkginfo["sub_path"] = sub_path
 	# Now that we have wrapped the generate method, we need to start it as an asyncio task and then we will wait
 	# for all our generate() calls to complete, outside this for loop.
 
@@ -174,12 +159,19 @@ def _handle_task_result(task: Task):
 	try:
 		success = task.result()
 		if not success:
-			sys.exit(1)
+			fail_info = getattr(task, 'info', None)
+			if fail_info:
+				AUTOGEN_FAILURES.append(fail_info)
+			else:
+				AUTOGEN_FAILURES.append("Unknown Autogen!")
 	except asyncio.CancelledError:
 		pass
 	except Exception as e:
-		pkgtools.model.log.error(e, exc_info=True)
-		sys.exit(1)
+		fail_info = getattr(task, 'info', None)
+		if fail_info:
+			AUTOGEN_FAILURES.append(fail_info)
+		else:
+			AUTOGEN_FAILURES.append("Unknown Autogen (2)!")
 
 
 def _artifact_handle_task_result(task: Task):
@@ -189,7 +181,7 @@ def _artifact_handle_task_result(task: Task):
 		pass
 	except Exception as e:
 		pkgtools.model.log.error(e, exc_info=True)
-		sys.exit(1)
+	# TODO: record these failures in a global place if this is still a valid exception-catching path.
 
 
 async def execute_generator(
@@ -211,9 +203,12 @@ async def execute_generator(
 	"""
 	if not generator_sub_path:
 		raise TypeError("generator_sub_path not set to a path.")
-	generator_sub = load_plugin(f"{generator_sub_path}/{generator_sub_name}.py", generator_sub_name)
+	sub_path = f"{generator_sub_path}/{generator_sub_name}.py"
+	generator_sub = load_plugin(sub_path, generator_sub_name)
 	# Do hub injection:
 	generator_sub.hub = hub
+	generator_sub.sub_path = sub_path
+	generator_sub.FOO = "bar"
 
 	async def generator_thread_task(pkginfo_list):
 
@@ -228,6 +223,7 @@ async def execute_generator(
 			new_pkginfo_list.append(
 				init_pkginfo_for_package(
 					generator_sub,
+					sub_path,
 					defaults=defaults, base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
 				)
 			)
@@ -265,30 +261,52 @@ async def execute_generator(
 				# of pkgtools. We want ad-hoc autogens to be instantiated as hub.Artifact() not
 				# hub.pkgtools.ebuild.Artifact().
 
+				# WIP: work to remove direct access to pkgtools.ebuild and reroute to this hub instead.
+				# I got distracted on supporting subpop stuff for this.
+
+				#class FinderWrapper:
+				#
+				#	def __init__(self, orig, ebuild):
+				#		self.orig = orig
+				#		self.ebuild = ebuild
+				#
+				#	def __getattr__(self, item):
+				#		if item == "ebuild":
+				#			return self.ebuild
+				#		else:
+				#			return getattr(self.orig, item)
+
 				class AutoHub:
 
 					autogen_id = None
-					pkgtools = None
+					sub_path = generator_sub_path
+					THREAD_CTX = hub.THREAD_CTX
+					get_page = pkgtools.fetch.get_page
+					temp_path = pkgtools.model.temp_path
 
 					def __init__(self, autogen_id, pkgtools):
 						self.autogen_id = autogen_id
+						#self.pkgtools = FinderWrapper(pkgtools, self)
 						self.pkgtools = pkgtools
 
 					def Artifact(self, **kwargs):
-						return self.pkgtools.ebuild.Artifact(key=self.autogen_id, **kwargs)
+						return pkgtools.ebuild.Artifact(key=self.autogen_id, **kwargs)
 
 					def BreezyBuild(self, **kwargs):
-						return self.pkgtools.ebuild.BreezyBuild(**kwargs)
+						return pkgtools.ebuild.BreezyBuild(**kwargs)
 
 					def BreezyError(self, **kwargs):
-						return self.pkgtools.ebuild.BreezyError(**kwargs)
+						return pkgtools.ebuild.BreezyError(**kwargs)
+
+					def __getattr__(self, item):
+						if item == "pkgtools":
+							return self.pkgtools
 
 				if "version" in pkginfo and pkginfo["version"] != "latest":
 					autogen_info = f"{pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}"
 				else:
 					autogen_info = f"{pkginfo['cat']}/{pkginfo['name']} (latest)"
 
-				exc = None
 				generate = getattr(generator_sub, "generate", None)
 				if generate is None:
 					return autogen_info, AttributeError(f"generate() not found in {generator_sub}")
@@ -300,6 +318,7 @@ async def execute_generator(
 							pkgtools.model.log.error(f"generate() in {generator_sub} must be async")
 							return False
 						else:
+							pkgtools.model.log.error(te, exc_info=True)
 							raise te
 				except Exception as e:
 					pkgtools.model.log.error(e, exc_info=True)
@@ -307,6 +326,7 @@ async def execute_generator(
 				return True
 
 			task = Task(gen_wrapper(pkginfo, generator_sub))
+			task.info = sub_path
 			task.add_done_callback(_handle_task_result)
 			hub.THREAD_CTX.running_autogens.append(task)
 
@@ -457,9 +477,7 @@ async def execute_all_queued_generators():
 			future = loop.run_in_executor(executor, hub.run_async_adapter, async_func, pkginfo_list)
 			futures.append(future)
 
-		results, exceptions = await gather_pending_tasks(futures)
-		if len(exceptions):
-			print(exceptions)
+		await gather_pending_tasks(futures)
 
 
 async def start():
@@ -471,7 +489,17 @@ async def start():
 	queue_all_yaml_autogens()
 	await execute_all_queued_generators()
 	generate_manifests()
-	return ERRORS
+	# TODO: return false on error
+	if len(AUTOGEN_FAILURES):
+		if len(AUTOGEN_FAILURES) == 1:
+			pkgtools.model.log.error(f"An error was encountered when processing {AUTOGEN_FAILURES[0]}")
+		else:
+			pkgtools.model.log.error(f"Errors were encountered when processing the following autogens:")
+			for fail in AUTOGEN_FAILURES:
+				pkgtools.model.log.error(f" * {fail}")
+		return False
+	else:
+		return True
 
 
 # vim: ts=4 sw=4 noet

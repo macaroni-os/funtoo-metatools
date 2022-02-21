@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 
 import argparse
-import logging
 import sys
-import traceback
 from datetime import timedelta
 
-from metatools.config.autogen import AutogenConfig
 from subpop.hub import Hub
+
+from metatools.config.autogen import AutogenConfig
 
 
 class DoItHub(Hub):
@@ -43,24 +42,16 @@ async def main_thread():
 	if hub.OPT.immediate:
 		kwargs['fetch_cache_interval'] = timedelta(seconds=0)
 	await pkgtools.launch(AutogenConfig, **kwargs)
-	errors = await pkgtools.autogen.start()
-	return errors
+	return await pkgtools.autogen.start()
 
 
 if __name__ == "__main__":
-	errors = hub.LOOP.run_until_complete(main_thread())
-	if len(errors):
-		sys.stderr.write("\n\n")
-		for e, exc_info in errors:
-			msg = getattr(e, "msg", None)
-			if msg is not None:
-				logging.error(f"Message: {msg}")
-			traceback.print_exception(*exc_info)
-		logging.error("\n\nErrors encountered.\n")
+	success = hub.LOOP.run_until_complete(main_thread())
+	if not success:
 		sys.exit(1)
 
+
 # TODO: add after-action report (listing any failures.)
-# TODO: add mass-autogen YAML support.
 # TODO: add 'facts' database concept to allow more resiliency on failures (fall back to cached facts from last
 #       successful run)
 
