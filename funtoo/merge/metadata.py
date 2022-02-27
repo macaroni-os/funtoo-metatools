@@ -439,7 +439,7 @@ async def get_python_use_lines(kit_gen, catpkg, cpv_list, cur_tree, def_python, 
 			elif imp == "python3.8+":
 				new_imps.update(["python3_8", "python3_9", "python3_10"])
 			elif imp == "python3.9+":
-				new_imps.add(["python3_9", "python3_10"])
+				new_imps.update(["python3_9", "python3_10"])
 			elif imp == "python3.10+":
 				new_imps.add("python3_10")
 			elif imp == "python2+":
