@@ -139,7 +139,7 @@ class KitGenerator:
 					merge.model.log.error(f"Exiting due to {gte}.")
 					sys.exit(1)
 				except Exception as ex:
-					exc_string = (''.join(traceback.format_exception(etype=type(ex), value=ex, tb=ex.__traceback__)))
+					exc_string = (''.join(traceback.format_exception(type(ex), value=ex, tb=ex.__traceback__)))
 					merge.model.log.error(f"Exiting due to:\n{exc_string}")
 					sys.exit(1)
 

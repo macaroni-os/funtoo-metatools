@@ -290,22 +290,18 @@ def get_catpkg_relations_from_depstring(depstring):
 
 
 def extract_ebuild_metadata(kit_gen_obj, atom, ebuild_path=None, env=None, eclass_paths=None):
-	"""
-	TODO: This function is hard-coded to assume a python3.7 installation. Should be relatively easy to
-	      tweak this to auto-detect PORTAGE_BIN_PATH.
-	"""
 	infos = {"HASH_KEY": atom}
 	env["PATH"] = "/bin:/usr/bin"
 	env["LC_COLLATE"] = "POSIX"
 	env["LANG"] = "en_US.UTF-8"
 	# For things to work correctly, the EAPI of the ebuild has to be manually extracted:
 	eapi, lineno = get_eapi_of_ebuild(ebuild_path)
-	if eapi is not None and eapi in "01234567":
+	if eapi is not None and eapi in "012345678":
 		env["EAPI"] = eapi
 	else:
 		env["EAPI"] = "0"
 	env["PORTAGE_GID"] = "250"
-	env["PORTAGE_BIN_PATH"] = "/usr/lib/portage/python3.7"
+	env["PORTAGE_BIN_PATH"] = glob.glob("/usr/lib/portage/python3*")[-1]
 	env["EBUILD"] = ebuild_path
 	env["EBUILD_PHASE"] = "depend"
 	# Normally keep this turned off:
@@ -340,7 +336,7 @@ def extract_ebuild_metadata(kit_gen_obj, atom, ebuild_path=None, env=None, eclas
 			del kit_gen_obj.metadata_errors[atom]
 		return infos
 	except (FileNotFoundError, IndexError, ValueError) as ex:
-		exc_string = (''.join(traceback.format_exception(etype=type(ex), value=ex, tb=ex.__traceback__)))
+		exc_string = (''.join(traceback.format_exception(type(ex), value=ex, tb=ex.__traceback__)))
 		kit_gen_obj.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": err_out, "exception": exc_string}
 		merge.model.log.error(f"{atom} metadata error: {err_out}")
 		return None
@@ -439,13 +435,15 @@ async def get_python_use_lines(kit_gen, catpkg, cpv_list, cur_tree, def_python, 
 				# The eclass bumps these to python3_7. We do the same to get correct results:
 				new_imps.add(def_python)
 			elif imp in ["python3+", "python3_7+"]:
-				new_imps.update(["python3_7", "python3_8", "python3_9"])
+				new_imps.update(["python3_7", "python3_8", "python3_9", "python3_10"])
 			elif imp == "python3.8+":
-				new_imps.update(["python3_8", "python3_9"])
+				new_imps.update(["python3_8", "python3_9", "python3_10"])
 			elif imp == "python3.9+":
-				new_imps.add("python3_9")
+				new_imps.add(["python3_9", "python3_10"])
+			elif imp == "python3.10+":
+				new_imps.add("python3_10")
 			elif imp == "python2+":
-				new_imps.update(["python2_7", "python3_7", "python3_8", "python3_9"])
+				new_imps.update(["python2_7", "python3_7", "python3_8", "python3_9", "python3_10"])
 			else:
 				new_imps.add(imp)
 		imps = list(new_imps)
