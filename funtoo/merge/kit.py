@@ -177,6 +177,7 @@ class KitGenerator:
 		If there were changes, and if `prune` is True, any unaccessed (unread) item will be removed from the cache.
 		This is intended to clean out stale entries during tree regeneration.
 		"""
+		remove_keys = set()
 		if prune:
 			all_keys = set(self.kit_cache.keys())
 			remove_keys = all_keys - (self.kit_cache_retrieved_atoms | self.kit_cache_writes)
@@ -710,13 +711,19 @@ class KitPipeline:
 
 class ParallelKitPipeline(KitPipeline):
 
+	# TODO: Since Store() is currently not thread-safe, we will temporarily restrict kit generation to 'one kit at
+	#       a time', and once things are working well, circle back, implement thread-safety and change this to
+	#       parallelize.
+
+	max_workers = 1
+
 	async def run(self):
 		if not len(self.jobs):
 			return
 		# All kits here are sharing the same sources collection, so we just have to initialize them once:
 		self.initialize_sources(self.jobs[0].kit.source)
 		regen_futures = []
-		with ThreadPoolExecutor(max_workers=8) as executor:
+		with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
 			for kit_job in self.jobs:
 				future = executor.submit(hub.run_async_adapter, kit_job.generate)
 				regen_futures.append(future)
