@@ -165,7 +165,11 @@ release:
       - kde-kit:
           branch: 5.22-rel-next
       - gnome-kit:
-          branch: 3.36-rel-next
+          kind: sourced
+          source:
+            url: https://code.funtoo.org/bitbucket/scm/core/gnome-kit-sources.git
+            branch: 3.36-prime
+          branch: 3.36-prime-next
       - xfce-kit:
           branch: 4.14-rel-next
       - xfce-kit:
