@@ -370,7 +370,7 @@ class ReleaseYAML(YAMLReader):
 			elif kind == KitKind.SOURCED:
 				# sourced kits have kit_insides['source'] set to reference a SourceRepository object.
 				if not isinstance(kit_insides['source'], dict):
-					raise ValueError(f"source: definition for kit {kit_name} must be a dictionary with 'url' and 'branch' defined.")
+					raise ValueError(f"source: definition for kit {kit_name} must be a dictionary with 'url' and 'branch' defined. Got this instead: {kit_insides['source']}")
 				kit_insides['source'] = SourceRepository(name=f"{kit_name}-sources", url=kit_insides['source']['url'], branch=kit_insides['source']['branch'])
 			else:
 				raise KeyError(f"Unknown kit kind '{kind}'")

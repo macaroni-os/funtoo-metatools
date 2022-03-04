@@ -900,7 +900,7 @@ class MetaRepoJobController:
 		1. The kits are for different branches of the same kit (they will clobber writes to the dest. tree)
 		2. The kits reference a different set of source repositories (they need different sha1's checked out at the same time.)
 		"""
-
+		merge.model.log.debug("In generate_jobs_and_pipelines")
 		all_masters = set()
 		for kit_name, kit_list in merge.model.release_yaml.kits.items():
 			for kit in kit_list:

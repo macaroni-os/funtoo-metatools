@@ -21,10 +21,8 @@ class MergeError(Exception):
 	pass
 
 
-# TODO: add a means to copy an entire kit, without listing everything in packages.yaml.
-#       (This will be added with 'sourced' kits.)
-
 # Added this to properly and immediately terminate all tasks and subprocesses:
+
 
 async def do_process_teardown():
 	cur_proc = psutil.Process()
@@ -47,9 +45,11 @@ async def do_process_teardown():
 
 async def main_thread(args):
 	try:
-		await merge.launch(MergeConfig, release=args.release, prod=args.prod, push=not args.nopush, create_branches=args.create_branches, fixups_url=args.fixups_url)
+		await merge.launch(MergeConfig, release=args.release, prod=args.prod, push=not args.nopush,
+		                   create_branches=args.create_branches, fixups_url=args.fixups_url)
 	except subpop.config.ConfigurationError as ce:
-		sys.stdout.write(f"An error was encountered: {ce.__class__.__name__}: {' '.join(ce.args)}\nPlease specify --fixups_url <clone_url> to clone your fixups repo.\n")
+		sys.stdout.write(
+			f"An error was encountered: {ce.__class__.__name__}: {' '.join(ce.args)}\nPlease specify --fixups_url <clone_url> to clone your fixups repo.\n")
 		sys.exit(1)
 	controller = merge.kit.MetaRepoJobController()
 	try:

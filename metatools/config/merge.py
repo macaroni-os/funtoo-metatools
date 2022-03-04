@@ -46,7 +46,7 @@ class MergeConfig(MinimalConfig):
 
 		self.log = logging.getLogger('metatools.merge')
 		self.log.propagate = False
-		self.log.setLevel(logging.INFO)
+		self.log.setLevel(logging.DEBUG)
 		channel = logging.StreamHandler()
 		channel.setFormatter(TornadoPrettyLogFormatter())
 		self.log.addHandler(channel)
@@ -57,9 +57,12 @@ class MergeConfig(MinimalConfig):
 		self.create_branches = create_branches
 		self.fixups_url = fixups_url
 
+		self.log.debug("Trying to find kit-fixups")
+
 		# TODO: refuse to use any source repository that has local changes (use git status --porcelain | wc -l)
 		self.context = os.path.join(self.source_trees, "kit-fixups")
 		self.kit_fixups = GitTree(name='kit-fixups', root=self.context, model=self, url=fixups_url)
+		self.log.debug("Initializing kit-fixups repository in model init")
 		self.kit_fixups.initialize()
 		self.locator = GitRepositoryLocator(start_path=self.kit_fixups.root)
 
@@ -81,6 +84,7 @@ class MergeConfig(MinimalConfig):
 			self.push = push
 			self.mirror_repos = push
 			self.git_class = GitTree
+		self.log.debug("Model initialization complete.")
 
 	@property
 	def metadata_cache(self):
