@@ -243,7 +243,9 @@ class AutoCreatedGitTree(Tree):
 
 
 class GitTree(Tree):
-	"A Tree (git) that we can use as a source for work jobs, and/or a target for running jobs."
+	"""
+		A Tree (git) that we can use as a source for work jobs, and/or a target for running jobs.
+	"""
 
 	def __init__(
 		self,
@@ -260,7 +262,7 @@ class GitTree(Tree):
 		destfix: bool = False,
 		reclone: bool = False,
 		pull: bool = True,
-		checkout_all_branches: bool = True,
+		checkout_all_branches: bool = False,
 		model=None
 	):
 
@@ -455,6 +457,7 @@ class GitTree(Tree):
 		:param from_init:
 		:return:
 		"""
+		self.model.log.info(f"{self.name} git checkout branch {branch} {sha1}")
 		if branch is None and sha1 is None:
 			raise GitTreeError("Please specify at least a branch or a sha1.")
 

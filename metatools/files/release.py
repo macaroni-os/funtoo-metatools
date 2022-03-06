@@ -371,7 +371,16 @@ class ReleaseYAML(YAMLReader):
 				# sourced kits have kit_insides['source'] set to reference a SourceRepository object.
 				if not isinstance(kit_insides['source'], dict):
 					raise ValueError(f"source: definition for kit {kit_name} must be a dictionary with 'url' and 'branch' defined. Got this instead: {kit_insides['source']}")
-				kit_insides['source'] = SourceRepository(name=f"{kit_name}-sources", url=kit_insides['source']['url'], branch=kit_insides['source']['branch'])
+				for key in ["url"]:
+					if key not in kit_insides['source']:
+						raise KeyError(f"element '{key}' missing from {kit_name} kit definition.")
+				if "branch" not in kit_insides['source'] and "src_sha1" not in kit_insides['source']:
+					raise KeyError(f"{kit_name} kit definition must define 'src_sha1' or 'branch' under 'source'.")
+				if "branch" in kit_insides['source'] and "src_sha1" in kit_insides['source']:
+					raise KeyError(f"{kit_name} kit definition must define one of 'src_sha1' or 'branch' under 'source'.")
+				s_branch = kit_insides.get("branch", None)
+				s_src_sha1 = kit_insides.get("src_sha1", None)
+				kit_insides['source'] = SourceRepository(name=f"{kit_name}-sources", url=kit_insides['source']['url'], branch=s_branch, src_sha1=s_src_sha1)
 			else:
 				raise KeyError(f"Unknown kit kind '{kind}'")
 			kits[kit_name].append(Kit(self.locator, release=self, name=kit_name, **kit_insides))
