@@ -2,15 +2,13 @@
 
 import glob
 import json
+import logging
 import os
 import re
 import subprocess
 import traceback
 from collections import defaultdict
 from shlex import quote
-
-import dyne.org.funtoo.metatools.merge as merge
-from dict_tools.data import NamespaceDict
 
 #################################################################################################################
 # This file contains the more 'grizzly' low-level parts of the kit-cache generation code. It is used by
@@ -21,6 +19,10 @@ from dict_tools.data import NamespaceDict
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
 # version, we'll consider the kit cache stale and regenerate it.
 #################################################################################################################
+
+from logging import getLogger
+logging = getLogger('metatools.merge')
+
 
 CACHE_DATA_VERSION = "1.0.6"
 
@@ -66,27 +68,6 @@ AUXDB_LINES = sorted(
 		"DEFINED_PHASES",
 	]
 )
-
-
-def cleanup_error_logs():
-	# This should be explicitly called at the beginning of every command that generates metadata for kits:
-
-	for file in glob.glob(os.path.join(merge.model.temp_path, "metadata-errors*.log")):
-		os.unlink(file)
-
-
-def display_error_summary():
-	for stat_list, name, shortname in [
-		(merge.model.metadata_error_stats, "metadata extraction errors", "errors"),
-		(merge.model.processing_warning_stats, "warnings", "warnings"),
-	]:
-		if len(stat_list):
-			for stat_info in stat_list:
-				stat_info = NamespaceDict(stat_info)
-				merge.model.log.warning(f"The following kits had {name}:")
-				branch_info = f"{stat_info.name} branch {stat_info.branch}".ljust(30)
-				merge.model.log.warning(f"* {branch_info} -- {stat_info.count} {shortname}.")
-			merge.model.log.warning(f"{name} errors logged to {merge.model.temp_path}.")
 
 
 def strip_rev(s):
@@ -171,6 +152,7 @@ def extract_manifest_hashes(man_file):
 					digests[hash_type] = hash_digest
 					pos += 2
 				man_info[ls[1]] = {"size": ls[2], "hashes": digests}
+	return man_info
 	return man_info
 
 
@@ -338,7 +320,7 @@ def extract_ebuild_metadata(kit_gen_obj, atom, ebuild_path=None, env=None, eclas
 	except (FileNotFoundError, IndexError, ValueError) as ex:
 		exc_string = (''.join(traceback.format_exception(type(ex), value=ex, tb=ex.__traceback__)))
 		kit_gen_obj.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": err_out, "exception": exc_string}
-		merge.model.log.error(f"{atom} metadata error: {err_out}")
+		logging.error(f"{atom} metadata error: {err_out}")
 		return None
 
 
@@ -497,14 +479,14 @@ def load_json(fn, validate=True):
 		try:
 			kit_cache_data = json.loads(f.read())
 		except json.decoder.JSONDecodeError as jde:
-			merge.model.log.error(f"Unable to parse JSON in {fn}: {jde}")
+			logging.error(f"Unable to parse JSON in {fn}: {jde}")
 			raise jde
 		if validate:
 			if "cache_data_version" not in kit_cache_data:
-				merge.model.log.error("JSON invalid or missing cache_data_version.")
+				logging.error("JSON invalid or missing cache_data_version.")
 				return None
 			elif kit_cache_data["cache_data_version"] != CACHE_DATA_VERSION:
-				merge.model.log.error(f"Cache data version is {kit_cache_data['cache_data_version']} but needing {CACHE_DATA_VERSION}")
+				logging.error(f"Cache data version is {kit_cache_data['cache_data_version']} but needing {CACHE_DATA_VERSION}")
 				return None
 		return kit_cache_data
 
@@ -520,28 +502,28 @@ def get_atom(kit_gen_obj, atom, md5, manifest_md5):
 	existing = None
 	if atom in kit_gen_obj.kit_cache:
 		if not kit_gen_obj.kit_cache[atom]:
-			merge.model.log.error(f"Kit cache atom {atom} invalid due to empty data")
+			logging.error(f"Kit cache atom {atom} invalid due to empty data")
 			bad = True
 		elif kit_gen_obj.kit_cache[atom]["md5"] != md5:
-			merge.model.log.error(f"Kit cache atom {atom} ignored due to non-matching MD5 (if this recurs: non-deterministic ebuild?)")
+			logging.error(f"Kit cache atom {atom} ignored due to non-matching MD5 (if this recurs: non-deterministic ebuild?)")
 			bad = True
 		else:
 			existing = kit_gen_obj.kit_cache[atom]
 			bad = False
 			if "manifest_md5" not in existing:
-				merge.model.log.error(f"Kit cache atom {atom} ignored due to missing manifest md5 (incomplete? bug?)")
+				logging.error(f"Kit cache atom {atom} ignored due to missing manifest md5 (incomplete? bug?)")
 				bad = True
 			elif manifest_md5 != existing["manifest_md5"]:
-				merge.model.log.error(f"Kit cache atom {atom} ignored due to non-matching manifest MD5 (if this recurs: may indicate bug.)")
+				logging.error(f"Kit cache atom {atom} ignored due to non-matching manifest MD5 (if this recurs: may indicate bug.)")
 				bad = True
 			elif existing["eclasses"]:
 				for eclass, md5 in existing["eclasses"]:
 					if eclass not in kit_gen_obj.merged_eclasses.hashes:
-						merge.model.log.error(f"Kit cache atom {atom} can't be used due to missing eclass {eclass}")
+						logging.error(f"Kit cache atom {atom} can't be used due to missing eclass {eclass}")
 						bad = True
 						break
 					if kit_gen_obj.merged_eclasses.hashes[eclass] != md5:
-						merge.model.log.warning(f"Kit cache atom {atom} can't be used due to changed MD5 for {eclass}")
+						logging.warning(f"Kit cache atom {atom} can't be used due to changed MD5 for {eclass}")
 						bad = True
 						break
 		if bad:

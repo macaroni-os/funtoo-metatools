@@ -31,6 +31,8 @@ class AutogenConfig(MinimalConfig):
 	fastpull_session = None
 	hashes = None
 	blos = None
+	debug = False
+	log = None
 
 	config_files = {
 		"autogen": "~/.autogen"
@@ -48,7 +50,22 @@ class AutogenConfig(MinimalConfig):
 		"""
 		return "/".join(self.locator.root.split("/")[-2:])
 
-	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None):
+	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False):
+		self.log = logging.getLogger('metatools.autogen')
+		self.log.propagate = False
+		if self.debug:
+			self.debug = debug
+			self.log.setLevel(logging.DEBUG)
+		else:
+			self.log.setLevel(logging.INFO)
+		channel = logging.StreamHandler()
+		channel.setFormatter(TornadoPrettyLogFormatter())
+		self.log.addHandler(channel)
+		if debug:
+			self.log.debug("doit: DEBUG enabled")
+		else:
+			self.log.warn("doit: DEBUG NOT enabled")
+
 		self.fastpull_scope = fastpull_scope
 		self.fetch_cache = FileStoreFetchCache(db_base_path=self.store_path)
 		self.config = yaml.safe_load(self.get_file("autogen"))
@@ -66,12 +83,7 @@ class AutogenConfig(MinimalConfig):
 			spider=self.spider,
 			hashes=self.hashes
 		)
-		self.log = logging.getLogger('metatools.autogen')
-		self.log.propagate = False
-		self.log.setLevel(logging.INFO)
-		channel = logging.StreamHandler()
-		channel.setFormatter(TornadoPrettyLogFormatter())
-		self.log.addHandler(channel)
+
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
 		self.log.debug(f"Fetch cache interval set to {self.fetch_cache_interval}")
 		self.locator = OverlayLocator()

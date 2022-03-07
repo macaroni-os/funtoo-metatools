@@ -11,10 +11,9 @@ import subpop
 from subpop.hub import Hub
 
 from metatools.config.merge import MergeConfig
+from metatools.kit import MetaRepoJobController
 
 hub = Hub()
-
-import dyne.org.funtoo.metatools.merge as merge
 
 
 class MergeError(Exception):
@@ -44,18 +43,13 @@ async def do_process_teardown():
 
 
 async def main_thread(args):
-	try:
-		await merge.launch(MergeConfig, release=args.release, prod=args.prod, push=not args.nopush,
-		                   create_branches=args.create_branches, fixups_url=args.fixups_url)
-	except subpop.config.ConfigurationError as ce:
-		sys.stdout.write(
-			f"An error was encountered: {ce.__class__.__name__}: {' '.join(ce.args)}\nPlease specify --fixups_url <clone_url> to clone your fixups repo.\n")
-		sys.exit(1)
-	controller = merge.kit.MetaRepoJobController()
+	model = MergeConfig()
+	await model.initialize(release=args.release, prod=args.prod, push=not args.nopush, create_branches=args.create_branches, fixups_url=args.fixups_url, debug=args.debug)
+	controller = MetaRepoJobController(model)
 	try:
 		await controller.generate()
 	except KeyboardInterrupt:
-		merge.model.log.error("Keyboard interrupt -- shutting down.")
+		model.log.error("Keyboard interrupt -- shutting down.")
 		await do_process_teardown()
 
 
@@ -67,6 +61,7 @@ CLI_CONFIG = {
 	"db": {"action": "store_true", "default": False},
 	"create_branches": {"action": "store_true", "default": False},
 	"release": {"positional": True},
+	"debug": {"action": "store_true", "default": False}
 }
 
 

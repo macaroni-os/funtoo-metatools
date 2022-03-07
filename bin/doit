@@ -21,7 +21,8 @@ import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 CLI_CONFIG = {
 	"immediate": {"default": False, "action": "store_true", "help": "Never cache HTTP(s) fetches (default 15 mins)"},
-	"fastpull_scope": {"default": "local", "action": "store", "help": "Default index into fastpull for collecting artifacts."}
+	"fastpull_scope": {"default": "local", "action": "store", "help": "Default index into fastpull for collecting artifacts."},
+	"debug": {"default": False, "action": "store_true"}
 }
 
 
@@ -37,7 +38,7 @@ def parse_args():
 async def main_thread():
 	hub.OPT = parse_args()
 	kwargs = {}
-	for arg in ["fastpull_scope"]:
+	for arg in set(CLI_CONFIG.keys()) - {"immediate"}:
 		kwargs[arg] = getattr(hub.OPT, arg)
 	if hub.OPT.immediate:
 		kwargs['fetch_cache_interval'] = timedelta(seconds=0)
@@ -49,7 +50,6 @@ if __name__ == "__main__":
 	success = hub.LOOP.run_until_complete(main_thread())
 	if not success:
 		sys.exit(1)
-
 
 # TODO: add after-action report (listing any failures.)
 # TODO: add 'facts' database concept to allow more resiliency on failures (fall back to cached facts from last

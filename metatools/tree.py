@@ -69,7 +69,7 @@ class Tree:
 				return
 			self.merged.append([srctree.name, srctree.head()])
 
-	async def autogen(self, src_offset=None):
+	async def autogen(self, src_offset=None, scope=None):
 		if src_offset is None:
 			src_offset = ""
 		if self.autogenned == src_offset:
@@ -78,17 +78,24 @@ class Tree:
 		if not os.path.exists(autogen_path):
 			self.model.log.warning(f"Skipping autogen as src_offset {src_offset} (in {autogen_path}) doesn't exist!")
 			return
-		self.model.log.info(f"Starting autogen in src_offset {src_offset} (in {autogen_path})...")
+		self.model.log.info(f"Starting autogen in src_offset {src_offset} (in {autogen_path})... (DEBUG={self.model.debug}) (orig_scope={scope})")
+		if scope is None:
+			if self.model.prod:
+				scope = self.model.release
+			else:
+				scope = "local"
+		self.model.log.info(f"Final scope: {scope}")
+		cmd_str = f"cd {autogen_path} && doit --fastpull_scope={scope}"
+		if self.model.debug:
+			cmd_str += " --debug"
+			self.model.log.debug(cmd_str)
 		# use subprocess.call so we can see the output of autogen:
-		if self.model.prod:
-			scope = self.model.release
-		else:
-			scope = "local"
 		retcode = subprocess.call(
-			f"cd {autogen_path} && doit --fastpull_scope={scope}",
+			cmd_str,
 			shell=True,
 		)
 		if retcode != 0:
+			self.model.log.error(f"Command failure from merge-kits: {cmd_str}")
 			raise GitTreeError(f"failed autogen in {self.root} -- offset {src_offset}.")
 		self.autogenned = src_offset
 
