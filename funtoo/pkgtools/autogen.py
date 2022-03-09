@@ -463,7 +463,7 @@ def queue_all_yaml_autogens():
 async def execute_all_queued_generators():
 	futures = []
 	loop = asyncio.get_running_loop()
-	with ThreadPoolExecutor(max_workers=8) as executor:
+	with ThreadPoolExecutor(max_workers=16) as executor:
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
 

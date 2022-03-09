@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 
 import logging
-import aiohttp
-from tornado import httpclient
-from tornado.httpclient import HTTPRequest
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
+import httpx
 
 from metatools.fastpull.spider import FetchRequest, FetchError
 
@@ -17,7 +15,7 @@ proper headers and authentication, etc.
 
 def set_basic_auth(request: FetchRequest):
 	"""
-	Keyword arguments to aiohttp ClientSession.get() for authentication to certain URLs based on configuration
+	Keyword arguments to get_page() GET requests for authentication to certain URLs based on configuration
 	in ~/.autogen (YAML format.)
 	"""
 	if "authentication" in pkgtools.model.config:
@@ -35,20 +33,11 @@ async def get_page(url, encoding=None):
 	Use ``encoding`` if the HTTP resource does not have proper encoding and you have to set
 	a specific encoding. Normally, the encoding will be auto-detected and decoded for you.
 	"""
-	try:
-		request = FetchRequest(url=url)
-		set_basic_auth(request)
-		# Leverage the spider for this fetch. This bypasses the FPOS, etc:
-		result = await pkgtools.model.spider.http_fetch(request, encoding=encoding)
-		return result
-	except Exception as e:
-		if isinstance(e, FetchError):
-			raise e
-		else:
-			msg = f"Couldn't get_page due to exception {e.__class__.__name__}"
-			logging.error(url + ": " + msg)
-			logging.exception(e)
-			raise FetchError(url, msg)
+	request = FetchRequest(url=url)
+	set_basic_auth(request)
+	# Leverage the spider for this fetch. This bypasses the FPOS, etc:
+	result = await pkgtools.model.spider.http_fetch(request, encoding=encoding)
+	return result
 
 
 async def get_url_from_redirect(url):
@@ -58,15 +47,13 @@ async def get_url_from_redirect(url):
 	when you want to grab the '1.3.2' without downloading the file (yet).
 	"""
 	logging.info(f"Getting redirect URL from {url}...")
-	http_client = httpclient.AsyncHTTPClient()
-	try:
-		req = HTTPRequest(url=url, follow_redirects=False)
-		await http_client.fetch(req)
-	except httpclient.HTTPError as e:
-		if e.response.code == 302:
-			return e.response.headers["location"]
-	except Exception as e:
-		raise FetchError(url, f"Couldn't get_url_from_redirect due to exception {repr(e)}")
+	async with httpx.AsyncClient() as client:
+		try:
+			resp = await client.get(url=url, follow_redirects=False)
+			if resp.status_code == 302:
+				return resp.headers["location"]
+		except httpx.RequestError as e:
+			raise FetchError(url, f"Couldn't get_url_from_redirect due to exception {repr(e)}")
 
 
 async def get_response_headers(url):
@@ -74,9 +61,9 @@ async def get_response_headers(url):
 	This function will take a URL and grab its response headers. This is useful for obtaining
 	information about a URL without fetching its body.
 	"""
-	async with aiohttp.ClientSession() as http_session:
-		async with http_session.get(url) as response:
-			return response.headers
+	async with httpx.AsyncClient() as client:
+		resp = await client.get(url=url, follow_redirects=True)
+		return resp.headers
 
 
 # vim: ts=4 sw=4 noet

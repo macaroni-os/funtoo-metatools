@@ -24,11 +24,9 @@ setuptools.setup(
 	python_requires=">=3.7",
 	install_requires=[
 		"subpop >= 2.0.0",
-		"aiodns",
-		"aiofiles",
-		"aiohttp",
 		"beautifulsoup4",
 		"dict_toolbox",
+		"httpx",
 		"Jinja2 >= 3",
 		"packaging",
 		"pymongo",

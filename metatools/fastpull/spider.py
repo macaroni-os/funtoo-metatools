@@ -3,7 +3,6 @@ import hashlib
 import logging
 import os
 import random
-import socket
 import string
 import threading
 from asyncio import Semaphore
@@ -11,7 +10,7 @@ from collections import defaultdict
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
-import aiohttp
+import httpx
 
 log = logging.getLogger('metatools.autogen')
 
@@ -120,7 +119,6 @@ class Download:
 		"""
 		hostname = self.request.hostname
 		semi = await self.spider.acquire_host_semaphore(hostname)
-		prev_rec_bytes = 0
 		rec_bytes = 0
 		attempts = 0
 		if self.request.retry:
@@ -131,46 +129,27 @@ class Download:
 
 		async with semi:
 			while not completed and attempts < max_attempts:
-				connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await self.spider.get_resolver(), ttl_dns_cache=300)
 				try:
-					async with aiohttp.ClientSession(connector=connector, timeout=self.spider.http_timeout) as http_session:
+					async with httpx.AsyncClient() as client:
 						headers, auth = self.spider.get_headers_and_auth(self.request)
-						#if rec_bytes:
-						#	headers["Range"] = f"bytes={rec_bytes}-"
-						#	log.warning(f"Resuming at {rec_bytes}")
-						async with http_session.get(self.request.url, headers=headers, auth=auth) as response:
-							if response.status not in [200, 206]:
-								reason = (await response.text()).strip()
-								if response.status == 416:
-									# range not satisfiable
-									log.error(f"Range not satisfiable for {self.request.url}: {headers['Range']}")
-									retry = False
-								elif response.status in [400, 404, 410]:
+						async with client.stream("GET", url=self.request.url, headers=headers, auth=auth, follow_redirects=True) as response:
+							if response.status_code not in [200, 206]:
+								if response.status_code in [400, 404, 410]:
 									# These are legitimate responses that indicate that the file does not exist. Therefore, we
 									# should not retry, as we should expect to get the same result.
 									retry = False
 								else:
 									retry = True
-								raise FetchError(self.request, f"HTTP fetch_stream Error {response.status}: {reason[:120]}", retry=retry)
-							while not completed:
-								chunk = await response.content.read(chunk_size)
+								raise FetchError(self.request, f"HTTP fetch_stream Error {response.status_code}: {response.reason_phrase[:120]}", retry=retry)
+							async for chunk in response.aiter_bytes():
 								rec_bytes += len(chunk)
 								if not chunk:
 									completed = True
 									break
 								else:
 									on_chunk(chunk)
-				except Exception as e:
-					# If we are "making progress on the download", then continue indefinitely --
-					#if prev_rec_bytes < rec_bytes:
-					#	prev_rec_bytes = rec_bytes
-					#	log.warning("Attempting to resume download...")
-					#	continue
-
-					if isinstance(e, FetchError):
-						if e.retry is False:
-							raise e
-
+				except httpx.RequestError as e:
+					log.error("Download failure")
 					if attempts + 1 < max_attempts:
 						attempts += 1
 						log.warning(f"Retrying after download failure... {e}")
@@ -290,7 +269,6 @@ class WebSpider:
 	DL_ACTIVE_LOCK = threading.Lock()
 	DL_ACTIVE = dict()
 	DOWNLOAD_SLOT = threading.Semaphore(value=20)
-	http_timeout = aiohttp.ClientTimeout(connect=10.0, sock_connect=12.0, total=None, sock_read=8.0)
 	thread_ctx = threading.local()
 	fetch_headers = {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
 
@@ -369,17 +347,6 @@ class WebSpider:
 			semaphores = self.thread_ctx.http_semaphores = defaultdict(lambda: Semaphore(value=8))
 		return semaphores[hostname]
 
-	async def get_resolver(self):
-		"""
-		This returns a DNS resolver local to the ioloop of the caller.
-		"""
-		resolver = getattr(self.thread_ctx, "http_resolver", None)
-		if resolver is None:
-			resolver = self.thread_ctx.http_resolver = aiohttp.AsyncResolver(
-				nameservers=["1.1.1.1", "1.0.0.1"], timeout=3, tries=2
-			)
-		return resolver
-
 	def get_headers_and_auth(self, request):
 		headers = self.fetch_headers.copy()
 		if request.extra_headers:
@@ -387,7 +354,7 @@ class WebSpider:
 		else:
 			headers = self.fetch_headers
 		if request.username and request.password:
-			auth = aiohttp.BasicAuth(request.username, request.password)
+			auth = (request.username, request.password)
 		else:
 			auth = None
 		return headers, auth
@@ -407,39 +374,26 @@ class WebSpider:
 
 		try:
 			async with semi:
-				connector = aiohttp.TCPConnector(family=socket.AF_INET, resolver=await self.get_resolver(), ttl_dns_cache=300)
-				http_session = aiohttp.ClientSession(connector=connector, timeout=self.http_timeout)
-				try:
-					# This mess below is me being paranoid about acquiring the session possibly timing out. This could potentially
-					# happen due to low-level SSL problems. But you would typically just use an:
-					#
-					#   async with aiohttp.ClientSession(...) as http_session:
-					#
-					# Instead I, in a paranoid fashion, get the session with a timeout of 3 seconds. This may be extreme paranoia
-					# but I *think* it was locking up here when GitHub had some HTTP issues so I want to keep it looking this nasty.
-					sess_fut = http_session.__aenter__()
-					await asyncio.wait_for(sess_fut, timeout=3.0)
+				async with httpx.AsyncClient() as client:
 					log.debug(f'Fetching data from {request.url}')
 					headers, auth = self.get_headers_and_auth(request)
-					async with http_session.get(request.url, headers=headers, auth=auth) as response:
-						if response.status != 200:
-							reason = (await response.text()).strip()
-							if response.status in [400, 404, 410]:
-								# No need to retry as the server has just told us that the resource does not exist.
-								retry = False
-							else:
-								retry = True
-							log.error(f"Fetch failure for {request.url}: {response.status} {reason[:40]}")
-							raise FetchError(request, f"HTTP fetch Error: {request.url}: {response.status}: {reason[:40]}", retry=retry)
-						result = await response.text(encoding=encoding)
-						log.info(f'Fetched {request.url} {len(result)} bytes')
-						return result
-				except asyncio.TimeoutError:
-					raise FetchError(request, f"aiohttp clientsession timeout: {request.url}")
-				finally:
-					await http_session.__aexit__(None, None, None)
-		except aiohttp.ClientConnectorError as ce:
-			raise FetchError(request, f"Could not connect to {request.url}: {repr(ce)}", retry=False)
+					response = await client.get(request.url, headers=headers, auth=auth, follow_redirects=True)
+					if response.status_code != 200:
+						if response.status_code in [400, 404, 410]:
+							# No need to retry as the server has just told us that the resource does not exist.
+							retry = False
+						else:
+							retry = True
+						log.error(f"Fetch failure for {request.url}: {response.status_code} {response.reason_phrase[:40]}")
+						raise FetchError(request, f"HTTP fetch Error: {request.url}: {response.status_code}: {response.reason_phrase[:40]}", retry=retry)
+					if encoding:
+						result = response.content.decode(encoding)
+					else:
+						result = response.text
+					log.info(f'Fetched {request.url} {len(result)} bytes')
+					return result
+		except httpx.RequestError as re:
+			raise FetchError(request, f"Could not connect to {request.url}: {repr(re)}", retry=False)
 
 	@asynccontextmanager
 	async def acquire_download_slot(self):
@@ -499,13 +453,6 @@ class WebSpider:
 				log.debug(f"WebSpider.get_existing_download:{threading.get_ident()} found active download for {request.url}")
 
 				return self.DL_ACTIVE[request.url]
-			# TODO: remove this from other parts of code -- I don't think we need to do this.
-			# One man's authoritative URL is another man's mirror URL, so also see if a mirror URL is in progress...
-			#
-			#if request.mirror_urls:
-			#	for mirror_url in request.mirror_urls:
-			#		if mirror_url in self.DL_ACTIVE:
-			##			return self.DL_ACTIVE[mirror_url]
-			#else:
+
 			log.debug(f"WebSpider.get_existing_download:{threading.get_ident()} no active download for {request.url}")
 			return None
