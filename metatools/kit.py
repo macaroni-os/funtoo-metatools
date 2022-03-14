@@ -703,7 +703,7 @@ class MetaRepoJobController:
 	model = None
 
 	def __init__(self, model):
-		model = model
+		self.model = model
 
 	def cleanup_error_logs(self):
 		# This should be explicitly called at the beginning of every command that generates metadata for kits:
@@ -724,9 +724,12 @@ class MetaRepoJobController:
 					model.log.warning(f"* {branch_info} -- {stat_info.count} {shortname}.")
 				model.log.warning(f"{name} errors logged to {model.temp_path}.")
 
-	def generate_metarepo_metadata(self):
+	def get_output_sha1s(self):
+		pass
 
-		output_sha1s = model.kit_sha1s
+	def generate_metarepo_metadata(self):
+		output_sha1s = self.get_output_sha1s()
+
 		if not os.path.exists(model.meta_repo.root + "/metadata"):
 			os.makedirs(model.meta_repo.root + "/metadata")
 

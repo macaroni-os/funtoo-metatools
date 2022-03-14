@@ -132,7 +132,7 @@ class Download:
 				try:
 					async with httpx.AsyncClient() as client:
 						headers, auth = self.spider.get_headers_and_auth(self.request)
-						async with client.stream("GET", url=self.request.url, headers=headers, auth=auth, follow_redirects=True) as response:
+						async with client.stream("GET", url=self.request.url, headers=headers, auth=auth, follow_redirects=True, timeout=12) as response:
 							if response.status_code not in [200, 206]:
 								if response.status_code in [400, 404, 410]:
 									# These are legitimate responses that indicate that the file does not exist. Therefore, we
@@ -149,10 +149,10 @@ class Download:
 								else:
 									on_chunk(chunk)
 				except httpx.RequestError as e:
-					log.error("Download failure")
+					log.error(f"Download failure for {self.request.url}: {str(e)}")
 					if attempts + 1 < max_attempts:
 						attempts += 1
-						log.warning(f"Retrying after download failure... {e}")
+						log.warning(f"Retrying after download failure... {str(e)}")
 						continue
 					else:
 						raise FetchError(self.request, f"{e.__class__.__name__}: {str(e)}")
@@ -377,7 +377,7 @@ class WebSpider:
 				async with httpx.AsyncClient() as client:
 					log.debug(f'Fetching data from {request.url}')
 					headers, auth = self.get_headers_and_auth(request)
-					response = await client.get(request.url, headers=headers, auth=auth, follow_redirects=True)
+					response = await client.get(request.url, headers=headers, auth=auth, follow_redirects=True, timeout=8)
 					if response.status_code != 200:
 						if response.status_code in [400, 404, 410]:
 							# No need to retry as the server has just told us that the resource does not exist.
