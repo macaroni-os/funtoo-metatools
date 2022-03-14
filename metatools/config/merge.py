@@ -245,8 +245,6 @@ class Kit:
 
 
 class SourcedKit(Kit):
-	#TODO: the SourceRepository does not appear to be initialized properly.
-	#      self.yaml.model is not initialized when SourceRepository.initialize() runs
 	source: SourceRepository = None
 
 	def __init__(self, source: SourceRepository = None, **kwargs):
@@ -558,8 +556,8 @@ class ReleaseYAML(YAMLReader):
 					raise KeyError(f"{kit_name} kit definition must define one of 'src_sha1' or 'branch' under 'source'.")
 				s_branch = kit_insides.get("branch", None)
 				s_src_sha1 = kit_insides.get("src_sha1", None)
-				kit_insides['source'] = SourceRepository(name=f"{kit_name}-sources", url=kit_insides['source']['url'], branch=s_branch, src_sha1=s_src_sha1)
-				kits[kit_name].append(SourcedKit(yaml=self, locator=self.model.locator, release=self, name=kit_name, **kit_insides))
+				kit_insides['source'] = SourceRepository(yaml=self, name=f"{kit_name}-sources", url=kit_insides['source']['url'], branch=s_branch, src_sha1=s_src_sha1)
+				kits[kit_name].append(SourcedKit(locator=self.model.locator, release=self, name=kit_name, **kit_insides))
 			else:
 				raise KeyError(f"Unknown kit kind '{kind}'")
 		return kits
