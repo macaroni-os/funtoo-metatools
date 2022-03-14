@@ -244,7 +244,8 @@ class Kit:
 
 
 class SourcedKit(Kit):
-
+	#TODO: the SourceRepository does not appear to be initialized properly.
+	#      self.yaml.model is not initialized when SourceRepository.initialize() runs
 	source: SourceRepository = None
 
 	def __init__(self, source: SourceRepository = None, **kwargs):
