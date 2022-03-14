@@ -143,7 +143,7 @@ class SourceRepository:
 		self.tree = None
 
 	def initialize(self):
-		self.yaml.model.log.info(f"Initializing Source Repository {self.name}")
+		self.yaml.model.log.info(f"Initializing Source Repository {self.name} {self.branch} {self.url}")
 		self.tree = GitTree(
 			self.name,
 			url=self.url,
