@@ -142,6 +142,7 @@ class SourceRepository:
 		# This can be used to track a GitTree associated with the source repository.
 		self.tree = None
 
+
 	def initialize(self):
 		self.yaml.model.log.info(f"Initializing Source Repository {self.name} {self.branch} {self.url}")
 		self.tree = GitTree(
@@ -560,8 +561,8 @@ class ReleaseYAML(YAMLReader):
 					raise KeyError(f"{kit_name} kit definition must define 'src_sha1' or 'branch' under 'source'.")
 				if "branch" in kit_insides['source'] and "src_sha1" in kit_insides['source']:
 					raise KeyError(f"{kit_name} kit definition must define one of 'src_sha1' or 'branch' under 'source'.")
-				s_branch = kit_insides.get("branch", None)
-				s_src_sha1 = kit_insides.get("src_sha1", None)
+				s_branch = kit_insides["source"].get("branch", None)
+				s_src_sha1 = kit_insides["source"].get("src_sha1", None)
 				kit_insides['source'] = SourceRepository(yaml=self, name=f"{kit_name}-sources", url=kit_insides['source']['url'], branch=s_branch, src_sha1=s_src_sha1)
 				kits[kit_name].append(SourcedKit(locator=self.model.locator, release=self, name=kit_name, **kit_insides))
 			else:
