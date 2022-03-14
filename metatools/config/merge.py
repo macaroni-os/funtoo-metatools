@@ -131,6 +131,7 @@ class SourceRepository:
 
 	def __init__(self, yaml=None, name=None, copyright=None, url=None, eclasses=None, src_sha1=None, branch=None, notes=None):
 		self.yaml = yaml
+		assert yaml is not None
 		self.name = name
 		self.copyright = copyright
 		self.url = url
@@ -558,7 +559,7 @@ class ReleaseYAML(YAMLReader):
 				s_branch = kit_insides.get("branch", None)
 				s_src_sha1 = kit_insides.get("src_sha1", None)
 				kit_insides['source'] = SourceRepository(name=f"{kit_name}-sources", url=kit_insides['source']['url'], branch=s_branch, src_sha1=s_src_sha1)
-				kits[kit_name].append(SourcedKit(locator=self.model.locator, release=self, name=kit_name, **kit_insides))
+				kits[kit_name].append(SourcedKit(yaml=self, locator=self.model.locator, release=self, name=kit_name, **kit_insides))
 			else:
 				raise KeyError(f"Unknown kit kind '{kind}'")
 		return kits
