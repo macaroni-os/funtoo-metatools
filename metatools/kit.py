@@ -842,18 +842,18 @@ class MetaRepoJobController:
 		self.display_error_summary()
 
 	# TODO: does this need to be upgraded to handle multiple remotes?
-	def mirror_repository(self, repo_obj, base_path):
+	def mirror_repository(self, kit_job: KitGenerator, base_path, mirror):
 		"""
 		Mirror a repository to its mirror location, ie. GitHub.
 		"""
 
 		os.makedirs(base_path, exist_ok=True)
-		run_shell(f"git clone --bare {repo_obj.root} {base_path}/{repo_obj.name}.pushme")
+		run_shell(f"git clone --bare {kit_job.out_tree.root} {base_path}/{kit_job.kit.name}.pushme")
 		run_shell(
-			f"cd {base_path}/{repo_obj.name}.pushme && git remote add upstream {repo_obj.mirror} && git push --mirror upstream"
+			f"cd {base_path}/{kit_job.kit.name}.pushme && git remote add upstream {mirror} && git push --mirror upstream"
 		)
-		run_shell(f"rm -rf {base_path}/{repo_obj.name}.pushme")
-		return repo_obj.name
+		run_shell(f"rm -rf {base_path}/{kit_job.kit.name}.pushme")
+		return kit_job.kit.name
 
 	def mirror_all_repositories(self):
 		base_path = os.path.join(model.temp_path, "mirror_repos")
@@ -861,9 +861,9 @@ class MetaRepoJobController:
 		kit_mirror_futures = []
 		with ThreadPoolExecutor(max_workers=8) as executor:
 			# Push all kits, then push meta-repo.
-			for kit_name, kit_tuple in model.kit_results.items():
-				ctx, tree_obj, tree_sha1 = kit_tuple
-				future = executor.submit(self.mirror_repository, tree_obj, base_path)
+			for kit_job in self.kit_jobs:
+				kit = kit_job.kit
+				future = executor.submit(self.mirror_repository, kit_job, base_path)
 				kit_mirror_futures.append(future)
 			for future in as_completed(kit_mirror_futures):
 				kit_name = future.result()
