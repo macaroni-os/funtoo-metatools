@@ -390,14 +390,13 @@ def catpkg_generator(repo_path=None):
 						cpdirs[catdir].add(pkgdir)
 						yield os.path.join(pkgpath)
 
-# TODO: maybe change this name to post_actions(). And integrate Manifest generation here. We want
-#       to avoiding having MANIFEST_LINES or integrate MANIFEST_LINES better into the kit-cache.
-#       This is not ABSOLUTELY necessary but may make things a bit simpler. MANIFEST_LINES was
-#       created before we had the kit-cache and deepdive.
-
 
 async def get_python_use_lines(kit_gen, catpkg, cpv_list, cur_tree, def_python, bk_python):
+	# These shall not be None:
+	assert def_python
+	assert bk_python
 	# TODO: This should be fixed or replaced, because there's hard-coded thangs in here.
+	#       Best solution would be to move it to the release metadata.
 	ebs = {}
 	for cpv in cpv_list:
 		metadata = kit_gen.kit_cache[cpv]["metadata"]

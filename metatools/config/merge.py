@@ -418,6 +418,9 @@ class ReleaseYAML(YAMLReader):
 	def get_default_copyright_rst(self):
 		return self.get_elem("release/copyright")
 
+	def get_release_metadata(self):
+		return self.get_elem("release/metadata")
+
 	def get_meta_repo_config(self):
 		"""
 		Return the remote for meta-repo based on whether we are running in dev or prod mode.

@@ -638,13 +638,16 @@ class Minify(MergeStep):
 
 
 class GenPythonUse(MergeStep):
-	def __init__(self, out_subpath, primary=None, alternate=None, mask=None):
-		self.def_python = primary
-		self.bk_python = alternate
-		self.mask = mask
+	def __init__(self):
+		kit = model.release_yaml.kits["python-kit"][0]
+		pydata = kit.settings
+		out_subpath = f"funtoo/kits/python-kit/{kit.branch}"
+		self.def_python = pydata["primary"]
+		self.bk_python = pydata["alternate"]
+		self.mask = pydata["mask"]
 		self.out_subpath = out_subpath
 
-	# TODO: needs refactor most likely
+	# TODO: not currently generating correct results
 	async def run(self, kit_gen):
 		all_lines = []
 		for catpkg, cpv_list in metadata.get_catpkg_from_cpvs(kit_gen.kit_cache.keys()).items():
