@@ -404,7 +404,7 @@ class ReleaseYAML(YAMLReader):
 	def __init__(self, model: MergeConfig):
 		self.model = model
 		self.mode = "prod" if self.model.prod is True else "dev"
-		filename = f'{self.model.locator.root}/releases/{self.model.release}.yaml'
+		filename = f'{self.model.locator.root}/releases/{self.model.release}/repositories.yaml'
 		if not os.path.exists(filename):
 			raise ConfigurationError(f"Cannot find expected {filename}")
 		self.filename = filename
