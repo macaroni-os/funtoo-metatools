@@ -421,40 +421,20 @@ class ReleaseYAML(YAMLReader):
 	def get_release_metadata(self):
 		return self.get_elem("release/metadata")
 
-	def get_meta_repo_config(self):
+	def get_repo_config(self, repo_name):
 		"""
-		Return the remote for meta-repo based on whether we are running in dev or prod mode.
-		"""
-		if self.mode not in self.remotes:
-			raise ConfigurationError(f"No remotes defined for '{self.mode}' in {self.filename}.")
-		if 'meta-repo' not in self.remotes[self.mode]:
-			raise ConfigurationError(f"No remote 'meta-repo' defined for '{self.mode}' in {self.filename}.")
-		if 'url' not in self.remotes[self.mode]['meta-repo']:
-			raise ConfigurationError(f"No remote 'meta-repo' URL defined for '{self.mode}' in {self.filename}.")
-		mirrs = []
-		if 'mirrors' in self.remotes[self.mode]['meta-repo']:
-			mirrs = self.remotes[self.mode]['meta-repo']['mirrors']
-		return {
-			"url": self.remotes[self.mode]['meta-repo']['url'],
-			"mirrors": mirrs
-		}
-
-	def get_kit_config(self, kit_name):
-		"""
-		Given a kit named ``kit_name``, determine its remote based on whether we are running in dev or prod mode.
+		Given a repo/kit named ``repo_name``, determine its remote based on whether we are running in dev or prod mode.
 		"""
 		if self.mode not in self.remotes:
 			raise ConfigurationError(f"No remotes defined for '{self.mode}' in {self.filename}.")
-		if 'kits' not in self.remotes[self.mode]:
-			raise ConfigurationError(f"No remote 'kits' defined for '{self.mode}' in {self.filename}.")
-		if 'url' not in self.remotes[self.mode]['kits']:
-			raise ConfigurationError(f"No remote 'kits' URL defined for '{self.mode}' in {self.filename}.")
+		if 'url' not in self.remotes[self.mode]:
+			raise ConfigurationError(f"No URL defined for '{self.mode}' in {self.filename}.")
 		mirrs = []
-		if 'mirrors' in self.remotes[self.mode]['kits']:
-			for mirr in self.remotes[self.mode]['kits']['mirrors']:
+		if 'mirrors' in self.remotes[self.mode]:
+			for mirr in self.remotes[self.mode]['mirrors']:
 				mirrs.append(mirr)
 		return {
-			"url": self.remotes[self.mode]['kits']['url'].format(kit_name=kit_name),
+			"url": self.remotes[self.mode]['url'].format(repo=repo_name),
 			"mirrors": mirrs
 		}
 

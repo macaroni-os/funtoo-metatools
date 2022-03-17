@@ -7,10 +7,14 @@ import shutil
 import jinja2
 
 from metatools import metadata
-from metatools.tree import run_shell
+import metatools.tree
 
 from metatools.model import get_model
 model = get_model("metatools.merge")
+
+
+def run_shell(cmd_list, abort_on_failure=True, chdir=None):
+	return metatools.tree.run_shell(cmd_list, abort_on_failure=abort_on_failure, chdir=chdir, logger=model.log)
 
 
 class MergeStep:

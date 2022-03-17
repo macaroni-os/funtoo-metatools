@@ -1,9 +1,6 @@
 import glob
-import logging
 import os
 import subprocess
-
-debug = True
 
 
 class ShellError(Exception):
@@ -18,13 +15,13 @@ def run(args, env=None):
 	return result
 
 
-def run_shell(cmd_list, abort_on_failure=True, chdir=None):
+def run_shell(cmd_list, abort_on_failure=True, chdir=None, logger=None):
 	if isinstance(cmd_list, list):
 		cmd_str = " ".join(cmd_list)
 	else:
 		cmd_str = cmd_list
-	if debug:
-		logging.info(f"executing: {cmd_str}")
+	if logger:
+		logger.debug(f"executing: {cmd_str}")
 
 	if chdir:
 		cmd_str = f"( cd {chdir}; {cmd_str})"
@@ -56,6 +53,9 @@ class Tree:
 		self.url = None
 		self.model = model
 		assert model is not None
+
+	def run_shell(self, cmd_list, abort_on_failure=True, chdir=None):
+		return run_shell(cmd_list, abort_on_failure=abort_on_failure, chdir=chdir, logger=self.model.log)
 
 	def logTree(self, srctree):
 		# record name and SHA of src tree in dest tree, used for git commit message/auditing:
@@ -101,7 +101,7 @@ class Tree:
 
 	def cleanTree(self):
 		self.model.log.info("Cleaning tree %s" % self.root)
-		run_shell("(cd %s &&  git reset --hard && git clean -fdx )" % self.root)
+		self.run_shell("(cd %s &&  git reset --hard && git clean -fdx )" % self.root)
 		self.autogenned = False
 
 	def getDepthOfCommit(self, sha1):
@@ -137,10 +137,10 @@ class Tree:
 			self.initialize()
 		if self.currentLocalBranch != branch:
 			if self.localBranchExists(branch):
-				run_shell("(cd %s && git checkout %s)" % (self.root, branch))
+				self.run_shell("(cd %s && git checkout %s)" % (self.root, branch))
 			else:
 				# An AutoCreatedGitTree will automatically create branches as needed, as forks of master.
-				run_shell("(cd %s && git checkout master && git checkout -b %s)" % (self.root, branch))
+				self.run_shell("(cd %s && git checkout master && git checkout -b %s)" % (self.root, branch))
 			self.cleanTree()
 		if self.currentLocalBranch != branch:
 			raise GitTreeError(
@@ -158,7 +158,7 @@ class Tree:
 			if x not in skip:
 				files += " '" + x + "'"
 		if files:
-			run_shell(f"cd {self.root} && git add {files[1:]}")
+			self.run_shell(f"cd {self.root} && git add {files[1:]}")
 		cmd = '( cd %s && [ -n "$(git status --porcelain)" ] && git commit -a -F - << EOF\n' % self.root
 		if message != "":
 			cmd += "%s\n\n" % message
@@ -193,7 +193,7 @@ class Tree:
 
 	def mirrorLocalBranches(self):
 		# This is a special push command that will push local tags and branches *only*
-		run_shell(f"(cd {self.root} && git push {self.forcepush} {self.url} +refs/heads/* +refs/tags/*)")
+		self.run_shell(f"(cd {self.root} && git push {self.forcepush} {self.url} +refs/heads/* +refs/tags/*)")
 
 
 class GitTreeError(Exception):
@@ -223,16 +223,16 @@ class AutoCreatedGitTree(Tree):
 	def _initialize_tree(self):
 		if not os.path.exists(self.root):
 			os.makedirs(self.root)
-			run_shell("( cd %s && git init )" % self.root)
-			run_shell("echo 'created by merge.py' > %s/README" % self.root)
-			run_shell("( cd %s &&  git add README; git commit -a -m 'initial commit by merge.py' )" % self.root)
+			self.run_shell("( cd %s && git init )" % self.root)
+			self.run_shell("echo 'created by merge.py' > %s/README" % self.root)
+			self.run_shell("( cd %s &&  git add README; git commit -a -m 'initial commit by merge.py' )" % self.root)
 			if not self.localBranchExists(self.branch):
-				run_shell("( cd %s && git checkout -b %s)" % (self.root, self.branch))
+				self.run_shell("( cd %s && git checkout -b %s)" % (self.root, self.branch))
 			else:
 				self.gitCheckout(self.branch, from_init=True)
 
 		if not self.has_cleaned:
-			run_shell("(cd %s &&  git reset --hard && git clean -fdx )" % self.root)
+			self.run_shell("(cd %s &&  git reset --hard && git clean -fdx )" % self.root)
 			self.has_cleaned = True
 
 		if not self.localBranchExists(self.branch):
@@ -241,7 +241,7 @@ class AutoCreatedGitTree(Tree):
 		# point to specified sha1:
 
 		if self.commit_sha1:
-			run_shell("(cd %s && git checkout %s )" % (self.root, self.commit_sha1))
+			self.run_shell("(cd %s && git checkout %s )" % (self.root, self.commit_sha1))
 			if self.head() != self.commit_sha1:
 				raise GitTreeError("%s: Was not able to check out specified SHA1: %s." % (self.root, self.commit_sha1))
 			if self.currentLocalBranch != self.branch:
@@ -295,8 +295,8 @@ class GitTree(Tree):
 		self.checkout_all_branches = checkout_all_branches
 
 	def _create_branches(self):
-		run_shell(f"git checkout master; git checkout -b {self.branch}", chdir=self.root)
-		run_shell(f"git push --set-upstream origin {self.branch}", chdir=self.root)
+		self.run_shell(f"git checkout master; git checkout -b {self.branch}", chdir=self.root)
+		self.run_shell(f"git push --set-upstream origin {self.branch}", chdir=self.root)
 
 	# if we don't specify root destination tree, assume we are source only:
 
@@ -311,7 +311,7 @@ class GitTree(Tree):
 			self.root = "%s/%s" % (base, self.name)
 
 		if os.path.isdir("%s/.git" % self.root) and self.reclone:
-			run_shell("rm -rf %s" % self.root)
+			self.run_shell("rm -rf %s" % self.root)
 
 		if not os.path.isdir("%s/.git" % self.root):
 			if os.path.exists(self.root):
@@ -322,7 +322,7 @@ class GitTree(Tree):
 				if not os.path.exists(base):
 					os.makedirs(base)
 				# we aren't supposed to create it from scratch -- can we clone it?
-				run_shell("(cd %s && git clone %s %s)" % (base, self.url, os.path.basename(self.root)))
+				self.run_shell("(cd %s && git clone %s %s)" % (base, self.url, os.path.basename(self.root)))
 
 			else:
 				# we've run out of options
@@ -394,7 +394,7 @@ class GitTree(Tree):
 		# point to specified sha1:
 
 		if self.commit_sha1:
-			run_shell("(cd %s && git checkout %s )" % (self.root, self.commit_sha1))
+			self.run_shell("(cd %s && git checkout %s )" % (self.root, self.commit_sha1))
 			if self.head() != self.commit_sha1:
 				raise GitTreeError("%s: Was not able to check out specified SHA1: %s." % (self.root, self.commit_sha1))
 		self.do_pull()
@@ -403,7 +403,7 @@ class GitTree(Tree):
 	def do_pull(self):
 		if self.pull and not self.pulled:
 			# we are on the right branch, but we want to make sure we have the latest updates
-			run_shell("(cd %s && git pull --ff-only)" % self.root)
+			self.run_shell("(cd %s && git pull --ff-only)" % self.root)
 			self.pulled = True
 
 	def getRemoteURL(self, remote):
@@ -464,27 +464,26 @@ class GitTree(Tree):
 		:param from_init:
 		:return:
 		"""
-		self.model.log.info(f"{self.name} git checkout branch {branch} {sha1}")
 		if branch is None and sha1 is None:
 			raise GitTreeError("Please specify at least a branch or a sha1.")
 
 		if not from_init:
 			self.initialize()
 		if sha1 is not None and self.head() != sha1:
-			run_shell("(cd %s && git fetch --verbose && git checkout %s)" % (self.root, sha1))
+			self.run_shell("(cd %s && git fetch --verbose && git checkout %s)" % (self.root, sha1))
 			self.cleanTree()
 			if self.head() != sha1:
 				raise GitTreeError("Not able to check out requested sha1: %s, got: %s" % (sha1, self.head()))
 		else:
 			if self.currentLocalBranch != branch:
-				run_shell("(cd %s && git fetch --verbose)" % self.root)
+				self.run_shell("(cd %s && git fetch --verbose)" % self.root)
 				if self.localBranchExists(branch):
-					run_shell("(cd %s && git checkout %s)" % (self.root, branch))
+					self.run_shell("(cd %s && git checkout %s)" % (self.root, branch))
 				elif self.remoteBranchExists(branch):
 					# An AutoCreatedGitTree will automatically create branches as needed, as forks of master.
-					run_shell("(cd %s && git checkout -b %s --track origin/%s)" % (self.root, branch, branch))
+					self.run_shell("(cd %s && git checkout -b %s --track origin/%s)" % (self.root, branch, branch))
 				else:
-					run_shell("(cd %s && git checkout -b %s)" % (self.root, branch))
+					self.run_shell("(cd %s && git checkout -b %s)" % (self.root, branch))
 				self.cleanTree()
 				self.do_pull()
 			else:
@@ -509,7 +508,7 @@ class RsyncTree(Tree):
 		self.root = "%s/%s" % (base, self.name)
 		if not os.path.exists(base):
 			os.makedirs(base)
-		run_shell(
+		self.run_shell(
 			"rsync --recursive --delete-excluded --links --safe-links --perms --times --compress --force --whole-file --delete --timeout=180 --exclude=/.git --exclude=/metadata/cache/ --exclude=/metadata/glsa/glsa-200*.xml --exclude=/metadata/glsa/glsa-2010*.xml --exclude=/metadata/glsa/glsa-2011*.xml --exclude=/metadata/md5-cache/	--exclude=/distfiles --exclude=/local --exclude=/packages %s %s/"
 			% (self.url, self.root)
 		)

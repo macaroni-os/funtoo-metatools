@@ -107,13 +107,22 @@ class KitGenerator:
 		self.kit = kit
 		self.is_master = is_master
 
-		git_class = model.git_class
+		kit_config = model.release_yaml.get_repo_config(self.kit.name)
 
 		if model.nest_kits:
 			root = os.path.join(model.dest_trees, "meta-repo/kits", kit.name)
 		else:
 			root = os.path.join(model.dest_trees, kit.name)
-		self.out_tree = git_class(kit.name, branch=kit.branch, root=root, model=model)
+		self.out_tree = model.git_class(
+			name=kit.name,
+			branch=kit.branch,
+			url=kit_config['url'] if model.prod else None,
+			root=root,
+			origin_check=True if model.prod else None,
+			mirrors=kit_config['mirrors'],
+			create_branches=model.create_branches,
+			model=model
+		)
 		self.out_tree.initialize()
 		self.eclasses = EclassHashCollection(path=self.out_tree.root)
 
@@ -764,7 +773,7 @@ class MetaRepoJobController:
 
 	async def generate(self):
 
-		meta_repo_config = model.release_yaml.get_meta_repo_config()
+		meta_repo_config = model.release_yaml.get_repo_config("meta-repo")
 		self.meta_repo = model.git_class(
 			name="meta-repo",
 			branch=model.release,
@@ -837,8 +846,8 @@ class MetaRepoJobController:
 			return
 
 		# Mirroring to GitHub happens here:
-
-		self.mirror_all_repositories()
+		if model.push:
+			self.mirror_all_repositories()
 		self.display_error_summary()
 
 	# TODO: does this need to be upgraded to handle multiple remotes?
