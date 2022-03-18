@@ -94,29 +94,18 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None):
 
 
 async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False):
-	# Respect doit --immediate option
+	# Respect doit --immediate option:
 	if pkgtools.model.fetch_cache_interval is not None:
 		refresh_interval = pkgtools.model.fetch_cache_interval
 	result = await fetch_harness(pkgtools.http.get_page, fetchable, max_age=max_age, refresh_interval=refresh_interval)
-	if not is_json:
-		return result
-	try:
-		json_data = json.loads(result)
-		return json_data
-	except json.JSONDecodeError as e:
-		pkgtools.model.log.warning(repr(e))
-		pkgtools.model.log.warning("JSON appears corrupt -- trying to get cached version of resource...")
+	if is_json:
 		try:
-			result = await pkgtools.model.fetch_cache.read("get_page", fetchable, max_age=max_age)
 			return json.loads(result)
-		except CacheMiss:
-			# bumm3r.
-			raise FetchError(fetchable, "Couldn't find cached version of resource (live version was corrupt JSON.)")
 		except json.JSONDecodeError as e:
-			raise FetchError(
-				fetchable,
-				f"Tried using cached version of resource but it doesn't appear to be in JSON format: {repr(e)}",
-			)
+			pkgtools.model.log.exception(e)
+			raise FetchError(fetchable, f"Fetched data for {fetchable} was invalid JSON.")
+	else:
+		return result
 
 
 async def get_response_headers(fetchable, max_age=None, refresh_interval=None):

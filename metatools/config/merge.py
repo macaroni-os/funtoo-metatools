@@ -142,7 +142,6 @@ class SourceRepository:
 		# This can be used to track a GitTree associated with the source repository.
 		self.tree = None
 
-
 	def initialize(self):
 		self.yaml.model.log.info(f"Initializing Source Repository {self.name} {self.branch} {self.url}")
 		self.tree = GitTree(
@@ -156,6 +155,12 @@ class SourceRepository:
 			model=self.yaml.model
 		)
 		self.tree.initialize()
+
+	def find_license(self, license):
+		try:
+			return self.tree.find_license(license)
+		except FileNotFoundError:
+			self.yaml.model.log.error(f"No license named '{license}' found in SourceRepository {self.name}")
 
 	def is_equivalent(self, other):
 		"""
@@ -178,9 +183,19 @@ class SourceCollection:
 	def __init__(self, name=None, yaml=None, repositories=None):
 		self.yaml = yaml
 		self.name = name
-		self.repositories = {}
+		self.repositories = OrderedDict()
 		for repo in repositories:
 			self.repositories[repo.name] = repo
+
+	def find_license(self, license):
+		for repo in reversed(self.repositories.keys()):
+			try:
+				self.yaml.model.log.debug(f"Scanning for license {license} in {self.repositories[repo].tree.root}")
+				license = self.repositories[repo].tree.find_license(license)
+			except FileNotFoundError:
+				continue
+			return license
+		self.yaml.model.log.error(f"No license named '{license}' found in SourceCollection {self.name}")
 
 	def initialize(self):
 

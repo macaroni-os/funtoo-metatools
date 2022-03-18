@@ -281,7 +281,15 @@ class KitGenerator:
 		with open(os.path.join(metadata_outpath, atom), "w") as f:
 			f.write(metadata_out)
 
-	# TODO: eclass_paths needs to be supported so that we can find eclasses.
+	def license_extract(self, infos):
+		if not infos:
+			return set()
+		elif "LICENSE" not in infos:
+			return set()
+		else:
+			prelim = set(infos["LICENSE"].split()) - {'||', ')', '('}
+			return {i for i in prelim if not i.endswith('?')}
+
 	def get_ebuild_metadata(self, merged_eclasses, ebuild_path):
 		"""
 		This function will grab metadata from a single ebuild pointed to by `ebuild_path` and
@@ -314,7 +322,7 @@ class KitGenerator:
 			self.kit_cache_retrieved_atoms.add(atom)
 			infos = existing["metadata"]
 			self.write_repo_cache_entry(atom, existing["metadata_out"])
-			return infos
+			return self.license_extract(infos)
 		# TODO: Note - this may be a 'dud' existing entry where there was a metadata failure previously.
 		else:
 			env, infos = self.gen_ebuild_metadata(atom, merged_eclasses, ebuild_path)
@@ -380,7 +388,7 @@ class KitGenerator:
 			td_out["files"] = get_filedata(infos["SRC_URI"], manifest_path)
 		self.update_atom(atom, td_out)
 		self.write_repo_cache_entry(atom, metadata_out)
-		return infos
+		return self.license_extract(infos)
 
 	def gen_cache(self):
 		"""
@@ -390,6 +398,7 @@ class KitGenerator:
 
 		total_count_lock = threading.Lock()
 		total_count = 0
+		all_licenses = set()
 
 		with ThreadPoolExecutor(max_workers=cpu_count()) as executor:
 			count = 0
@@ -411,6 +420,7 @@ class KitGenerator:
 				if data is None:
 					sys.stdout.write("!")
 				else:
+					all_licenses |= data
 					sys.stdout.write(".")
 				sys.stdout.flush()
 
@@ -421,6 +431,7 @@ class KitGenerator:
 			model.log.info(f"Metadata for {total_count} ebuilds processed.")
 		else:
 			model.log.warning(f"No ebuilds were found when processing metadata.")
+		return all_licenses
 
 	async def fail(self):
 		raise GitTreeError()
@@ -470,6 +481,19 @@ class KitGenerator:
 		await self.run(self.packages_yaml_copy_ebuilds_steps())
 		await self.run([metatools.steps.RemoveFiles(self.kit.get_excludes())])
 		await self.run(self.autogen_and_copy_from_kit_fixups())
+
+	def copy_licenses(self, used_licenses=None):
+		needed_licenses = set()
+		os.makedirs(f"{self.out_tree.root}/licenses", exist_ok=True)
+
+		for license in used_licenses:
+			if not os.path.exists(f"{self.out_tree.root}/licenses/{license}"):
+				needed_licenses.add(license)
+
+		for license in needed_licenses:
+			found = self.kit.source.find_license(license)
+			if found:
+				run_shell(f"cp {found} {self.out_tree.root}/licenses")
 
 	async def generate(self):
 		"""
@@ -522,19 +546,12 @@ class KitGenerator:
 		# Use lots of CPU (potentially) to generate/update metadata cache:
 		############################################################################################################
 
-		self.gen_cache()
+		used_licenses = self.gen_cache()
+		self.copy_licenses(used_licenses=used_licenses)
 
 		############################################################################################################
 		# Python USE settings auto-generation and other finalization steps:
 		############################################################################################################
-
-		#TODO: add license processing here.
-
-		# TODO: move this to a post-step and only include active licenses.
-		# TODO: we should not hard-reference 'gentoo-staging' anymore.
-		#	merge.steps.SyncDir(self.kit.source.repositories["gentoo-staging"].tree.root, "licenses")
-		# 			merge.steps.PruneLicenses()
-
 
 		# We can now run all the steps that require access to metadata:
 

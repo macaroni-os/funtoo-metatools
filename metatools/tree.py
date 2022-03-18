@@ -54,6 +54,13 @@ class Tree:
 		self.model = model
 		assert model is not None
 
+	def find_license(self, license):
+		lic_path = f"{self.root}/licenses/{license}"
+		if os.path.exists(lic_path):
+			return lic_path
+		else:
+			raise FileNotFoundError(lic_path)
+
 	def run_shell(self, cmd_list, abort_on_failure=True, chdir=None):
 		return run_shell(cmd_list, abort_on_failure=abort_on_failure, chdir=chdir, logger=self.model.log)
 
@@ -255,22 +262,22 @@ class GitTree(Tree):
 	"""
 
 	def __init__(
-		self,
-		name: str,
-		branch: str = "master",
-		url: str = None,
-		commit_sha1: str = None,
-		root: str = None,
-		reponame: str = None,
-		mirrors: list = None,
-		forcepush: bool = False,
-		origin_check: bool = False,
-		create_branches: bool = False,
-		destfix: bool = False,
-		reclone: bool = False,
-		pull: bool = True,
-		checkout_all_branches: bool = False,
-		model=None
+			self,
+			name: str,
+			branch: str = "master",
+			url: str = None,
+			commit_sha1: str = None,
+			root: str = None,
+			reponame: str = None,
+			mirrors: list = None,
+			forcepush: bool = False,
+			origin_check: bool = False,
+			create_branches: bool = False,
+			destfix: bool = False,
+			reclone: bool = False,
+			pull: bool = True,
+			checkout_all_branches: bool = False,
+			model=None
 	):
 
 		super().__init__(root=root, model=model)

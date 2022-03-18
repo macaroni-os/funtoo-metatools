@@ -341,8 +341,7 @@ class BreezyBuild:
 		completion_list = aggregate(results)
 		for artifact, status in completion_list:
 			if status is False:
-				log.error(f"Artifact for url {artifact.url} referenced in {artifact.catpkgs} could not be fetched.")
-				sys.exit(1)
+				raise BreezyError(f"Artifact for url {artifact.url} referenced in {artifact.catpkgs} could not be fetched.")
 
 	def push(self):
 		#
