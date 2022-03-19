@@ -338,14 +338,16 @@ class KitGenerator:
 			for eclass_name in sorted(infos["INHERITED"].split()):
 
 				if eclass_name not in merged_eclasses.hashes:
-					model.log.error(f"{atom}: can't find eclass hash for {eclass_name} -- {merged_eclasses.hashes}")
-					continue
+					errmsg = f"{atom}: can't find eclass hash for {eclass_name} -- {merged_eclasses.hashes}"
+					model.log.error(errmsg)
+					raise KeyError(errmsg)
 				try:
 					eclass_out += f"\t{eclass_name}\t{merged_eclasses.hashes[eclass_name]}"
 					eclass_tuples.append((eclass_name, merged_eclasses.hashes[eclass_name]))
 				except KeyError as ke:
-					model.log.error(f"{atom}: can't find eclass hash for {eclass_name} (2) -- {merged_eclasses.hashes}")
-					pass
+					errmsg = f"{atom}: can't find eclass hash for {eclass_name} (2) -- {merged_eclasses.hashes}"
+					model.log.error(errmsg)
+					raise KeyError(errmsg)
 		metadata_out = ""
 
 		for key in AUXDB_LINES:

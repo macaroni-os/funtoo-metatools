@@ -190,7 +190,6 @@ class SourceCollection:
 	def find_license(self, license):
 		for repo in reversed(self.repositories.keys()):
 			try:
-				self.yaml.model.log.debug(f"Scanning for license {license} in {self.repositories[repo].tree.root}")
 				license = self.repositories[repo].tree.find_license(license)
 			except FileNotFoundError:
 				continue

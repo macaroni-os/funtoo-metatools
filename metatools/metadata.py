@@ -518,7 +518,7 @@ def get_atom(kit_gen_obj, atom, md5, manifest_md5):
 			elif existing["eclasses"]:
 				for eclass, md5 in existing["eclasses"]:
 					if eclass not in kit_gen_obj.merged_eclasses.hashes:
-						logging.error(f"Kit cache atom {atom} can't be used due to missing eclass {eclass}")
+						logging.warning(f"Kit cache atom {atom} can't be used due to missing eclass {eclass}")
 						bad = True
 						break
 					if kit_gen_obj.merged_eclasses.hashes[eclass] != md5:
