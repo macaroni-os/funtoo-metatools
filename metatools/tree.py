@@ -87,10 +87,7 @@ class Tree:
 			return
 		self.model.log.info(f"Starting autogen in src_offset {src_offset} (in {autogen_path})... (DEBUG={self.model.debug}) (orig_scope={scope})")
 		if scope is None:
-			if self.model.prod:
-				scope = self.model.release
-			else:
-				scope = "local"
+			scope = "local"
 		self.model.log.info(f"Final scope: {scope}")
 		cmd_str = f"cd {autogen_path} && doit --fastpull_scope={scope}"
 		if self.model.debug:
