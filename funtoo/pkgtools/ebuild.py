@@ -237,7 +237,7 @@ class BreezyBuild:
 		self.template_args = kwargs
 		for kwarg in ["cat", "name", "version", "path"]:
 			if kwarg in kwargs:
-				setattr(self, kwarg, kwargs[kwarg])
+				setattr(self, kwarg, str(kwargs[kwarg]))
 		if "revision" in kwargs:
 			self._revision = kwargs["revision"]
 
@@ -365,6 +365,7 @@ class BreezyBuild:
 		# thanks to the wrapper.
 		bzb_task = Task(wrapper(self))
 		bzb_task.bzb = self
+		bzb_task.info = self.catpkg_version_rev
 		bzb_task.add_done_callback(pkgtools.autogen._handle_task_result)
 		hub.THREAD_CTX.running_breezybuilds.append(bzb_task)
 
