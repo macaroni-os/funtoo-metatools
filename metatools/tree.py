@@ -228,8 +228,8 @@ class AutoCreatedGitTree(Tree):
 		if not os.path.exists(self.root):
 			os.makedirs(self.root)
 			self.run_shell("( cd %s && git init )" % self.root)
-			self.run_shell("echo 'created by merge.py' > %s/README" % self.root)
-			self.run_shell("( cd %s &&  git add README; git commit -a -m 'initial commit by merge.py' )" % self.root)
+			self.run_shell("echo 'created by merge-kits.' > %s/README" % self.root)
+			self.run_shell("( cd %s &&  git add README; git commit -a -m 'initial commit by merge-kits' )" % self.root)
 			if not self.localBranchExists(self.branch):
 				self.run_shell("( cd %s && git checkout -b %s)" % (self.root, self.branch))
 			else:
