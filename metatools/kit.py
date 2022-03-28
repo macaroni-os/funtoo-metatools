@@ -536,7 +536,6 @@ class KitGenerator:
 		elif isinstance(self.kit, SourcedKit):
 			await self.generate_sourced()
 
-
 		##############################################################################
 		# Now, we can run any post-steps to get the tree in ready-to-commit condition:
 		##############################################################################
@@ -546,9 +545,15 @@ class KitGenerator:
 			metatools.steps.FindAndRemove(["COPYRIGHT.txt"]), # replaced with COPYRIGHT.rst
 			metatools.steps.GenerateLicensingFile(text=self.kit.get_copyright_rst()),
 			metatools.steps.Minify(),
-			metatools.steps.ELTSymlinkWorkaround(),
+
 			metatools.steps.CreateCategories(),
 		])
+
+		if self.kit.name == "core-kit":
+			await self.run([
+				metatools.steps.ELTSymlinkWorkaround(),
+				metatools.steps.ThirdPartyMirrors()
+			])
 
 		############################################################################################################
 		# Now that all eclasses should be copied over, scan what we have:

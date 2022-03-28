@@ -39,7 +39,7 @@ class GenerateLicensingFile(MergeStep):
 
 class ThirdPartyMirrors(MergeStep):
 	"""
-	Add funtoo's distfiles mirror, and add funtoo's mirrors as gentoo back-ups.
+	Add funtoo's distfiles mirror, and add funtoo's mirrors as gentoo backups.
 	"""
 
 	async def run(self, kit_gen):
