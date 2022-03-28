@@ -44,6 +44,7 @@ def headSHA1(tree):
 
 
 class Tree:
+
 	def __init__(self, root=None, model=None):
 		self.root = root
 		self.autogenned = False
@@ -139,18 +140,14 @@ class Tree:
 	def gitCheckout(self, branch=None, from_init=False):
 		if not from_init:
 			self.initialize()
+		self.cleanTree()
 		if self.currentLocalBranch != branch:
 			if self.localBranchExists(branch):
 				self.run_shell("(cd %s && git checkout %s)" % (self.root, branch))
 			else:
-				# An AutoCreatedGitTree will automatically create branches as needed, as forks of master.
-				self.run_shell("(cd %s && git checkout master && git checkout -b %s)" % (self.root, branch))
-			self.cleanTree()
+				raise GitTreeError(f"Local branch {branch} does not exist but I was asked to checkout this branch.")
 		if self.currentLocalBranch != branch:
-			raise GitTreeError(
-				"%s: On branch %s. not able to check out branch %s." % (self.root, self.currentLocalBranch, branch)
-			)
-		print("Checked out %s on tree %s" % (branch, self.root))
+			raise GitTreeError(f"{self.root}: On branch {self.currentLocalBranch}. Not able to check out branch {branch}.")
 		self.branch = branch
 
 	def gitCommit(self, message="", skip=None, push=True):
@@ -216,7 +213,6 @@ class AutoCreatedGitTree(Tree):
 		super().__init__(root=root, model=model)
 		self.branch = branch
 		self.name = self.reponame = name
-		self.has_cleaned = False
 		self.initialized = False
 		self.commit_sha1 = commit_sha1
 		self.merged = []
@@ -230,17 +226,12 @@ class AutoCreatedGitTree(Tree):
 			self.run_shell("( cd %s && git init )" % self.root)
 			self.run_shell("echo 'created by merge-kits.' > %s/README" % self.root)
 			self.run_shell("( cd %s &&  git add README; git commit -a -m 'initial commit by merge-kits' )" % self.root)
-			if not self.localBranchExists(self.branch):
-				self.run_shell("( cd %s && git checkout -b %s)" % (self.root, self.branch))
-			else:
-				self.gitCheckout(self.branch, from_init=True)
-
-		if not self.has_cleaned:
-			self.run_shell("(cd %s &&  git reset --hard && git clean -fdx )" % self.root)
-			self.has_cleaned = True
 
 		if not self.localBranchExists(self.branch):
 			self._create_branch()
+
+		# This ensures we have the local branch active, cleans tree and performs sanity checks:
+		self.gitCheckout(self.branch, from_init=True)
 
 		# point to specified sha1:
 
