@@ -392,9 +392,8 @@ def catpkg_generator(repo_path=None):
 
 
 async def get_python_use_lines(kit_gen, catpkg, cpv_list, cur_tree, def_python, bk_python):
-	# These shall not be None:
+	# Shall not be None:
 	assert def_python
-	assert bk_python
 	# TODO: This should be fixed or replaced, because there's hard-coded thangs in here.
 	#       Best solution would be to move it to the release metadata.
 	ebs = {}
@@ -461,7 +460,7 @@ async def get_python_use_lines(kit_gen, catpkg, cpv_list, cur_tree, def_python, 
 def do_package_use_line(pkg, def_python, bk_python, imps):
 	out = None
 	if def_python not in imps:
-		if bk_python in imps:
+		if bk_python and bk_python in imps:
 			out = "%s python_single_target_%s" % (pkg, bk_python)
 		else:
 			out = "%s python_single_target_%s python_targets_%s" % (pkg, imps[0], imps[0])
