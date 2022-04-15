@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 
-import os
 import asyncio
-import sys
+import logging
+import os
 import threading
 from asyncio import Task
-
+from collections import OrderedDict
 from subprocess import getstatusoutput
 from typing import Optional
-from collections import OrderedDict
 
 import jinja2
-import logging
 
 from metatools.store import StoreObject
 
@@ -22,7 +20,7 @@ import dyne.org.funtoo.metatools.pkgtools as pkgtools
 from metatools.fastpull.spider import FetchError, FetchRequest
 
 # This is not currently used, as what the Spider downloads at any given moment is considered to
-# be authoritative. This may be used for tools that repopulate the the BLOS, but is not otherwise
+# be authoritative. This may be used for tools that repopulate the BLOS, but is not otherwise
 # needed.
 #
 # class DigestFailure(Exception):

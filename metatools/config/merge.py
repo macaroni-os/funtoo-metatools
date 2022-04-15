@@ -43,6 +43,7 @@ class MergeConfig(MinimalConfig):
 	nest_kits = True
 	git_class = AutoCreatedGitTree
 	fixups_url = None
+	fixups_branch = None
 
 	# Not sure if this is used:
 	_third_party_mirrors = None
@@ -58,7 +59,7 @@ class MergeConfig(MinimalConfig):
 	log = None
 	debug = False
 
-	async def initialize(self, prod=False, push=False, release=None, create_branches=False, fixups_url=None, debug=False):
+	async def initialize(self, prod=False, push=False, release=None, create_branches=False, fixups_url=None, fixups_branch=None, debug=False):
 
 		self.log = logging.getLogger('metatools.merge')
 		self.log.propagate = False
@@ -78,13 +79,14 @@ class MergeConfig(MinimalConfig):
 		self.release = release
 		self.create_branches = create_branches
 		self.fixups_url = fixups_url
+		self.fixups_branch = fixups_branch
 		self.debug = debug
 
 		self.log.debug("Trying to find kit-fixups")
 
 		# TODO: refuse to use any source repository that has local changes (use git status --porcelain | wc -l)
 		self.context = os.path.join(self.source_trees, "kit-fixups")
-		self.kit_fixups = GitTree(name='kit-fixups', root=self.context, model=self, url=fixups_url)
+		self.kit_fixups = GitTree(name='kit-fixups', root=self.context, model=self, url=fixups_url, branch=fixups_branch)
 		self.log.debug("Initializing kit-fixups repository in model init")
 		self.kit_fixups.initialize()
 		self.locator = GitRepositoryLocator(start_path=self.kit_fixups.root)

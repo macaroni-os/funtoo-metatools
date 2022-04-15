@@ -252,7 +252,12 @@ class GitTree(Tree):
 	def __init__(
 			self,
 			name: str,
-			branch: str = "master",
+			branch: str = None,
+			# Set to True to only enforce the branch on initial clone, and interpret None to mean "keep existing
+			# branch. This allows us to initialize kit-fixups to a developer's branch and only change it when the
+			# developer explicitly specifies the branch. So it changes meaninng from None to "master" to "current
+			# checked out branch".
+			keep_branch: bool = False,
 			url: str = None,
 			commit_sha1: str = None,
 			root: str = None,
@@ -285,9 +290,13 @@ class GitTree(Tree):
 		self.destfix = destfix
 		self.reclone = reclone
 		self.forcepush = "--force" if forcepush else "--no-force"
-		self.branch = branch
 		self.commit_sha1 = commit_sha1
 		self.checkout_all_branches = checkout_all_branches
+		self.keep_branch = keep_branch
+		if not self.keep_branch and branch is None:
+			self.branch = "master"
+		else:
+			self.branch = branch
 
 	def _create_branches(self):
 		self.run_shell(f"git checkout master; git checkout -b {self.branch}", chdir=self.root)
@@ -328,6 +337,8 @@ class GitTree(Tree):
 			self.cleanTree()
 
 		init_branches = []
+
+		cur_branch = self.currentLocalBranch
 
 		# We allow this to be turned off for GitTrees like kit-fixups, where you really don't need any branches
 		# for mirroring purposes and there may be many bugfix branches:
@@ -383,8 +394,10 @@ class GitTree(Tree):
 				elif self.destfix is None:
 					pass
 
-		# git fetch will run as part of this:
-		self.gitCheckout(self.branch, from_init=True)
+		if self.keep_branch and self.branch is None and cur_branch is not None:
+			self.gitCheckout(cur_branch, from_init=True)
+		else:
+			self.gitCheckout(self.branch, from_init=True)
 
 		# point to specified sha1:
 

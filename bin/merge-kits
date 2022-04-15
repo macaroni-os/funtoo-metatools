@@ -44,7 +44,15 @@ async def do_process_teardown():
 
 async def main_thread(args):
 	model = MergeConfig()
-	await model.initialize(release=args.release, prod=args.prod, push=not args.nopush, create_branches=args.create_branches, fixups_url=args.fixups_url, debug=args.debug)
+	await model.initialize(
+		release=args.release,
+		prod=args.prod,
+		push=not args.nopush,
+		create_branches=args.create_branches,
+		fixups_url=args.fixups_url,
+		fixups_branch=args.fixups_branch,
+		debug=args.debug
+	)
 	controller = MetaRepoJobController(model)
 	try:
 		await controller.generate()
@@ -55,6 +63,7 @@ async def main_thread(args):
 
 CLI_CONFIG = {
 	"fixups_url": {"type": str},
+	"fixups_branch" : {"type": str, "default": "master"},
 	"force": {"action": "store_true", "default": False},
 	"nopush": {"action": "store_true", "default": False},
 	"prod": {"action": "store_true", "default": False},
