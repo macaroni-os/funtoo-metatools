@@ -86,7 +86,14 @@ class MergeConfig(MinimalConfig):
 
 		# TODO: refuse to use any source repository that has local changes (use git status --porcelain | wc -l)
 		self.context = os.path.join(self.source_trees, "kit-fixups")
-		self.kit_fixups = GitTree(name='kit-fixups', root=self.context, model=self, url=fixups_url, branch=fixups_branch)
+		self.kit_fixups = GitTree(
+			name='kit-fixups',
+			root=self.context,
+			model=self,
+			url=fixups_url,
+			branch=fixups_branch,
+			keep_branch=True
+		)
 		self.log.debug("Initializing kit-fixups repository in model init")
 		self.kit_fixups.initialize()
 		self.locator = GitRepositoryLocator(start_path=self.kit_fixups.root)
