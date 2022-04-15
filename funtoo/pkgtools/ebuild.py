@@ -136,12 +136,14 @@ class Artifact(Fetchable):
 			return self.url + " -> " + self._final_name
 
 	def extract(self):
-		# TODO: maybe refactor these next 2 lines
 		if not self.exists:
 			self.fetch()
 		ep = self.extract_path
 		os.makedirs(ep, exist_ok=True)
-		cmd = "tar -C %s -xf %s" % (ep, self.final_path)
+		if self.final_name.endswith(".zip"):
+			cmd = f"unzip {ep} -d {self.final_path}"
+		else:
+			cmd = f"tar -C {ep} -xf {self.final_path}"
 		s, o = getstatusoutput(cmd)
 		if s != 0:
 			raise pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
