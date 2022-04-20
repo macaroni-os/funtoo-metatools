@@ -907,7 +907,7 @@ class MetaRepoJobController:
 				continue
 			kit = kit_job.kit
 			for mirror in kit_job.out_tree.mirrors:
-				await self.mirror_repository(kit_job, base_path, mirror)
+				self.mirror_repository(kit_job, base_path, mirror)
 		for mirror in self.meta_repo.mirrors:
 			self.mirror_repository(self.meta_repo, base_path, mirror)
 		print("Mirroring of meta-repo complete.")
