@@ -885,7 +885,6 @@ class MetaRepoJobController:
 			self.mirror_all_repositories()
 		self.display_error_summary()
 
-	# TODO: does this need to be upgraded to handle multiple remotes?
 	def mirror_repository(self, kit_job: KitGenerator, base_path, mirror):
 		"""
 		Mirror a repository to its mirror location, ie. GitHub.
@@ -903,16 +902,14 @@ class MetaRepoJobController:
 		base_path = os.path.join(model.temp_path, "mirror_repos")
 		run_shell(f"rm -rf {base_path}")
 		kit_mirror_futures = []
-		with ThreadPoolExecutor(max_workers=8) as executor:
-			# Push all kits, then push meta-repo.
-			for kit_job in self.kit_jobs:
-				kit = kit_job.kit
-				future = executor.submit(self.mirror_repository, kit_job, base_path)
-				kit_mirror_futures.append(future)
-			for future in as_completed(kit_mirror_futures):
-				kit_name = future.result()
-				print(f"Mirroring of {kit_name} complete.")
-		self.mirror_repository(self.meta_repo, base_path)
+		for kit_job in self.kit_jobs:
+			if not kit_job.out_tree.mirrors:
+				continue
+			kit = kit_job.kit
+			for mirror in kit_job.out_tree.mirrors:
+				await self.mirror_repository(kit_job, base_path, mirror)
+		for mirror in self.meta_repo.mirrors:
+			self.mirror_repository(self.meta_repo, base_path, mirror)
 		print("Mirroring of meta-repo complete.")
 
 
