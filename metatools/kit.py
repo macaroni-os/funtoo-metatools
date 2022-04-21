@@ -907,7 +907,7 @@ class MetaRepoJobController:
 				continue
 			kit = kit_job.kit
 			for mirror in kit_job.out_tree.mirrors:
-				mirror = mirror.format(repo=kit_job.name)
+				mirror = mirror.format(repo=kit_job.kit.name)
 				self.mirror_repository(kit_job, base_path, mirror)
 		for mirror in self.meta_repo.mirrors:
 			mirror = mirror.format(repo=self.meta_repo.name)
