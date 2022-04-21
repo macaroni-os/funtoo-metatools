@@ -18,7 +18,7 @@ from metatools.hashutils import get_md5
 from metatools.metadata import AUXDB_LINES, get_catpkg_relations_from_depstring, get_filedata, extract_ebuild_metadata, strip_rev, \
 	get_atom, load_json, CACHE_DATA_VERSION
 from metatools.model import get_model
-from metatools.tree import GitTreeError, run_shell
+from metatools.tree import GitTreeError, run_shell, Tree
 
 model = get_model("metatools.merge")
 
@@ -885,18 +885,18 @@ class MetaRepoJobController:
 			self.mirror_all_repositories()
 		self.display_error_summary()
 
-	def mirror_repository(self, kit_job: KitGenerator, base_path, mirror):
+	def mirror_repository(self, repo: Tree, base_path, mirror):
 		"""
 		Mirror a repository to its mirror location, ie. GitHub.
 		"""
 
 		os.makedirs(base_path, exist_ok=True)
-		run_shell(f"git clone --bare {kit_job.out_tree.root} {base_path}/{kit_job.kit.name}.pushme")
+		run_shell(f"git clone --bare {repo.root} {base_path}/{repo.name}.pushme")
 		run_shell(
-			f"cd {base_path}/{kit_job.kit.name}.pushme && git remote add upstream {mirror} && git push --mirror upstream"
+			f"cd {base_path}/{repo.name}.pushme && git remote add upstream {mirror} && git push --mirror upstream"
 		)
-		run_shell(f"rm -rf {base_path}/{kit_job.kit.name}.pushme")
-		return kit_job.kit.name
+		run_shell(f"rm -rf {base_path}/{repo.name}.pushme")
+		return repo.name
 
 	def mirror_all_repositories(self):
 		base_path = os.path.join(model.temp_path, "mirror_repos")
@@ -908,7 +908,7 @@ class MetaRepoJobController:
 			kit = kit_job.kit
 			for mirror in kit_job.out_tree.mirrors:
 				mirror = mirror.format(repo=kit_job.kit.name)
-				self.mirror_repository(kit_job, base_path, mirror)
+				self.mirror_repository(kit_job.out_tree, base_path, mirror)
 		for mirror in self.meta_repo.mirrors:
 			mirror = mirror.format(repo=self.meta_repo.name)
 			self.mirror_repository(self.meta_repo, base_path, mirror)
