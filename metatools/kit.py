@@ -127,7 +127,8 @@ class KitGenerator:
 			origin_check=True if model.prod else None,
 			mirrors=kit_config['mirrors'],
 			create_branches=model.create_branches,
-			model=model
+			model=model,
+			**model.git_kwargs
 		)
 		self.out_tree.initialize()
 
@@ -827,7 +828,8 @@ class MetaRepoJobController:
 			origin_check=True if model.prod else None,
 			mirrors=meta_repo_config['mirrors'],
 			create_branches=model.create_branches,
-			model=model
+			model=model,
+			**model.git_kwargs
 		)
 
 		self.meta_repo.initialize()
