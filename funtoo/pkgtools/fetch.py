@@ -15,7 +15,7 @@ retrying, using our fetch cache, etc.
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
-async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None):
+async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, **kwargs):
 
 	"""
 	This method is used to execute any fetch-related method, and will handle all the aspects of reading from and
@@ -54,6 +54,7 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None):
 				# This call will return our cached resource if it's available and refresh_interval hasn't yet expired, i.e.
 				# it is not yet 'stale'.
 				try:
+					# TODO: add kwargs here...
 					result = await pkgtools.model.fetch_cache.read(
 						fetch_method.__name__, url, refresh_interval=refresh_interval
 					)
@@ -62,7 +63,7 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None):
 				except CacheMiss:
 					# We'll continue and attempt a live fetch of the resource...
 					pass
-			result = await fetch_method(url)
+			result = await fetch_method(url, **kwargs)
 			await pkgtools.model.fetch_cache.write(fetch_method.__name__, url, body=result)
 			return result
 		except FetchError as e:
@@ -73,6 +74,7 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None):
 			pkgtools.model.log.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
 			# TODO: these should be logged persistently so they can be investigated.
 			try:
+				# TODO: add kwargs here....
 				got = await pkgtools.model.fetch_cache.read(fetch_method.__name__, url)
 				return got["body"]
 			except CacheMiss as ce:
@@ -97,15 +99,22 @@ async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False
 	# Respect doit --immediate option:
 	if pkgtools.model.fetch_cache_interval is not None:
 		refresh_interval = pkgtools.model.fetch_cache_interval
-	result = await fetch_harness(pkgtools.http.get_page, fetchable, max_age=max_age, refresh_interval=refresh_interval)
-	if is_json:
-		try:
-			return json.loads(result)
-		except json.JSONDecodeError as e:
-			pkgtools.model.log.exception(e)
-			raise FetchError(fetchable, f"Fetched data for {fetchable} was invalid JSON.")
-	else:
-		return result
+	return await fetch_harness(pkgtools.http.get_page, fetchable, max_age=max_age, is_json=is_json, refresh_interval=refresh_interval)
+
+	#if is_json:
+	#	try:
+	#		return json.loads(result)
+	#	except json.JSONDecodeError as e:
+	#		try:
+	#			loaded = json.loads(str(result.encode('unicode_escape')))
+	#			pkgtools.model.log.warning("Decoding as unicode escaped fixed it!")
+	#			return loaded
+	#		except json.JSONDecodeError as je:
+	#			pkgtools.model.log.error("Trying to decode as unicode-escaped didn't help.")
+	#		pkgtools.model.log.exception(e)
+	#		raise FetchError(fetchable, f"Fetched data for {fetchable} was invalid JSON.")
+	#else:
+	#	return result
 
 
 async def get_response_headers(fetchable, max_age=None, refresh_interval=None):
