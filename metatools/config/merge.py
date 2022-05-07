@@ -117,7 +117,7 @@ class MergeConfig(MinimalConfig):
 			self.push = push
 			self.mirror_repos = push
 			self.git_class = GitTree
-			self.git_kwargs = {"create_all_branches": True}
+			self.git_kwargs = {"checkout_all_branches": True}
 		self.log.debug("Model initialization complete.")
 		set_model("metatools.merge", self)
 
