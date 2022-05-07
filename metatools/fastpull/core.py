@@ -5,7 +5,7 @@ from datetime import datetime
 
 from metatools.blos import BaseLayerObjectStore
 from metatools.fastpull.spider import FetchRequest, Download
-from metatools.store import Store, FileStorageBackend, DerivedKeySpecification, StoreObject
+from metatools.store import Store, FileStorageBackend, DerivedKey, StoreObject
 
 log = logging.getLogger('metatools.autogen')
 
@@ -22,7 +22,7 @@ class IntegrityScope:
 			collection="integrity",
 			prefix=self.scope,
 			backend=FileStorageBackend(db_base_path=self.parent.db_base_path),
-			key_spec=DerivedKeySpecification(["url"])
+			key_spec=DerivedKey(["url"])
 		)
 
 	async def get_file_by_url(self, request: FetchRequest) -> StoreObject:

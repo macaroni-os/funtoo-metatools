@@ -17,39 +17,6 @@ from bson.json_util import dumps, JSONOptions, loads
 # utilize the datastore. This would cause all requests to be processed linearly while still offering
 # high performance and flexibility.
 #
-# Within a single process, subpop can be used to keep a global registry of running services.
-#
-# For merge-kits, this is more complicated because merge-kits currently 'fires off' multiple separate
-# processes for each "doit" call, and these processes need to be informed of any globally-running
-# fetch cache, BLOS, etc. However, this could easily be done with environment variables or command-
-# line arguments. So this is a very doable solution. So this could work as follows:
-#
-# "doit", run standalone with no special command-line options, would try to acquire an exclusive lock
-# to all stores it needs, and fail if they were in use.
-#
-# If "merge-kits" is run, it will acquire an exclusive lock to all the stores it and any "doit" commands
-# would need. And when firing up "doit" subprocesses, it would specify via command-line argument or
-# environment variables the sockets to be used to connect to these already-running stores.
-#
-# This model would not require locking at all, and just works by exclusively locking the resource but
-# then delegating access to subprocesses by pointing them to where to connect.
-#
-# On one hand, this is 'more complicated' than 'just using mongo' -- however:
-#
-# 1. We still have a need for BLOB storage on the filesystem for fastpull, so we need some file storage
-#    anyway; and
-# 2. This extra complexity forces us to think about how we are accessing our data and helps to ensure that
-#    we are avoiding race conditions and other problems that can come up when we just say "oh, it's all in
-#    mongo" and don't worry about how these various processes and threads may interact negatively with
-#    each other.
-# 3. Apart from a bit of delegation logic, and a light ZeroMQ layer, this does provide a way to totally
-#    avoid locking, have a fast storage engine with no need for mongo, have a solution that works for
-#    developer-style 'doit' calls and prod-style 'merge-kits' calls -- so seems like a good solution :)
-#
-# For implementing a basic 'doit', exclusive access to the stores should be sufficient and this should
-# just work. But we will immediately run into problems if there isn't another mechanism for access when
-# we get to more advanced tools.
-#
 # Below:
 # This is equivalent to CANONICAL_JSON_OPTIONS, but we use OrderedDicts for representing objects (good to
 # ensure consistency when storing/retrieving dictionaries)
@@ -67,8 +34,8 @@ class NotFoundError(Exception):
 
 def extract_data_by_keyspec(index_field, data):
 	"""
-	This method accepts a string like "foo.bar", and will traverse dict hierarchy ``metadata`` to retrieve the specified
-	element. Each '.' represents a depth in the dictionary hierarchy.
+	This method accepts a string like "foo.bar", and will traverse dict hierarchy ``metadata``
+	to retrieve the specified element. Each '.' represents a depth in the dictionary hierarchy.
 	"""
 	index_split = index_field.split(".")
 	cur_data = data
@@ -108,11 +75,23 @@ def expand_keyspec(keyspec):
 	return out
 
 
-class KeySpecification:
+class Key:
+
+	"""
+	This is an abstract base class for a "Key", which is a type of key that is
+	used for indexing and retrieving items from a Store.
+	"""
 	pass
 
 
-class HashKeySpecification(KeySpecification):
+class HashKey(Key):
+
+	"""
+	A ``HashKey`` is used when you are already storing a hash in the data in the
+	store. In this case, you pass a "key specification" to the constructor which
+	is a "dotted path" notation to the path of this hash within your data. Something
+	like "hashes.sha512".
+	"""
 
 	def __init__(self, key_spec: str):
 		assert isinstance(key_spec, str)
@@ -136,10 +115,22 @@ class HashKeySpecification(KeySpecification):
 		return spec_dict[self.key_spec]
 
 
-class DerivedKeySpecification(KeySpecification):
+class DerivedKey(Key):
 
-	def __init__(self, key_spec_list):
+	"""
+	A ``DerivedKey`` is a key generated from the JSON of one or more fields in your data.
+	Pass a list of these fields, in dotted "key specification" format, to the constructor.
+	This key type will then generate normalised JSON of these elements, and use this to
+	construct a predictable hash which is used for indexing.
+
+	The ``optional_spec_list`` is a list of elements that, if they do not exist in the
+	data, are safe to simply omit from the key spec. This is useful when adding new fields
+	to the key specification in new versions of metatools.
+	"""
+
+	def __init__(self, key_spec_list, optional_spec_list=None):
 		self.key_spec_list = key_spec_list
+		self.optional_spec_list = optional_spec_list if optional_spec_list is not None else []
 
 	def __repr__(self):
 		return f"DerivedKeys({self.key_spec_list})"
@@ -150,19 +141,26 @@ class DerivedKeySpecification(KeySpecification):
 	def compound_value(self, data):
 		value = OrderedDict()
 		for key_spec in self.key_spec_list:
-			index_data = extract_data_by_keyspec(key_spec, data)
+			if key_spec in self.optional_spec_list:
+				try:
+					index_data = extract_data_by_keyspec(key_spec, data)
+				except KeyError:
+					continue
+			else:
+				index_data = extract_data_by_keyspec(key_spec, data)
 			value[key_spec] = index_data
 		return value
 
 	def validate_data(self, data):
 		for key_spec in self.key_spec_list:
-			extract_data_by_keyspec(key_spec, data)
+			if key_spec not in self.optional_spec_list:
+				extract_data_by_keyspec(key_spec, data)
 
 	def validate_specdict(self, spec_dict):
 		expected_set = set(self.key_spec_list)
 		provided_set = set(spec_dict.keys())
 		unrecognized = provided_set - expected_set
-		missing = expected_set - provided_set
+		missing = (expected_set - provided_set) - set(self.optional_spec_list)
 		if unrecognized:
 			raise KeyError(f"Unrecognized key specifications in query: {unrecognized}")
 		if missing:
@@ -177,7 +175,7 @@ class BLOBReference:
 	pass
 
 
-class BLOBDiskReference:
+class BLOBDiskReference(BLOBReference):
 	def __init__(self, path):
 		self.path = path
 
@@ -191,6 +189,13 @@ class StoreObject:
 
 
 class StorageBackend:
+
+	"""
+	This is an abstract class for a storage backend. This class hierarchy allows for
+	the ``Store`` class to be re-targetable to different types of backends by choosing
+	different implementations of this class.
+	"""
+
 	store = None
 
 	def create(self, store):
@@ -207,6 +212,18 @@ class StorageBackend:
 
 
 class FileStorageBackend(StorageBackend):
+
+	"""
+	This is the primary storage backend used with the ``Store`` class, which is
+	designed to store data directly on disk in a series of directories organized
+	by a hash key.
+
+	This storage backend has the ability to store 'data', which is structured
+	data stored in JSON format (although thanks to BSON does a much better job
+	with Python data formats like datetime, etc.), as well as the ability to
+	store an associated 'blob' -- which can be arbitrary binary data such as
+	a downloaded source tarball.
+	"""
 	root = None
 
 	def __init__(self, db_base_path):
@@ -251,6 +268,8 @@ class FileStorageBackend(StorageBackend):
 			#       File "/home/drobbins/development/funtoo-metatools/metatools/store.py", line 246, in _write_phase2
 			#         os.link(blob_path, blob_outpath)
 			#     FileExistsError: [Errno 17] File exists:
+			#
+			# The try/except clause below prevents this collision from causing problems.
 			try:
 				os.link(blob_path, blob_outpath)
 			except FileExistsError:
@@ -280,6 +299,13 @@ class FileStorageBackend(StorageBackend):
 
 
 class Store:
+
+	"""
+	This is the ``Store`` class which is the class intended to be instantiated and used by
+	other code. You will typically also pass it a ``FileStorageBackend()`` for it to
+	initialize, which will actually store your data on disk. However, in the future it
+	will be possible to easily add other types of backends if desired.
+	"""
 
 	backend: StorageBackend = None
 	collection = None

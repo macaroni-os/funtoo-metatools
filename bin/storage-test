@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-from metatools.store import FileStorageBackend, Store, DerivedKeySpecification
+from metatools.store import FileStorageBackend, Store, DerivedKey
 
 if __name__ == "__main__":
 	store = Store(
 		collection="catpkgs",
 		backend=FileStorageBackend(db_base_path="/var/tmp/db_test"),
-		key_spec=DerivedKeySpecification(["pkginfo.cat", "pkginfo.pkg"])
+		key_spec=DerivedKey(["pkginfo.cat", "pkginfo.pkg"])
 	)
 
 	store.write({

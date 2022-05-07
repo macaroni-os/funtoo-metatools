@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 import asyncio
-import json
-
 import re
 
-from metatools.fetch_cache import CacheMiss
 from metatools.fastpull.spider import FetchError
+from metatools.fetch_cache import CacheMiss
 
 """
 This sub implements high-level fetching pkgtools.model.log.c. Not the lower-level HTTP stuff. Things involving
@@ -45,6 +43,14 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, 
 			# by default unless overridden by the doit --immediate option, or if there was an explicit refresh interval passed
 			# to this function.
 			refresh_interval = pkgtools.model.fetch_cache_interval
+
+	# This may have "is_json", "encoding":
+	key_dict = kwargs.copy()
+	key_dict.update({
+		"method_name": fetch_method.__name__,
+		"url": url
+	})
+	
 	while attempts < pkgtools.model.fetch_attempts:
 		attempts += 1
 		try:
@@ -54,9 +60,9 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, 
 				# This call will return our cached resource if it's available and refresh_interval hasn't yet expired, i.e.
 				# it is not yet 'stale'.
 				try:
-					# TODO: add kwargs here...
 					result = await pkgtools.model.fetch_cache.read(
-						fetch_method.__name__, url, refresh_interval=refresh_interval
+						key_dict=key_dict,
+						refresh_interval=refresh_interval
 					)
 					pkgtools.model.log.info(f'Fetched {url} (cached)')
 					return result["body"]
@@ -64,7 +70,7 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, 
 					# We'll continue and attempt a live fetch of the resource...
 					pass
 			result = await fetch_method(url, **kwargs)
-			await pkgtools.model.fetch_cache.write(fetch_method.__name__, url, body=result)
+			await pkgtools.model.fetch_cache.write(key_dict=key_dict, body=result)
 			return result
 		except FetchError as e:
 			if e.retry and attempts + 1 < pkgtools.model.fetch_attempts:
@@ -75,7 +81,7 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, 
 			# TODO: these should be logged persistently so they can be investigated.
 			try:
 				# TODO: add kwargs here....
-				got = await pkgtools.model.fetch_cache.read(fetch_method.__name__, url)
+				got = await pkgtools.model.fetch_cache.read(key_dict=key_dict)
 				return got["body"]
 			except CacheMiss as ce:
 				# raise original exception
@@ -85,10 +91,10 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, 
 
 	# If we've gotten here, we've performed all of our attempts to do live fetching.
 	try:
-		result = await pkgtools.model.fetch_cache.read(fetch_method.__name__, url, max_age=max_age)
+		result = await pkgtools.model.fetch_cache.read(key_dict=key_dict, max_age=max_age)
 		return result["body"]
 	except CacheMiss:
-		await pkgtools.model.fetch_cache.record_fetch_failure(fetch_method.__name__, url, fail_reason=fail_reason)
+		await pkgtools.model.fetch_cache.record_fetch_failure(key_dict=key_dict, fail_reason=fail_reason)
 		raise FetchError(
 			url,
 			f"Unable to retrieve {url} using method {fetch_method.__name__} either live or from cache as fallback.",
@@ -96,28 +102,17 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, 
 
 
 async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False):
+	if isinstance(fetchable, pkgtools.ebuild.Artifact):
+		fetchable = fetchable.url
 	# Respect doit --immediate option:
 	if pkgtools.model.fetch_cache_interval is not None:
 		refresh_interval = pkgtools.model.fetch_cache_interval
 	return await fetch_harness(pkgtools.http.get_page, fetchable, max_age=max_age, is_json=is_json, refresh_interval=refresh_interval)
 
-	#if is_json:
-	#	try:
-	#		return json.loads(result)
-	#	except json.JSONDecodeError as e:
-	#		try:
-	#			loaded = json.loads(str(result.encode('unicode_escape')))
-	#			pkgtools.model.log.warning("Decoding as unicode escaped fixed it!")
-	#			return loaded
-	#		except json.JSONDecodeError as je:
-	#			pkgtools.model.log.error("Trying to decode as unicode-escaped didn't help.")
-	#		pkgtools.model.log.exception(e)
-	#		raise FetchError(fetchable, f"Fetched data for {fetchable} was invalid JSON.")
-	#else:
-	#	return result
-
 
 async def get_response_headers(fetchable, max_age=None, refresh_interval=None):
+	if isinstance(fetchable, pkgtools.ebuild.Artifact):
+		fetchable = fetchable.url
 	return await fetch_harness(
 		pkgtools.http.get_response_headers, fetchable, max_age=max_age, refresh_interval=refresh_interval
 	)
@@ -130,12 +125,16 @@ async def get_response_filename(fetchable, max_age=None, refresh_interval=None):
 	If the `Content-Disposition` header is not set or if it doesn't contain the filename,
 	then it will return `None`.
 	"""
+	if isinstance(fetchable, pkgtools.ebuild.Artifact):
+		fetchable = fetchable.url
 	headers = await get_response_headers(fetchable, max_age=max_age, refresh_interval=refresh_interval)
 	res = re.search(r"filename=\"?(\S+)\"?", headers.get("Content-Disposition", ""))
 	return None if not res else res.group(1)
 
 
 async def get_url_from_redirect(fetchable, max_age=None, refresh_interval=None):
+	if isinstance(fetchable, pkgtools.ebuild.Artifact):
+		fetchable = fetchable.url
 	return await fetch_harness(
 		pkgtools.http.get_url_from_redirect, fetchable, max_age=max_age, refresh_interval=refresh_interval
 	)
