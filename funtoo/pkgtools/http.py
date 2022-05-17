@@ -24,7 +24,7 @@ def set_basic_auth(request: FetchRequest):
 			request.set_auth(**auth_info)
 
 
-async def get_page(url, encoding=None):
+async def get_page(url, encoding=None, is_json=False):
 	"""
 	This function performs a simple HTTP fetch of a resource. The response is cached in memory,
 	and a decoded Python string is returned with the result. FetchError is thrown for an error
@@ -36,7 +36,7 @@ async def get_page(url, encoding=None):
 	request = FetchRequest(url=url)
 	set_basic_auth(request)
 	# Leverage the spider for this fetch. This bypasses the FPOS, etc:
-	result = await pkgtools.model.spider.http_fetch(request, encoding=encoding)
+	result = await pkgtools.model.spider.http_fetch(request, encoding=encoding, is_json=is_json)
 	return result
 
 

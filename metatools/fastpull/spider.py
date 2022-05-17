@@ -359,7 +359,7 @@ class WebSpider:
 			auth = None
 		return headers, auth
 
-	async def http_fetch(self, request: FetchRequest, encoding=None) -> str:
+	async def http_fetch(self, request: FetchRequest, is_json=False, encoding=None) -> str:
 		"""
 		This is a non-streaming HTTP fetcher that will properly convert the request to a Python string and return the entire
 		content as a string.
@@ -386,6 +386,8 @@ class WebSpider:
 							retry = True
 						log.error(f"Fetch failure for {request.url}: {response.status_code} {response.reason_phrase[:40]}")
 						raise FetchError(request, f"HTTP fetch Error: {request.url}: {response.status_code}: {response.reason_phrase[:40]}", retry=retry)
+					if is_json:
+						return response.json()
 					if encoding:
 						result = response.content.decode(encoding)
 					else:

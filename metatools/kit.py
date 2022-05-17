@@ -127,7 +127,8 @@ class KitGenerator:
 			origin_check=True if model.prod else None,
 			mirrors=kit_config['mirrors'],
 			create_branches=model.create_branches,
-			model=model
+			model=model,
+			**model.git_kwargs
 		)
 		self.out_tree.initialize()
 
@@ -500,7 +501,7 @@ class KitGenerator:
 		for license in needed_licenses:
 			found = self.kit.source.find_license(license)
 			if found:
-				run_shell(f"cp {found} {self.out_tree.root}/licenses")
+				run_shell(f"cp {found} {self.out_tree.root}/licenses", logger=model.log)
 
 	async def generate(self):
 		"""
@@ -742,7 +743,7 @@ class MetaRepoJobController:
 	This class is designed to run the full meta-repo and kit regeneration process -- in other words, the entire
 	technical flow of 'merge-kits' when it creates or updates kits and meta-repo.
 	"""
-	
+
 	master_jobs = {}
 	kit_jobs = []
 	model = None
@@ -827,7 +828,8 @@ class MetaRepoJobController:
 			origin_check=True if model.prod else None,
 			mirrors=meta_repo_config['mirrors'],
 			create_branches=model.create_branches,
-			model=model
+			model=model,
+			**model.git_kwargs
 		)
 
 		self.meta_repo.initialize()
@@ -891,16 +893,17 @@ class MetaRepoJobController:
 		"""
 
 		os.makedirs(base_path, exist_ok=True)
-		run_shell(f"git clone --bare {repo.root} {base_path}/{repo.name}.pushme")
+		run_shell(f"git clone --bare {repo.root} {base_path}/{repo.name}.pushme", logger=model.log)
 		run_shell(
-			f"cd {base_path}/{repo.name}.pushme && git remote add upstream {mirror} && git push --mirror upstream"
+			f"cd {base_path}/{repo.name}.pushme && git remote add upstream {mirror} && git push --mirror upstream",
+            logger=model.log
 		)
-		run_shell(f"rm -rf {base_path}/{repo.name}.pushme")
+		run_shell(f"rm -rf {base_path}/{repo.name}.pushme", logger=model.log)
 		return repo.name
 
 	def mirror_all_repositories(self):
 		base_path = os.path.join(model.temp_path, "mirror_repos")
-		run_shell(f"rm -rf {base_path}")
+		run_shell(f"rm -rf {base_path}", logger=model.log)
 		kit_mirror_futures = []
 		for kit_job in self.kit_jobs:
 			if not kit_job.out_tree.mirrors:
