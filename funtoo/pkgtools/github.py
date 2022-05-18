@@ -129,6 +129,10 @@ def iter_tag_versions(tags_list, select=None, transform=None):
 	yields a tuple of that version as well as the entire GitHub tag data for that tag.
 
 	``select`` specifies a regex string that must match for the tag version to be considered.
+
+	``transform`` is a lambda/single-argument function that if specified will be used to
+	arbitrarily modify the tag before it is searched for versions, or for the ``select``
+	regex.
 	"""
 	for tag_data in tags_list:
 		tag = tag_data['name']
