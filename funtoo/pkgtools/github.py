@@ -123,7 +123,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		}
 
 
-def iter_tag_versions(tags_list, select=None):
+def iter_tag_versions(tags_list, select=None, transform=None):
 	"""
 	This method iterates over each tag in tags_list, extracts the version information, and
 	yields a tuple of that version as well as the entire GitHub tag data for that tag.
@@ -131,14 +131,17 @@ def iter_tag_versions(tags_list, select=None):
 	``select`` specifies a regex string that must match for the tag version to be considered.
 	"""
 	for tag_data in tags_list:
-		if select and not re.match(select, tag_data['name']):
+		tag = tag_data['name']
+		if transform:
+			tag = transform(tag)
+		if select and not re.match(select, tag):
 			continue
-		match = re.search('([0-9.]+)', tag_data['name'])
+		match = re.search('([0-9.]+)', tag)
 		if match:
 			yield match.groups()[0], tag_data
 
 
-async def latest_tag_version(hub, github_user, github_repo, tag_data=None, select=None):
+async def latest_tag_version(hub, github_user, github_repo, tag_data=None, transform=None, select=None):
 	"""
 	This method will look at all the tags in a repository, look for a version string in each tag,
 	find the most recent version, and return the version and entire tag data as a tuple.
@@ -149,21 +152,22 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, selec
 	"""
 	if tag_data is None:
 		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags", is_json=True)
-	versions_and_tag_elements = list(iter_tag_versions(tag_data, select=select))
+	versions_and_tag_elements = list(iter_tag_versions(tag_data, select=select, transform=transform
+	                                                   ))
 	if not len(versions_and_tag_elements):
 		return
 	else:
 		return max(versions_and_tag_elements, key=lambda v: packaging.version.parse(v[0]))
 
 
-async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, **kwargs):
+async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, transform=None, **kwargs):
 	"""
 	Similar to ``release_gen``, this will query the GitHub API for the latest tagged version of a project,
 	and return a dictionary that can be added to pkginfo containing the version, artifacts and commit sha.
 
 	This method may return None if no suitable tags are found.
 	"""
-	result = await latest_tag_version(hub, github_user, github_repo, tag_data=tag_data, select=select)
+	result = await latest_tag_version(hub, github_user, github_repo, tag_data=tag_data, transform=transform, select=select)
 	if result is None:
 		return None
 	version, tag_data = result
