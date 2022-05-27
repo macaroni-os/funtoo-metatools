@@ -472,7 +472,6 @@ async def execute_all_queued_generators():
 
 			base = os.path.commonprefix([task_args["gen_path"], pkgtools.model.locator.root])
 			task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base)+1:]}"
-
 			async_func, pkginfo_list = await execute_generator(**task_args)
 			future = loop.run_in_executor(executor, hub.run_async_adapter, async_func, pkginfo_list)
 			futures.append(future)

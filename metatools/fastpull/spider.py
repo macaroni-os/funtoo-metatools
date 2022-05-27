@@ -49,8 +49,6 @@ class FetchResponse:
 	point to the location where the file has been downloaded. ``final_data`` will be populated to contain
 	calculated hashes and size for the downloaded file. ``completion_result`` will be set to the ultimate
 	value of the completion pipeline, if any list of functions was provided for ``completion_pipeline``
-	to the ``
-
 	in the associated ``FetchRequest`` (this is how we add some post-processing, such as storing the
 	result to the BLOS, to all successful downloads.)
 	"""

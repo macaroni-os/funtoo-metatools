@@ -1,22 +1,61 @@
 #!/usr/bin/env python3
 
 import argparse
-import logging
+import asyncio
 import os
+import signal
 import sys
-import yaml
 
-from dict_tools.data import NamespaceDict
+import psutil
 from subpop.hub import Hub
+
+from metatools.config.merge import MergeConfig
+from metatools.kit import MetaRepoJobController
 
 hub = Hub()
 
-import dyne.org.funtoo.metatools.merge as merge
 
-logging.basicConfig(level=logging.INFO)
+# Added this to properly and immediately terminate all tasks and subprocesses:
 
 
-async def main_thread(repo_plus_overlays):
+async def do_process_teardown():
+	cur_proc = psutil.Process()
+	children = cur_proc.children()
+	for pid in children:
+		try:
+			pid.send_signal(signal.SIGKILL)
+		except ProcessLookupError:
+			pass
+
+	async def cleanup():
+		tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+		[task.cancel() for task in tasks]
+
+	await cleanup()
+
+	# Kill any active threads:
+	os.kill(os.getpid(), 9)
+
+
+async def main_thread(args):
+	model = MergeConfig()
+	await model.initialize(
+		release=args.release,
+		prod=args.prod,
+		push=not args.nopush,
+		create_branches=args.create_branches,
+		fixups_url=args.fixups_url,
+		fixups_branch=args.fixups_branch,
+		debug=args.debug
+	)
+	controller = MetaRepoJobController(model)
+	try:
+		await controller.generate()
+	except KeyboardInterrupt:
+		model.log.error("Keyboard interrupt -- shutting down.")
+		await do_process_teardown()
+
+
 	pos = 0
 
 	for kit_dict in repo_plus_overlays:
@@ -63,49 +102,33 @@ def load_specs(specs):
 	return ans
 
 
+CLI_CONFIG = {
+	"fixups_url": {"type": str},
+	"fixups_branch": {"type": str, "default": "master"},
+	"release": {"positional": True},
+	"debug": {"action": "store_true", "default": False}
+}
+
+
 def parse_args():
-	parser = argparse.ArgumentParser(
-		description="Funtoo Reposcan tool",
-		formatter_class=argparse.RawDescriptionHelpFormatter
-	)
-
-	parser.add_argument(
-		"-s", "--specs",
-		nargs='+',
-		action='store',
-		default=[],
-		help="Reposcan specs file"
-	)
-
-	return parser.parse_args()
+	ap = argparse.ArgumentParser()
+	for arg, kwargs in CLI_CONFIG.items():
+		if "os" in kwargs:
+			del kwargs["os"]
+		if "positional" in kwargs and kwargs["positional"]:
+			new_kwargs = kwargs.copy()
+			del new_kwargs["positional"]
+			ap.add_argument(arg, **new_kwargs)
+		else:
+			ap.add_argument("--" + arg, **kwargs)
+	return ap.parse_args()
 
 
 if __name__ == "__main__":
-	merge.metadata.cleanup_error_logs()
-	hub.OPT = parse_args()
+	args = parse_args()
+	hub.LOOP.run_until_complete(main_thread(args))
+	sys.exit(0)
 
-	if hub.OPT.specs is None or len(hub.OPT.specs) == 0:
-		logging.error("Missing mandatory --specs option")
-		sys.exit(1)
 
-	repo_plus_overlays = load_specs(hub.OPT.specs)
-
-	for kit in repo_plus_overlays:
-
-		logging.info(
-				'Repo %s:\n'
-				'Url: %s\n'
-				'Branch: %s\n'
-				'Kind: %s\n'
-				'Commit/Sha1: %s\n' % (
-					kit['name'],
-					kit['url'],
-					kit['branch'] if 'branch' in kit else "n/a",
-					kit['kind'] if 'kind' in kit else "n/a",
-					kit['commit_sha1'],
-				)
-		)
-
-	hub.LOOP.run_until_complete(main_thread(repo_plus_overlays))
 
 # vim: ts=4 sw=4 noet
