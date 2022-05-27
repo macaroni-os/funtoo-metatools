@@ -34,7 +34,7 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, 
 	the live network call -- except in the case of FetchPolicy.BEST_EFFORT, which will 'fall back' to the cache
 	if the live fetch fails (and is thus more resilient).
 	"""
-
+	pkgtools.model.log.debug(f"refresh interval in fetch_harness: {refresh_interval}")
 	attempts = 0
 	fail_reason = None
 	if refresh_interval is None:
@@ -64,7 +64,10 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, 
 						key_dict=key_dict,
 						refresh_interval=refresh_interval
 					)
-					pkgtools.model.log.info(f'Fetched {url} (cached)')
+					if refresh_interval:
+						pkgtools.model.log.info(f'Fetched {url} (cached, refresh_interval: {refresh_interval})')
+					else:
+						pkgtools.model.log.info(f'Fetched {url} (cached)')
 					return result["body"]
 				except CacheMiss:
 					# We'll continue and attempt a live fetch of the resource...
@@ -102,6 +105,7 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, 
 
 
 async def get_page(fetchable, max_age=None, refresh_interval=None, is_json=False):
+	pkgtools.model.log.debug(f'get_page {fetchable}, max_age={max_age}, refresh_interval={refresh_interval}, is_json={is_json}')
 	if isinstance(fetchable, pkgtools.ebuild.Artifact):
 		fetchable = fetchable.url
 	# Respect doit --immediate option:

@@ -37,7 +37,9 @@ def parse_args():
 
 async def main_thread():
 	hub.OPT = parse_args()
-	kwargs = {}
+	kwargs = {
+		"debug": hub.OPT.debug
+	}
 	for arg in set(CLI_CONFIG.keys()) - {"immediate"}:
 		kwargs[arg] = getattr(hub.OPT, arg)
 	if hub.OPT.immediate:

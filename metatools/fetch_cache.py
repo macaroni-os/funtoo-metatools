@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
+import logging
 from datetime import datetime
 import pymongo
 
 from metatools.config.mongodb import get_collection
 from metatools.store import Store, FileStorageBackend, DerivedKey, NotFoundError, StoreObject
 
+log = logging.getLogger('metatools.autogen')
 
 class FetchCache:
 
@@ -40,15 +42,19 @@ class FileStoreFetchCache(FetchCache):
 			"fetched_on": now,
 			"body": body
 		})
+		log.debug(f"Wrote to fetch cache, fetched_on: {now}")
 		self.store.write(key_dict)
 
 	async def read(self, key_dict, max_age=None, refresh_interval=None):
+		log.debug(f"In FileStoreFetchCache.read, refresh_interval={refresh_interval}")
 		# content_kwargs is stored at None if there are none, not an empty dict:
 		try:
 			result: StoreObject = self.store.read(key_dict)
 		except NotFoundError:
+			log.debug(f"File not found in store.")
 			raise CacheMiss()
 		if result is None or "fetched_on" not in result.data:
+			log.debug(f"File found but fetched_on missing.")
 			raise CacheMiss()
 		elif refresh_interval is not None:
 			if datetime.utcnow() - result.data["fetched_on"] <= refresh_interval:

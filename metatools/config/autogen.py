@@ -19,7 +19,7 @@ class AutogenConfig(MinimalConfig):
 	This class is used for the autogen workflow -- i.e. the 'doit' command.
 	"""
 	fetch_cache = None
-	fetch_cache_interval = timedelta(minutes=15)
+	fetch_cache_interval = None
 	check_disk_hashes = False
 	manifest_lines = defaultdict(set)
 	fetch_attempts = 3
@@ -53,7 +53,7 @@ class AutogenConfig(MinimalConfig):
 	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False):
 		self.log = logging.getLogger('metatools.autogen')
 		self.log.propagate = False
-		if self.debug:
+		if debug:
 			self.debug = debug
 			self.log.setLevel(logging.DEBUG)
 		else:
@@ -62,10 +62,8 @@ class AutogenConfig(MinimalConfig):
 		channel.setFormatter(TornadoPrettyLogFormatter())
 		self.log.addHandler(channel)
 		if debug:
-			self.log.debug("doit: DEBUG enabled")
-		else:
-			self.log.warn("doit: DEBUG NOT enabled")
-
+			self.log.warning("doit: DEBUG enabled")
+		self.log.debug(f"AutogenConfig received args: fetch_cache_interval={fetch_cache_interval}, fastpull_scope={fastpull_scope}, debug={debug}")
 		self.fastpull_scope = fastpull_scope
 		self.fetch_cache = FileStoreFetchCache(db_base_path=self.store_path)
 		self.config = yaml.safe_load(self.get_file("autogen"))
@@ -85,7 +83,7 @@ class AutogenConfig(MinimalConfig):
 		)
 
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
-		self.log.debug(f"Fetch cache interval set to {self.fetch_cache_interval}")
+		self.log.debug(f"Fetch cache interval set to {self.fetch_cache_interval} after model init")
 		self.locator = OverlayLocator()
 		self.kit_fixups_repo = GitRepositoryLocator()
 
