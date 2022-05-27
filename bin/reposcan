@@ -17,6 +17,8 @@
 #
 # https://github.com/Luet-lab/luet-portage-converter/blob/main/pkg/reposcan/reposcan_test.go#L41
 #
+# STATUS: This is mostly done and appears to grab all the data geaaru needs. The only thing not done is that the
+# data is written to console rather than to file in the expected format. But it should be very close to needed format.
 
 import argparse
 import os
@@ -43,6 +45,39 @@ def iter_kits(release):
 			yield kit_data
 
 
+def metadata_to_json(metafile):
+	metadata = {}
+
+	# Read in metadata/md5-cache file and convert to dict:
+
+	with open(metafile) as mf:
+		data = mf.readlines()
+		for line in data:
+			eq_pos = line.find("=")
+			key = line[:eq_pos]
+			val = line[eq_pos+1:].rstrip("\n")
+			metadata[key] = val
+
+	# Now generate JSON:
+	split = metafile.split("/")
+	atom = "/".join(split[-2:])
+	category = split[-2]
+	last_dash = atom.rfind("-")
+	catpkg = atom[:last_dash]
+	metadata = {
+		"atom": atom,
+		"catpkg": catpkg,
+		"category": category,
+		"md5": metadata["_md5_"],
+		"license": metadata["LICENSE"] if "LICENSE" in metadata else None,
+		"iuse": metadata["IUSE"] if "IUSE" in metadata else None,
+		"rdepend": metadata["RDEPEND"] if "RDEPEND" in metadata else None,
+		"slot": metadata["SLOT"]
+	}
+
+	return metadata
+
+
 async def main_thread(args):
 	os.makedirs("kits", exist_ok=True)
 	for kit_data in iter_kits(args.release):
@@ -60,7 +95,8 @@ async def main_thread(args):
 		git_tree.initialize()
 		for root, dirs, files in os.walk(os.path.join(git_tree.root, "metadata/md5-cache")):
 			for file in files:
-				print(os.path.join(root, file))
+				meta_file_path = os.path.join(root, file)
+				print(metadata_to_json(meta_file_path))
 
 CLI_CONFIG = {
 	"release": {"positional": True},
