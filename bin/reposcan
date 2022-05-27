@@ -1,114 +1,71 @@
 #!/usr/bin/env python3
 
+# This tool is for geaaru, and takes two arguments. The first is a path to a file in this
+# format:
+#
+# https://raw.githubusercontent.com/MottainaiCI/lxd-compose-galaxy/master/envs/funtoo/commands/reposcan-funtoo-kits.yml
+#
+# The second argument is a path to a directory with specs that looks like this:
+#
+# https://github.com/funtoo/macaroni-funtoo/tree/master/packages/seeds/funtoo-kits/kits-versions
+#
+# For each kit in file 1, it will look for a <kit-name>.yml file in the above directory, and extract the "commit"
+# YAML from this file, and use it to create a git repository in (cwd)/kits/<kit-name>, checked out to this commit.
+#
+# Next, this command will scan metadata/md5-cache in each kit, and generate a JSON output-file containing the kit
+# metadata, in the format here:
+#
+# https://github.com/Luet-lab/luet-portage-converter/blob/main/pkg/reposcan/reposcan_test.go#L41
+#
+
 import argparse
-import asyncio
 import os
-import signal
 import sys
 
-import psutil
+import yaml
 from subpop.hub import Hub
 
-from metatools.config.merge import MergeConfig
-from metatools.kit import MetaRepoJobController
+from metatools.tree import GitTree
 
 hub = Hub()
 
 
-# Added this to properly and immediately terminate all tasks and subprocesses:
+def load_spec(spec):
+	with open(spec) as yf:
+		data = yaml.load(yf, Loader=yaml.SafeLoader)
+		return data["commit"]
 
 
-async def do_process_teardown():
-	cur_proc = psutil.Process()
-	children = cur_proc.children()
-	for pid in children:
-		try:
-			pid.send_signal(signal.SIGKILL)
-		except ProcessLookupError:
-			pass
-
-	async def cleanup():
-		tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
-		[task.cancel() for task in tasks]
-
-	await cleanup()
-
-	# Kill any active threads:
-	os.kill(os.getpid(), 9)
+def iter_kits(release):
+	with open(release) as yf:
+		data = yaml.load(yf, Loader=yaml.SafeLoader)
+		for kit_data in data["envs"]["envs"]["kits"]:
+			yield kit_data
 
 
 async def main_thread(args):
-	model = MergeConfig()
-	await model.initialize(
-		release=args.release,
-		prod=args.prod,
-		push=not args.nopush,
-		create_branches=args.create_branches,
-		fixups_url=args.fixups_url,
-		fixups_branch=args.fixups_branch,
-		debug=args.debug
-	)
-	controller = MetaRepoJobController(model)
-	try:
-		await controller.generate()
-	except KeyboardInterrupt:
-		model.log.error("Keyboard interrupt -- shutting down.")
-		await do_process_teardown()
-
-
-	pos = 0
-
-	for kit_dict in repo_plus_overlays:
-		ctx = NamespaceDict()
-		ctx["kit"] = NamespaceDict(kit_dict)
-		out_tree = await merge.kit.checkout_kit(ctx)
-
-		if pos == 0:
-			merge.model.ECLASS_ROOT = out_tree.root
-			merge.model.ECLASS_HASHES = merge.metadata.get_eclass_hashes(
-					merge.model.ECLASS_ROOT
-			)
-
-		merge.metadata.fetch_kit(out_tree)
-		merge.metadata.gen_cache(out_tree)
-		merge.metadata.flush_kit(out_tree)
-		pos += 1
-
-
-def load_specs(specs):
-	ans = []
-	m = {}
-	for f in specs:
-		if not os.path.exists(f):
-			logging.error("File %s not found." % f)
-			sys.exit(1)
-
-		with open(f) as yf:
-			data = yaml.load(yf, Loader=yaml.FullLoader)
-
-		if 'name' not in data or 'url' not in data:
-			logging.error("Invalid file %s." % f)
-			sys.exit(1)
-
-		if "commit_sha1" not in data:
-			data["commit_sha1"] = None
-
-		# Get only last repository of the specified name.
-		m[data['name']] = data
-
-	for k, v in m.items():
-		ans.append(v)
-
-	return ans
-
+	os.makedirs("kits", exist_ok=True)
+	for kit_data in iter_kits(args.release):
+		print(kit_data)
+		spec = load_spec(f"{args.specs_path}/{kit_data['name']}.yml")
+		print(spec)
+		git_tree = GitTree(
+			name=kit_data['name'],
+			root=os.path.join(os.getcwd(), "kits", kit_data['name']),
+			model=None,
+			url=kit_data['url'],
+			branch=kit_data['branch'],
+			keep_branch=False
+		)
+		git_tree.initialize()
+		for root, dirs, files in os.walk(os.path.join(git_tree.root, "metadata/md5-cache")):
+			for file in files:
+				print(os.path.join(root, file))
 
 CLI_CONFIG = {
-	"fixups_url": {"type": str},
-	"fixups_branch": {"type": str, "default": "master"},
 	"release": {"positional": True},
-	"debug": {"action": "store_true", "default": False}
+	"specs_path": {"positional": True}
 }
-
 
 def parse_args():
 	ap = argparse.ArgumentParser()
@@ -128,7 +85,5 @@ if __name__ == "__main__":
 	args = parse_args()
 	hub.LOOP.run_until_complete(main_thread(args))
 	sys.exit(0)
-
-
 
 # vim: ts=4 sw=4 noet

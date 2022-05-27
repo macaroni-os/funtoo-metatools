@@ -1,4 +1,5 @@
 import glob
+import logging
 import os
 import subprocess
 
@@ -53,7 +54,11 @@ class Tree:
 		self.forcepush = "--no-force"
 		self.url = None
 		self.model = model
-		assert model is not None
+		if self.model:
+			self.log = self.model.log
+		else:
+			logging.basicConfig(level=logging.INFO)
+			self.log = logging.getLogger()
 
 	def find_license(self, license):
 		lic_path = f"{self.root}/licenses/{license}"
@@ -63,7 +68,7 @@ class Tree:
 			raise FileNotFoundError(lic_path)
 
 	def run_shell(self, cmd_list, abort_on_failure=True, chdir=None):
-		return run_shell(cmd_list, abort_on_failure=abort_on_failure, chdir=chdir, logger=self.model.log)
+		return run_shell(cmd_list, abort_on_failure=abort_on_failure, chdir=chdir, logger=self.log)
 
 	def logTree(self, srctree):
 		# record name and SHA of src tree in dest tree, used for git commit message/auditing:
@@ -84,28 +89,28 @@ class Tree:
 			return
 		autogen_path = os.path.join(self.root, src_offset)
 		if not os.path.exists(autogen_path):
-			self.model.log.warning(f"Skipping autogen as src_offset {src_offset} (in {autogen_path}) doesn't exist!")
+			self.log.warning(f"Skipping autogen as src_offset {src_offset} (in {autogen_path}) doesn't exist!")
 			return
-		self.model.log.info(f"Starting autogen in src_offset {src_offset} (in {autogen_path})... (DEBUG={self.model.debug}) (orig_scope={scope})")
+		self.log.info(f"Starting autogen in src_offset {src_offset} (in {autogen_path})... (DEBUG={self.model.debug}) (orig_scope={scope})")
 		if scope is None:
 			scope = "local"
-		self.model.log.info(f"Final scope: {scope}")
+		self.log.info(f"Final scope: {scope}")
 		cmd_str = f"cd {autogen_path} && doit --fastpull_scope={scope}"
 		if self.model.debug:
 			cmd_str += " --debug"
-			self.model.log.debug(cmd_str)
+			self.log.debug(cmd_str)
 		# use subprocess.call so we can see the output of autogen:
 		retcode = subprocess.call(
 			cmd_str,
 			shell=True,
 		)
 		if retcode != 0:
-			self.model.log.error(f"Command failure from merge-kits: {cmd_str}")
+			self.log.error(f"Command failure from merge-kits: {cmd_str}")
 			raise GitTreeError(f"failed autogen in {self.root} -- offset {src_offset}.")
 		self.autogenned = src_offset
 
 	def cleanTree(self):
-		self.model.log.info("Cleaning tree %s" % self.root)
+		self.log.info("Cleaning tree %s" % self.root)
 		self.run_shell("(cd %s &&  git reset --hard && git clean -fdx )" % self.root)
 		self.autogenned = False
 
