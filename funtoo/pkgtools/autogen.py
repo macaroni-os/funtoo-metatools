@@ -326,7 +326,12 @@ async def execute_generator(
 				return True
 
 			task = Task(gen_wrapper(pkginfo, generator_sub))
+
+			# task.info is used for error messages. Try to add catpkg info in it if it exists:
 			task.info = sub_path
+			if "cat" in pkginfo and "name" in pkginfo:
+				task.info += f" ({pkginfo['cat']}/{pkginfo['name']})"
+
 			task.add_done_callback(_handle_task_result)
 			hub.THREAD_CTX.running_autogens.append(task)
 
