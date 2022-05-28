@@ -12,6 +12,7 @@ from metatools.fastpull.core import IntegrityDatabase
 from metatools.fastpull.spider import WebSpider
 from metatools.fetch_cache import FileStoreFetchCache
 from metatools.pretty_logging import TornadoPrettyLogFormatter
+from metatools.tree import GitTree
 
 
 class AutogenConfig(MinimalConfig):
@@ -33,6 +34,7 @@ class AutogenConfig(MinimalConfig):
 	blos = None
 	debug = False
 	log = None
+	kit_fixups = None
 
 	config_files = {
 		"autogen": "~/.autogen"
@@ -50,7 +52,7 @@ class AutogenConfig(MinimalConfig):
 		"""
 		return "/".join(self.locator.root.split("/")[-2:])
 
-	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False):
+	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False, fixups_url=None, fixups_branch=None, fast=None):
 		self.log = logging.getLogger('metatools.autogen')
 		self.log.propagate = False
 		if debug:
@@ -85,7 +87,29 @@ class AutogenConfig(MinimalConfig):
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
 		self.log.debug(f"Fetch cache interval set to {self.fetch_cache_interval} after model init")
 		self.locator = OverlayLocator()
-		self.kit_fixups_repo = GitRepositoryLocator()
+		self.current_repo = GitRepositoryLocator()
+		current_repo_name = self.current_repo.root.split("/")[-1]
+		if current_repo_name.startswith("kit-fixups"):
+			self.kit_fixups_repo = self.current_repo
+		else:
+			# We are likely running autogen in a non-kit-fixups kit (like foo-kit-sources.)
+			# We require a locally-available kit-fixups repo to access generators in kit-fixups.
+
+			kit_fixups_root = os.path.join(self.source_trees, "kit-fixups")
+			if not fast:
+				self.log.info("Cloning/updating kit-fixups to access generators (--fast to use as-is)")
+				self.kit_fixups = GitTree(
+					name='kit-fixups',
+					root=kit_fixups_root,
+					model=self,
+					url=fixups_url,
+					branch=fixups_branch,
+					keep_branch=True
+				)
+				self.kit_fixups.initialize()
+			else:
+				self.log.info(f"Generators will be sourced from {kit_fixups_root}")
+			self.kit_fixups_repo = GitRepositoryLocator(start_path=kit_fixups_root)
 
 		if fetch_cache_interval is not None:
 			# use our default unless another timedelta specified:

@@ -67,6 +67,10 @@ class MinimalConfig(SubPopModel):
 			return "/var/tmp/repo_tmp"
 
 	@property
+	def source_trees(self):
+		return os.path.join(self.work_path, "source-trees")
+
+	@property
 	def store_path(self):
 		return os.path.join(self.work_path, "stores")
 

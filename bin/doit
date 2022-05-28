@@ -22,9 +22,11 @@ import dyne.org.funtoo.metatools.pkgtools as pkgtools
 CLI_CONFIG = {
 	"immediate": {"default": False, "action": "store_true", "help": "Never cache HTTP(s) fetches (default 15 mins)"},
 	"fastpull_scope": {"default": "local", "action": "store", "help": "Default index into fastpull for collecting artifacts."},
-	"debug": {"default": False, "action": "store_true"}
+	"debug": {"default": False, "action": "store_true"},
+	"fixups_url": {"default": "https://code.funtoo.org/bitbucket/scm/core/kit-fixups.git", "action": "store", "help": "kit-fixups URL to use for cloning (for generators)"},
+	"fixups_branch": {"default": "master", "action": "store", "help": "kit-fixups branch to use for cloning (for generators)"},
+	"fast": {"default": False, "action": "store_true", "help": "Skip updating kit-fixups repo (assume this has been done for us, and it's ready to go."},
 }
-
 
 def parse_args():
 	ap = argparse.ArgumentParser()
@@ -38,7 +40,10 @@ def parse_args():
 async def main_thread():
 	hub.OPT = parse_args()
 	kwargs = {
-		"debug": hub.OPT.debug
+		"debug": hub.OPT.debug,
+		"fixups_url": hub.OPT.fixups_url,
+		"fixups_branch": hub.OPT.fixups_branch,
+		"fast": hub.OPT.fast
 	}
 	for arg in set(CLI_CONFIG.keys()) - {"immediate"}:
 		kwargs[arg] = getattr(hub.OPT, arg)

@@ -438,9 +438,15 @@ def queue_all_yaml_autogens():
 						# We found a generator in a "generators" directory next to the autogen.yaml that contains the
 						# generator.
 						logging.debug(f"Found generator {sub_name} in local tree.")
-					else:
-						# Use a generator globally defined in the root of kit-fixups.
+					elif pkgtools.model.current_repo != pkgtools.model.kit_fixups_repo and \
+						os.path.exists(os.path.join(pkgtools.model.current_repo.root, "generators", rule["generator"] + ".py")):
+						# if we are running doit inside "foo-sources", look in the local repo /generators too.
+						sub_path = os.path.join(pkgtools.model.current_repo.root, "generators")
+					elif os.path.exists(os.path.join(pkgtools.model.kit_fixups_repo.root, "generators", rule["generator"] + ".py")):
+						# fall back to kit-fixups/generators.
 						sub_path = os.path.join(pkgtools.model.kit_fixups_repo.root, "generators")
+					else:
+						raise pkgtools.ebuild.BreezyError("Required generator \'{rule['generator']}\' not found.")
 				else:
 					# Fallback: Use an ad-hoc 'generator.py' generator in the same dir as autogen.yaml:
 					sub_name = "generator"

@@ -126,10 +126,6 @@ class MergeConfig(MinimalConfig):
 		return os.path.join(self.work_path, "metadata-cache")
 
 	@property
-	def source_trees(self):
-		return os.path.join(self.work_path, "source-trees")
-
-	@property
 	def dest_trees(self):
 		return os.path.join(self.work_path, "dest-trees")
 
