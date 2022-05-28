@@ -748,7 +748,7 @@ class KitExecutionPool:
 			model.log.debug(f"KitExecutionPool: running job {kit_job}")
 			kit_job.initialize_sources()
 			method = getattr(kit_job, self.method)
-			await method.generate()
+			await method()
 			model.log.debug(f"KitExecutionPool: job {kit_job} complete")
 
 
