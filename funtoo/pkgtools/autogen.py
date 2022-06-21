@@ -25,7 +25,6 @@ work for all catpkgs in that generator, and wait for completion of this work bef
 PENDING_QUE = []
 AUTOGEN_FAILURES = []
 
-
 SUB_FP_MAP_LOCK = asyncio.Lock()
 SUB_FP_MAP = {}
 
@@ -66,6 +65,46 @@ def generate_manifests():
 				pos += 1
 		logging.debug(f"Manifest {manifest_file} generated.")
 
+
+def recursive_merge(dict1, dict2, depth="", overwrite=True):
+	"""
+	This function is to merge pkginfo values with any default values.
+
+	Technically, it recursively merges two dictionaries, so that:
+
+	* colliding lists at the same point in the hierarchy are concatenated, and
+	* colliding dicts at the same point in the hierarchy are recursively merged.
+
+	For example:
+	
+	  { "a" : { "b" : 1 }} merged with { "a" : { "c" : 2 }} yields { "a" : { "b" : 1, "c" : 2 }}
+	  { "a" : [ x ] } merged with { "a" : [ y ] } yields { "a" : [ x, y ] }
+
+	If there are other colliding values that are not both dicts or not both lists,
+	we will use the dict2 value if overwrite=True, or we will raise a TypeError if
+	overwrite=False.
+	"""
+
+	out_dict = {}
+	for key in set(dict1.keys()) | set(dict2.keys()):
+		if key in dict1 and key in dict2:
+			if isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
+				# merge two dicts:
+				out_dict[key] = recursive_merge(dict1[key], dict2[key], depth=depth + f"{key}.", overwrite=overwrite)
+			elif isinstance(dict1[key], list) and isinstance(dict2[key], list):
+				# merge two lists:
+				out_dict[key] = dict1[key] + dict2[key]
+			else:
+				if overwrite:
+					out_dict[key] = dict2[key]
+					logging.info(f"dict key {depth}{key} overwritten.")
+				else:
+					raise TypeError(f"Key '{depth}{key}' is both dicts but are different types; cannot merge.")
+		elif key in dict1 and key not in dict2:
+			out_dict[key] = dict1[key]
+		elif key in dict2 and key not in dict1:
+			out_dict[key] = dict2[key]
+	return out_dict
 
 def queue_all_indy_autogens():
 	"""
@@ -120,7 +159,8 @@ async def gather_pending_tasks(task_list):
 	return results
 
 
-def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginfo=None, template_path=None, gen_path=None):
+def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginfo=None, template_path=None,
+							 gen_path=None):
 	"""
 	This function generates the final pkginfo that is passed to the generate() function in the generator sub
 	for each catpkg being generated.
@@ -140,7 +180,7 @@ def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginf
 	glob_defs = getattr(generator_sub, "GLOBAL_DEFAULTS", {})
 	pkginfo = glob_defs.copy()
 	if defaults is not None:
-		pkginfo.update(defaults)
+		pkginfo = recursive_merge(pkginfo, defaults)
 	pkginfo.update(base_pkginfo)
 	if template_path:
 		pkginfo["template_path"] = template_path
@@ -181,17 +221,19 @@ def _artifact_handle_task_result(task: Task):
 		pass
 	except Exception as e:
 		pkgtools.model.log.error(e, exc_info=True)
-	# TODO: record these failures in a global place if this is still a valid exception-catching path.
+
+
+# TODO: record these failures in a global place if this is still a valid exception-catching path.
 
 
 async def execute_generator(
-	generator_sub_path=None,
-	generator_sub_name="autogen",
-	template_path=None,
-	defaults=None,
-	pkginfo_list=None,
-	gen_path=None,
-	autogen_id=None
+		generator_sub_path=None,
+		generator_sub_name="autogen",
+		template_path=None,
+		defaults=None,
+		pkginfo_list=None,
+		gen_path=None,
+		autogen_id=None
 ):
 	"""
 	This function will return an async function that requires no arguments, that is ready to run in its own
@@ -264,7 +306,7 @@ async def execute_generator(
 				# WIP: work to remove direct access to pkgtools.ebuild and reroute to this hub instead.
 				# I got distracted on supporting subpop stuff for this.
 
-				#class FinderWrapper:
+				# class FinderWrapper:
 				#
 				#	def __init__(self, orig, ebuild):
 				#		self.orig = orig
@@ -286,7 +328,7 @@ async def execute_generator(
 
 					def __init__(self, autogen_id, pkgtools):
 						self.autogen_id = autogen_id
-						#self.pkgtools = FinderWrapper(pkgtools, self)
+						# self.pkgtools = FinderWrapper(pkgtools, self)
 						self.pkgtools = pkgtools
 
 					def Artifact(self, **kwargs):
@@ -342,7 +384,6 @@ async def execute_generator(
 
 
 def parse_yaml_rule(package_section=None):
-
 	pkginfo_list = []
 	defaults = {}
 	if isinstance(package_section, str):
@@ -389,6 +430,7 @@ def parse_yaml_rule(package_section=None):
 			del v_defaults["versions"]
 
 			for version, v_pkg_section in versions_section.items():
+				# TODO: we may want to do a recursive merge here....
 				v_pkginfo = {"name": package_name}
 				v_pkginfo.update(v_defaults)
 				v_pkginfo.update(v_pkg_section)
@@ -401,7 +443,6 @@ def parse_yaml_rule(package_section=None):
 
 
 def queue_all_yaml_autogens():
-
 	"""
 	This function finds all autogen.yaml files in the repository and adds work to the `PENDING_QUE` (via calls
 	to `parse_yaml_rule`.) This queues up all generators to execute.
@@ -439,10 +480,12 @@ def queue_all_yaml_autogens():
 						# generator.
 						logging.debug(f"Found generator {sub_name} in local tree.")
 					elif pkgtools.model.current_repo != pkgtools.model.kit_fixups_repo and \
-						os.path.exists(os.path.join(pkgtools.model.current_repo.root, "generators", rule["generator"] + ".py")):
+							os.path.exists(os.path.join(pkgtools.model.current_repo.root, "generators",
+														rule["generator"] + ".py")):
 						# if we are running doit inside "foo-sources", look in the local repo /generators too.
 						sub_path = os.path.join(pkgtools.model.current_repo.root, "generators")
-					elif os.path.exists(os.path.join(pkgtools.model.kit_fixups_repo.root, "generators", rule["generator"] + ".py")):
+					elif os.path.exists(
+							os.path.join(pkgtools.model.kit_fixups_repo.root, "generators", rule["generator"] + ".py")):
 						# fall back to kit-fixups/generators.
 						sub_path = os.path.join(pkgtools.model.kit_fixups_repo.root, "generators")
 					else:
@@ -456,7 +499,8 @@ def queue_all_yaml_autogens():
 				for package in rule["packages"]:
 					package_defaults, parsed_pkg = parse_yaml_rule(package_section=package)
 					pkginfo_list += parsed_pkg
-					defaults.update(package_defaults)
+					# recursively merge any package defaults in to the defaults:
+					defaults = recursive_merge(defaults, package_defaults)
 
 				PENDING_QUE.append(
 					{
@@ -482,7 +526,7 @@ async def execute_all_queued_generators():
 			# attached to a specific BreezyBuild.
 
 			base = os.path.commonprefix([task_args["gen_path"], pkgtools.model.locator.root])
-			task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base)+1:]}"
+			task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base) + 1:]}"
 			async_func, pkginfo_list = await execute_generator(**task_args)
 			future = loop.run_in_executor(executor, hub.run_async_adapter, async_func, pkginfo_list)
 			futures.append(future)
@@ -510,6 +554,5 @@ async def start():
 		return False
 	else:
 		return True
-
 
 # vim: ts=4 sw=4 noet
