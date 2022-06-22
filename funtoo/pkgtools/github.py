@@ -38,7 +38,7 @@ def factor_filters(include):
 	return valid_filters - include
 
 
-async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, include=None, sort: SortMethod = SortMethod.VERSION, **kwargs):
+async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, version=None, include=None, sort: SortMethod = SortMethod.VERSION, **kwargs):
 	"""
 	This method will query the GitHub API for releases for a specific project, find the most recent
 	release, and then return a dictionary containing the keys "version", "artifacts" and "sha", which
@@ -59,6 +59,8 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	``select`` may contain a regex string which specifies a pattern that must match the tag_name for
 	it to be considered.
 
+	``version`` may contain a specific version string we are looking for specifically.
+
 	``include`` may contain a list or set of strings (currently supporting "prerelease" and "draft") which
 	if defined will be considered as a match. By default, prereleases and drafts are skipped.
 	"""
@@ -77,10 +79,13 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 			continue
 		match_obj = re.search('([0-9.]+)', release['tag_name'])
 		if match_obj:
-			version = match_obj.groups()[0]
+			if version is not None and match_obj.groups()[0] != version:
+				continue
+			else:
+				found_version = match_obj.groups()[0]
 		else:
 			continue
-		versions_and_release_elements.append((version, release))
+		versions_and_release_elements.append((found_version, release))
 
 	if not len(versions_and_release_elements):
 		raise ValueError(f"Could not find a suitable release.")
@@ -165,8 +170,7 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, trans
 	"""
 	if tag_data is None:
 		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags", is_json=True)
-	versions_and_tag_elements = list(iter_tag_versions(tag_data, select=select, transform=transform, version=version
-	                                                   ))
+	versions_and_tag_elements = list(iter_tag_versions(tag_data, select=select, transform=transform, version=version))
 	if not len(versions_and_tag_elements):
 		return
 	else:
