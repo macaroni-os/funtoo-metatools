@@ -38,7 +38,7 @@ def factor_filters(include):
 	return valid_filters - include
 
 
-async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, version=None, include=None, sort: SortMethod = SortMethod.VERSION, **kwargs):
+async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, filter=None, version=None, include=None, sort: SortMethod = SortMethod.VERSION, **kwargs):
 	"""
 	This method will query the GitHub API for releases for a specific project, find the most recent
 	release, and then return a dictionary containing the keys "version", "artifacts" and "sha", which
@@ -59,7 +59,11 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	``select`` may contain a regex string which specifies a pattern that must match the tag_name for
 	it to be considered.
 
-	``version`` may contain a specific version string we are looking for specifically.
+		``filter`` can be either a regex string or a list of regex strings. Anything that matches
+	this string or strings will be excluded.
+
+	``version`` may contain a version string we are looking for specifically. We currently look in the
+	tag_name of the release.
 
 	``include`` may contain a list or set of strings (currently supporting "prerelease" and "draft") which
 	if defined will be considered as a match. By default, prereleases and drafts are skipped.
@@ -75,9 +79,18 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	for release in release_data:
 		if any(release[skip] for skip in skip_filters):
 			continue
-		if select and not re.match(select, release['tag_name']):
+		the_thing = release['tag_name']
+		if select and not re.match(select, the_thing):
 			continue
-		match_obj = re.search('([0-9.]+)', release['tag_name'])
+		if filter:
+			if isinstance(filter, str):
+				if re.match(filter, the_thing):
+					continue
+			elif isinstance(filter, list):
+				for each_filter in filter:
+					if re.match(each_filter, the_thing):
+						continue
+		match_obj = re.search('([0-9.]+)', the_thing)
 		if match_obj:
 			if version is not None and match_obj.groups()[0] != version:
 				continue
@@ -128,12 +141,15 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		}
 
 
-def iter_tag_versions(tags_list, select=None, transform=None, version=None):
+def iter_tag_versions(tags_list, select=None, filter=None, transform=None, version=None):
 	"""
 	This method iterates over each tag in tags_list, extracts the version information, and
 	yields a tuple of that version as well as the entire GitHub tag data for that tag.
 
 	``select`` specifies a regex string that must match for the tag version to be considered.
+
+	``filter`` can be either a regex string or a list of regex strings. Anything that matches
+	this string or strings will be excluded.
 
 	``version``, if specified, is a specific version we want. If not specified, all versions
 	will be returned.
@@ -148,6 +164,14 @@ def iter_tag_versions(tags_list, select=None, transform=None, version=None):
 			tag = transform(tag)
 		if select and not re.match(select, tag):
 			continue
+		if filter:
+			if isinstance(filter, str):
+				if re.match(filter, tag):
+					continue
+			elif isinstance(filter, list):
+				for each_filter in filter:
+					if re.match(each_filter, tag):
+						continue
 		match = re.search('([0-9.]+)', tag)
 		if match:
 			if version:
@@ -156,7 +180,7 @@ def iter_tag_versions(tags_list, select=None, transform=None, version=None):
 			yield match.groups()[0], tag_data
 
 
-async def latest_tag_version(hub, github_user, github_repo, tag_data=None, transform=None, select=None, version=None):
+async def latest_tag_version(hub, github_user, github_repo, tag_data=None, transform=None, select=None, filter=None, version=None):
 	"""
 	This method will look at all the tags in a repository, look for a version string in each tag,
 	find the most recent version, and return the version and entire tag data as a tuple.
@@ -170,21 +194,21 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, trans
 	"""
 	if tag_data is None:
 		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags", is_json=True)
-	versions_and_tag_elements = list(iter_tag_versions(tag_data, select=select, transform=transform, version=version))
+	versions_and_tag_elements = list(iter_tag_versions(tag_data, select=select, filter=filter, transform=transform, version=version))
 	if not len(versions_and_tag_elements):
 		return
 	else:
 		return max(versions_and_tag_elements, key=lambda v: packaging.version.parse(v[0]))
 
 
-async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, transform=None, version=None, **kwargs):
+async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, filter=None, transform=None, version=None, **kwargs):
 	"""
 	Similar to ``release_gen``, this will query the GitHub API for the latest tagged version of a project,
 	and return a dictionary that can be added to pkginfo containing the version, artifacts and commit sha.
 
 	This method may return None if no suitable tags are found.
 	"""
-	result = await latest_tag_version(hub, github_user, github_repo, tag_data=tag_data, transform=transform, select=select, version=version)
+	result = await latest_tag_version(hub, github_user, github_repo, tag_data=tag_data, transform=transform, select=select, filter=filter, version=version)
 	if result is None:
 		return None
 	version, tag_data = result
