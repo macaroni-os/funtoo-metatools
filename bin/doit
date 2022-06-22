@@ -26,6 +26,8 @@ CLI_CONFIG = {
 	"fixups_url": {"default": "https://code.funtoo.org/bitbucket/scm/core/kit-fixups.git", "action": "store", "help": "kit-fixups URL to use for cloning (for generators)"},
 	"fixups_branch": {"default": "master", "action": "store", "help": "kit-fixups branch to use for cloning (for generators)"},
 	"fast": {"default": False, "action": "store_true", "help": "Skip updating kit-fixups repo (assume this has been done for us, and it's ready to go."},
+	"cat": { "default": None, "action": "store", "help": "Only run autogens matching this category."},
+	"pkg": {"default": None, "action": "store", "help": "Only run autogens matching this package name."},
 }
 
 def parse_args():
@@ -39,12 +41,7 @@ def parse_args():
 
 async def main_thread():
 	hub.OPT = parse_args()
-	kwargs = {
-		"debug": hub.OPT.debug,
-		"fixups_url": hub.OPT.fixups_url,
-		"fixups_branch": hub.OPT.fixups_branch,
-		"fast": hub.OPT.fast
-	}
+	kwargs = {}
 	for arg in set(CLI_CONFIG.keys()) - {"immediate"}:
 		kwargs[arg] = getattr(hub.OPT, arg)
 	if hub.OPT.immediate:

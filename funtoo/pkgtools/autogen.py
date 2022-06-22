@@ -2,7 +2,6 @@
 
 import asyncio
 import inspect
-import logging
 import os
 import subprocess
 from asyncio import FIRST_EXCEPTION, Task
@@ -109,7 +108,7 @@ def recursive_merge(dict1, dict2, depth="", overwrite=True):
 			else:
 				if overwrite:
 					out_dict[key] = dict2[key]
-					pkgtools.model.log.info(f"dict key {depth}{key} overwritten.")
+					pkgtools.model.log.debug(f"dict key {depth}{key} overwritten.")
 				else:
 					raise TypeError(f"Key '{depth}{key}' is both dicts but are different types; cannot merge.")
 		elif key in dict1 and key not in dict2:
@@ -164,7 +163,7 @@ async def gather_pending_tasks(task_list):
 				result = done_item.result()
 				results.append(result)
 			except Exception as e:
-				pkgtools.model.log.error("Unexpected Exception!")
+				pkgtools.model.log.exception("Unexpected Exception!")
 				raise e
 		if not len(cur_tasks):
 			break
@@ -207,6 +206,8 @@ def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginf
 	pkginfo = glob_defs.copy()
 	if defaults is not None:
 		for default in defaults:
+			if default is None:
+				continue
 			pkginfo = recursive_merge(pkginfo, default)
 			pkgtools.model.log.debug(f"Merging {default}, got {pkginfo}")
 	pkginfo = recursive_merge(pkginfo, base_pkginfo)
@@ -331,6 +332,22 @@ async def execute_generator(
 		preprocess_func = getattr(generator_sub, "preprocess_packages", None)
 		if preprocess_func is not None:
 			pkginfo_list = [i async for i in preprocess_func(hub, pkginfo_list)]
+
+		# Perform selective filtering of autogens we may want to exclude via command-line:
+
+		if pkgtools.model.filter is not None:
+			filtered_pkginfo_list = []
+			for item in pkginfo_list:
+				if pkgtools.model.filter_cat:
+					if 'cat' not in item or item['cat'] != pkgtools.model.filter_cat:
+						pkgtools.model.log.debug(f"Filtered due to cat: {item}")
+						continue
+				if pkgtools.model.filter_pkg:
+					if 'name' not in item or item['name'] != pkgtools.model.filter_pkg:
+						pkgtools.model.log.debug(f"Filtered due to name: {item}")
+						continue
+				filtered_pkginfo_list.append(item)
+			pkginfo_list = filtered_pkginfo_list
 
 		for pkginfo in pkginfo_list:
 			try:
