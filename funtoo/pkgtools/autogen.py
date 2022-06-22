@@ -68,7 +68,19 @@ def generate_manifests():
 
 def recursive_merge(dict1, dict2, depth="", overwrite=True):
 	"""
-	This function is to merge pkginfo values with any default values.
+	This function is to merge pkginfo values with any default values in an intuitive way
+	when combining separate sections of YAML, such as:
+
+	  defaults:
+	    github:
+	      query: releases
+	  packages:
+	    - foobar:
+	        github:
+	          repo: foobs
+
+	Without smart merging, the new github section for the foobar package will wipe out the
+	github/query definition in the defaults. This is generally not what someone is intending.
 
 	Technically, it recursively merges two dictionaries, so that:
 
@@ -172,11 +184,24 @@ def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginf
 	   set first.
 
 	2. Then, any defaults that are provided to us, which have come from the `defaults:` section of the
-	   autogen.yaml are supplied. (`defaults`, below.)
+	   autogen.yaml (`defaults`, below) are intuitively merged using the ``recursive_merge`` function.
 
 	3. Next, `cat` and `name` settings calculated based on the path of the `autogen.py`, or the settings that
-	   come from the package-specific part of the `autogen.yaml` are added on top. (`base_pkginfo`, below.),
-	   plus any non-'version' sections from the package-specific section.
+	   come from the package-specific part of the `autogen.yaml` are added on top. (`base_pkginfo`, below.).
+	   These settings are intuitively merged using the ``recursive_merge`` function.
+
+	   Note that if using YAML and defining a package with multiple versions, by having a "version:" that has
+	   a list of versions underneath rather than a single string, the the "base" of the package definition,
+	   under the package name, is also effectively a local defaults section for all versions of the package
+	   being defined:
+
+	   - pkgfoo:
+	       setting1: blah
+	       version:
+	         1.0
+
+	   If using this form of YAML, these settings will be pre-merged into ``base_pkginfo`` using the
+	   ``recursive_merge`` function before we get ``base_pkginfo`` as an argument.
 	"""
 	glob_defs = getattr(generator_sub, "GLOBAL_DEFAULTS", {})
 	pkginfo = glob_defs.copy()
