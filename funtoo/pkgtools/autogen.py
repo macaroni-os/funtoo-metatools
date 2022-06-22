@@ -206,7 +206,9 @@ def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginf
 	glob_defs = getattr(generator_sub, "GLOBAL_DEFAULTS", {})
 	pkginfo = glob_defs.copy()
 	if defaults is not None:
-		pkginfo = recursive_merge(pkginfo, defaults)
+		for default in defaults:
+			pkginfo = recursive_merge(pkginfo, default)
+			pkgtools.model.log.debug(f"Merging {default}, got {pkginfo}")
 	pkginfo = recursive_merge(pkginfo, base_pkginfo)
 	if template_path:
 		pkginfo["template_path"] = template_path
@@ -288,13 +290,38 @@ async def execute_generator(
 
 		new_pkginfo_list = []
 		for base_pkginfo in pkginfo_list:
-			new_pkginfo_list.append(
-				init_pkginfo_for_package(
-					generator_sub,
-					sub_path,
-					defaults=defaults, base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
+			if "version" not in base_pkginfo or isinstance(base_pkginfo["version"], (str, float)):
+				new_pkginfo_list.append(
+					init_pkginfo_for_package(
+						generator_sub,
+						sub_path,
+						defaults=[defaults], base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
+					)
 				)
-			)
+			else:
+				# expand multiple versions.
+				if isinstance(base_pkginfo["version"], dict):
+					versions = base_pkginfo["version"]
+					del base_pkginfo["version"]
+					for key, local_base_pkginfo in versions.items():
+						if isinstance(key, float):
+							# "3.14" unquoted in YAML is a float!
+							key = repr(key)
+						loop_version_defaults = init_pkginfo_for_package(
+							generator_sub,
+							sub_path,
+							defaults=[defaults, base_pkginfo], base_pkginfo=local_base_pkginfo,
+							template_path=template_path,
+							gen_path=gen_path
+						)
+						if key is None or key == "latest":
+							if "version" in loop_version_defaults:
+								del loop_version_defaults["version"]
+						else:
+							loop_version_defaults["version"] = key
+						new_pkginfo_list.append(loop_version_defaults)
+				elif isinstance(base_pkginfo["version"], list):
+					raise TypeError(f"Lists are not yet supported for defining multiple versions. Was processing this: {pkginfo_list}")
 		pkginfo_list = new_pkginfo_list
 
 		# The generator now has the ability to make arbitrary modifications to our pkginfo_list (YAML).
