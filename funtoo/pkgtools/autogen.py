@@ -63,7 +63,7 @@ def generate_manifests():
 			while pos < len(manifest_lines):
 				myf.write(manifest_lines[pos])
 				pos += 1
-		logging.debug(f"Manifest {manifest_file} generated.")
+		pkgtools.model.log.debug(f"Manifest {manifest_file} generated.")
 
 
 def recursive_merge(dict1, dict2, depth="", overwrite=True):
@@ -97,7 +97,7 @@ def recursive_merge(dict1, dict2, depth="", overwrite=True):
 			else:
 				if overwrite:
 					out_dict[key] = dict2[key]
-					logging.info(f"dict key {depth}{key} overwritten.")
+					pkgtools.model.log.info(f"dict key {depth}{key} overwritten.")
 				else:
 					raise TypeError(f"Key '{depth}{key}' is both dicts but are different types; cannot merge.")
 		elif key in dict1 and key not in dict2:
@@ -132,7 +132,7 @@ def queue_all_indy_autogens():
 				"pkginfo_list": [{"name": pkg_name, "cat": pkg_cat}],
 			}
 		)
-		logging.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
+		pkgtools.model.log.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
 async def gather_pending_tasks(task_list):
@@ -163,9 +163,10 @@ def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginf
 							 gen_path=None):
 	"""
 	This function generates the final pkginfo that is passed to the generate() function in the generator sub
-	for each catpkg being generated.
+	for each catpkg being generated. If an autogen.yaml is being used, then these settings come from YAML. If
+	an autogen.py is used, there are still some basic things that are auto-defined like the cat and name.
 
-	we create the pkginfo data that gets passed to generate. You can see that it can come from multiple places:
+	This data is generated in the following order:
 
 	1. A generator sub can define a `GLOBAL_DEFAULTS` dictionary that contains global settings. These are
 	   set first.
@@ -181,7 +182,7 @@ def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginf
 	pkginfo = glob_defs.copy()
 	if defaults is not None:
 		pkginfo = recursive_merge(pkginfo, defaults)
-	pkginfo.update(base_pkginfo)
+	pkginfo = recursive_merge(pkginfo, base_pkginfo)
 	if template_path:
 		pkginfo["template_path"] = template_path
 	pkginfo["sub_path"] = sub_path
@@ -282,15 +283,15 @@ async def execute_generator(
 		for pkginfo in pkginfo_list:
 			try:
 				if "version" in pkginfo and pkginfo["version"] != "latest":
-					logging.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
+					pkgtools.model.log.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
 				else:
-					logging.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+					pkgtools.model.log.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
 			except KeyError as ke:
 				raise pkgtools.ebuild.BreezyError(
 					f"{generator_sub_name} encountered a key error: missing value. pkginfo is {pkginfo}. Missing in pkginfo: {ke}"
 				)
 
-			logging.debug(f"Using the following pkginfo for auto-generation: {pkginfo}")
+			pkgtools.model.log.debug(f"Using the following pkginfo for auto-generation: {pkginfo}")
 
 			# Any .push() calls on BreezyBuilds will cause new tasks for those to be appended to
 			# hub.THREAD_CTX.running_breezybuilds. This will happen during this task execution:
@@ -478,7 +479,7 @@ def queue_all_yaml_autogens():
 					if os.path.exists(os.path.join(sub_path, rule["generator"] + ".py")):
 						# We found a generator in a "generators" directory next to the autogen.yaml that contains the
 						# generator.
-						logging.debug(f"Found generator {sub_name} in local tree.")
+						pkgtools.model.log.debug(f"Found generator {sub_name} in local tree.")
 					elif pkgtools.model.current_repo != pkgtools.model.kit_fixups_repo and \
 							os.path.exists(os.path.join(pkgtools.model.current_repo.root, "generators",
 														rule["generator"] + ".py")):
@@ -512,7 +513,7 @@ def queue_all_yaml_autogens():
 						"pkginfo_list": pkginfo_list,
 					}
 				)
-				logging.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
+				pkgtools.model.log.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
 async def execute_all_queued_generators():
