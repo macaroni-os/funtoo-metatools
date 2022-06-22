@@ -173,7 +173,14 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		# We want to grab the default tarball for the associated tag:
 		desired_tag = release['tag_name']
 		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags", is_json=True)
-		sha = next(filter(lambda tag_ent: tag_ent["name"] == desired_tag, tag_data))['commit']['sha']
+		sha = None
+		for tag_ent in tag_data:
+			if tag_ent["name"] != desired_tag:
+				continue
+			else:
+				sha = tag_ent['commit']['sha']
+		if sha is None:
+			raise ValueError(f"Could not retrieve SHA1 for tag {desired_tag}.")
 
 		########################################################################################################
 		# GitHub does not list this URL in the release's assets list, but it is always available if there is an
