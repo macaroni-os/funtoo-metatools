@@ -217,6 +217,8 @@ def iter_tag_versions(tags_list, select=None, filter=None, matcher=None, transfo
 	processing. By default we will use the ``regex_matcher`` to search for a basic version
 	pattern somewhere within the tag.
 	"""
+	if matcher is None:
+		matcher = RegexMatcher()
 	for tag_data in tags_list:
 		tag = tag_data['name']
 		if transform:
@@ -251,6 +253,8 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, trans
 
 	If no matching versions, None is returned.
 	"""
+	if matcher is None:
+		matcher = RegexMatcher()
 	if tag_data is None:
 		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags", is_json=True)
 	versions_and_tag_elements = list(iter_tag_versions(tag_data, select=select, filter=filter, matcher=matcher, transform=transform, version=version))
