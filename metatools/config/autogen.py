@@ -38,6 +38,7 @@ class AutogenConfig(MinimalConfig):
 	filter = None
 	filter_cat = None
 	filter_pkg = None
+	autogens = None
 
 	config_files = {
 		"autogen": "~/.autogen"
@@ -55,7 +56,7 @@ class AutogenConfig(MinimalConfig):
 		"""
 		return "/".join(self.locator.root.split("/")[-2:])
 
-	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False, fixups_url=None, fixups_branch=None, fast=None, cat=None, pkg=None):
+	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False, fixups_url=None, fixups_branch=None, fast=None, cat=None, pkg=None, autogens=None):
 		self.log = logging.getLogger('metatools.autogen')
 		self.log.propagate = False
 		if debug:
@@ -68,6 +69,9 @@ class AutogenConfig(MinimalConfig):
 		self.log.addHandler(channel)
 		if debug:
 			self.log.warning("doit: DEBUG enabled")
+
+		# Process specified autogens instead of recursing:
+		self.autogens = autogens
 
 		# Selective filtering of autogens:
 		self.filter_cat = cat

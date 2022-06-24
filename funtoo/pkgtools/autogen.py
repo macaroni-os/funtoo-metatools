@@ -117,18 +117,21 @@ def recursive_merge(dict1, dict2, depth="", overwrite=True):
 			out_dict[key] = dict2[key]
 	return out_dict
 
-def queue_all_indy_autogens():
+def queue_all_indy_autogens(files=None):
 	"""
-	This will find all independent autogens and queue them up in the pending queue.
+	This will recursively find all independent autogens and queue them up in the pending queue, unless a
+	list of autogen_paths is specified, in which case we will just process those specific autogens.
 	"""
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % pkgtools.model.locator.start_path)
-	files = o.split("\n")
+	if files is None:
+		s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % pkgtools.model.locator.start_path)
+		files = o.split("\n")
 	for file in files:
 		file = file.strip()
 		if not len(file):
 			continue
 
 		subpath = os.path.dirname(file)
+		# These two lines may be vestigal code:
 		if subpath.endswith("metatools"):
 			continue
 
@@ -516,14 +519,17 @@ def parse_yaml_rule(package_section=None):
 	return defaults, pkginfo_list
 
 
-def queue_all_yaml_autogens():
+def queue_all_yaml_autogens(files=None):
 	"""
-	This function finds all autogen.yaml files in the repository and adds work to the `PENDING_QUE` (via calls
-	to `parse_yaml_rule`.) This queues up all generators to execute.
+	This function finds all autogen.yaml files in the repository recursively from the current directory and adds work
+	to the `PENDING_QUE` (via calls to `parse_yaml_rule`.) This queues up all generators to execute.
+
+	If files= is a list, we will process only those specific YAML autogens specified.
 	"""
 
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % pkgtools.model.locator.start_path)
-	files = o.split("\n")
+	if files is None:
+		s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % pkgtools.model.locator.start_path)
+		files = o.split("\n")
 
 	for file in files:
 		file = file.strip()
@@ -613,8 +619,27 @@ async def start():
 	# don't experience race conditions loading modules, as this clobbers sys.modules in a non-threadsafe way currently.
 	for plugin in pkgtools:
 		pass
-	queue_all_indy_autogens()
-	queue_all_yaml_autogens()
+
+	# By default, recursively find all autogens:
+	yaml_autogens = indy_autogens = None
+
+	# However, if user has specified specific files, just process these files instead:
+	if len(pkgtools.model.autogens):
+		yaml_autogens = []
+		indy_autogens = []  # autogen.py files
+		for autogen in pkgtools.model.autogens:
+			abs_path = os.path.abspath(autogen)
+			if not os.path.exists(abs_path):
+				raise FileNotFoundError(f"Specified autogen not found: {abs_path}")
+			if abs_path.endswith(".yaml"):
+				yaml_autogens.append(abs_path)
+			elif abs_path.endswith(".py"):
+				indy_autogens.append(abs_path)
+			else:
+				raise TypeError(f"Unrecognized file type: {abs_path}")
+
+	queue_all_indy_autogens(indy_autogens)
+	queue_all_yaml_autogens(yaml_autogens)
 	await execute_all_queued_generators()
 	generate_manifests()
 	# TODO: return false on error
