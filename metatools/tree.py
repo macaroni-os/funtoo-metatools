@@ -155,7 +155,7 @@ class Tree:
 			raise GitTreeError(f"{self.root}: On branch {self.currentLocalBranch}. Not able to check out branch {branch}.")
 		self.branch = branch
 
-	def gitCommit(self, message="", skip=None, push=True):
+	def gitAdd(self, skip=None):
 		if skip is None:
 			skip = []
 		skip.append(".git")
@@ -165,6 +165,9 @@ class Tree:
 				files += " '" + x + "'"
 		if files:
 			self.run_shell(f"cd {self.root} && git add {files[1:]}")
+
+	def gitCommit(self, message="", skip=None, push=True):
+		self.gitAdd(skip=skip)
 		cmd = '( cd %s && [ -n "$(git status --porcelain)" ] && git commit -a -F - << EOF\n' % self.root
 		if message != "":
 			cmd += "%s\n\n" % message
