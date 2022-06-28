@@ -35,6 +35,10 @@ class AutogenConfig(MinimalConfig):
 	debug = False
 	log = None
 	kit_fixups = None
+	filter = None
+	filter_cat = None
+	filter_pkg = None
+	autogens = None
 
 	config_files = {
 		"autogen": "~/.autogen"
@@ -52,7 +56,7 @@ class AutogenConfig(MinimalConfig):
 		"""
 		return "/".join(self.locator.root.split("/")[-2:])
 
-	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False, fixups_url=None, fixups_branch=None, fast=None):
+	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False, fixups_url=None, fixups_branch=None, fast=None, cat=None, pkg=None, autogens=None):
 		self.log = logging.getLogger('metatools.autogen')
 		self.log.propagate = False
 		if debug:
@@ -65,6 +69,16 @@ class AutogenConfig(MinimalConfig):
 		self.log.addHandler(channel)
 		if debug:
 			self.log.warning("doit: DEBUG enabled")
+
+		# Process specified autogens instead of recursing:
+		self.autogens = autogens
+
+		# Selective filtering of autogens:
+		self.filter_cat = cat
+		self.filter_pkg = pkg
+		if self.filter_cat or self.filter_pkg:
+			self.filter = True
+
 		self.log.debug(f"AutogenConfig received args: fetch_cache_interval={fetch_cache_interval}, fastpull_scope={fastpull_scope}, debug={debug}")
 		self.fastpull_scope = fastpull_scope
 		self.fetch_cache = FileStoreFetchCache(db_base_path=self.store_path)

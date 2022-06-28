@@ -2,16 +2,17 @@
 
 import asyncio
 import inspect
-import logging
 import os
+import threading
 import subprocess
 from asyncio import FIRST_EXCEPTION, Task
 from collections import defaultdict
 from concurrent.futures.thread import ThreadPoolExecutor
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
-from subpop.util import load_plugin
 from yaml import safe_load
+
+from subpop.util import load_plugin
 
 """
 The `PENDING_QUE` will be built up to contain a full list of all the catpkgs we want to autogen in the full run
@@ -24,7 +25,8 @@ work for all catpkgs in that generator, and wait for completion of this work bef
 
 PENDING_QUE = []
 AUTOGEN_FAILURES = []
-
+GENNED_BREEZYBUILDS = {}
+GENNED_BREEZYBUILDS_LOCK = threading.Lock()
 
 SUB_FP_MAP_LOCK = asyncio.Lock()
 SUB_FP_MAP = {}
@@ -64,21 +66,81 @@ def generate_manifests():
 			while pos < len(manifest_lines):
 				myf.write(manifest_lines[pos])
 				pos += 1
-		logging.debug(f"Manifest {manifest_file} generated.")
+		pkgtools.model.log.debug(f"Manifest {manifest_file} generated.")
 
 
-def queue_all_indy_autogens():
+def recursive_merge(dict1, dict2, depth="", overwrite=True):
 	"""
-	This will find all independent autogens and queue them up in the pending queue.
+	This function is to merge pkginfo values with any default values in an intuitive way
+	when combining separate sections of YAML, such as:
+
+	  defaults:
+	    github:
+	      query: releases
+	  packages:
+	    - foobar:
+	        github:
+	          repo: foobs
+
+	Without smart merging, the new github section for the foobar package will wipe out the
+	github/query definition in the defaults. This is generally not what someone is intending.
+
+	Technically, it recursively merges two dictionaries, so that:
+
+	* colliding lists at the same point in the hierarchy are concatenated, and
+	* colliding dicts at the same point in the hierarchy are recursively merged.
+
+	For example:
+	
+	  { "a" : { "b" : 1 }} merged with { "a" : { "c" : 2 }} yields { "a" : { "b" : 1, "c" : 2 }}
+	  { "a" : [ x ] } merged with { "a" : [ y ] } yields { "a" : [ x, y ] }
+
+	If there are other colliding values that are not both dicts or not both lists,
+	we will use the dict2 value if overwrite=True, or we will raise a TypeError if
+	overwrite=False.
 	"""
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % pkgtools.model.locator.start_path)
-	files = o.split("\n")
+
+	out_dict = {}
+	for key in set(dict1.keys()) | set(dict2.keys()):
+		if key in dict1 and key in dict2:
+			if isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
+				# merge two dicts:
+				out_dict[key] = recursive_merge(dict1[key], dict2[key], depth=depth + f"{key}.", overwrite=overwrite)
+			elif isinstance(dict1[key], list) and isinstance(dict2[key], list):
+				# merge two lists:
+				out_dict[key] = dict1[key] + dict2[key]
+			else:
+				if overwrite:
+					out_dict[key] = dict2[key]
+					if key in ["cat", "python_compat"]:
+						# These are considered "common"/"not important" overwrites:
+						pkgtools.model.log.debug(f"dict key {depth}{key} overwritten.")
+					else:
+						pkgtools.model.log.warning(f"dict key {depth}{key} overwritten.")
+				else:
+					raise TypeError(f"Key '{depth}{key}' is both dicts but are different types; cannot merge.")
+		elif key in dict1 and key not in dict2:
+			out_dict[key] = dict1[key]
+		elif key in dict2 and key not in dict1:
+			out_dict[key] = dict2[key]
+	return out_dict
+
+
+def queue_all_indy_autogens(files=None):
+	"""
+	This will recursively find all independent autogens and queue them up in the pending queue, unless a
+	list of autogen_paths is specified, in which case we will just process those specific autogens.
+	"""
+	if files is None:
+		s, o = subprocess.getstatusoutput("find %s -iname autogen.py 2>&1" % pkgtools.model.locator.start_path)
+		files = o.split("\n")
 	for file in files:
 		file = file.strip()
 		if not len(file):
 			continue
 
 		subpath = os.path.dirname(file)
+		# These two lines may be vestigal code:
 		if subpath.endswith("metatools"):
 			continue
 
@@ -93,7 +155,7 @@ def queue_all_indy_autogens():
 				"pkginfo_list": [{"name": pkg_name, "cat": pkg_cat}],
 			}
 		)
-		logging.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
+		pkgtools.model.log.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
 async def gather_pending_tasks(task_list):
@@ -113,35 +175,54 @@ async def gather_pending_tasks(task_list):
 				result = done_item.result()
 				results.append(result)
 			except Exception as e:
-				pkgtools.model.log.error("Unexpected Exception!")
+				pkgtools.model.log.exception("Unexpected Exception!")
 				raise e
 		if not len(cur_tasks):
 			break
 	return results
 
 
-def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginfo=None, template_path=None, gen_path=None):
+def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginfo=None, template_path=None,
+							 gen_path=None):
 	"""
 	This function generates the final pkginfo that is passed to the generate() function in the generator sub
-	for each catpkg being generated.
+	for each catpkg being generated. If an autogen.yaml is being used, then these settings come from YAML. If
+	an autogen.py is used, there are still some basic things that are auto-defined like the cat and name.
 
-	we create the pkginfo data that gets passed to generate. You can see that it can come from multiple places:
+	This data is generated in the following order:
 
 	1. A generator sub can define a `GLOBAL_DEFAULTS` dictionary that contains global settings. These are
 	   set first.
 
 	2. Then, any defaults that are provided to us, which have come from the `defaults:` section of the
-	   autogen.yaml are supplied. (`defaults`, below.)
+	   autogen.yaml (`defaults`, below) are intuitively merged using the ``recursive_merge`` function.
 
 	3. Next, `cat` and `name` settings calculated based on the path of the `autogen.py`, or the settings that
-	   come from the package-specific part of the `autogen.yaml` are added on top. (`base_pkginfo`, below.),
-	   plus any non-'version' sections from the package-specific section.
+	   come from the package-specific part of the `autogen.yaml` are added on top. (`base_pkginfo`, below.).
+	   These settings are intuitively merged using the ``recursive_merge`` function.
+
+	   Note that if using YAML and defining a package with multiple versions, by having a "version:" that has
+	   a list of versions underneath rather than a single string, the the "base" of the package definition,
+	   under the package name, is also effectively a local defaults section for all versions of the package
+	   being defined:
+
+	   - pkgfoo:
+	       setting1: blah
+	       version:
+	         1.0
+
+	   If using this form of YAML, these settings will be pre-merged into ``base_pkginfo`` using the
+	   ``recursive_merge`` function before we get ``base_pkginfo`` as an argument.
 	"""
 	glob_defs = getattr(generator_sub, "GLOBAL_DEFAULTS", {})
 	pkginfo = glob_defs.copy()
 	if defaults is not None:
-		pkginfo.update(defaults)
-	pkginfo.update(base_pkginfo)
+		for default in defaults:
+			if default is None:
+				continue
+			pkginfo = recursive_merge(pkginfo, default)
+			pkgtools.model.log.debug(f"Merging {default}, got {pkginfo}")
+	pkginfo = recursive_merge(pkginfo, base_pkginfo)
 	if template_path:
 		pkginfo["template_path"] = template_path
 	pkginfo["sub_path"] = sub_path
@@ -181,17 +262,19 @@ def _artifact_handle_task_result(task: Task):
 		pass
 	except Exception as e:
 		pkgtools.model.log.error(e, exc_info=True)
-	# TODO: record these failures in a global place if this is still a valid exception-catching path.
+
+
+# TODO: record these failures in a global place if this is still a valid exception-catching path.
 
 
 async def execute_generator(
-	generator_sub_path=None,
-	generator_sub_name="autogen",
-	template_path=None,
-	defaults=None,
-	pkginfo_list=None,
-	gen_path=None,
-	autogen_id=None
+		generator_sub_path=None,
+		generator_sub_name="autogen",
+		template_path=None,
+		defaults=None,
+		pkginfo_list=None,
+		gen_path=None,
+		autogen_id=None
 ):
 	"""
 	This function will return an async function that requires no arguments, that is ready to run in its own
@@ -214,19 +297,43 @@ async def execute_generator(
 
 		hub.THREAD_CTX.running_autogens = []
 		hub.THREAD_CTX.running_breezybuilds = []
-		hub.THREAD_CTX.genned_breezybuilds = set()
 
 		# Do our own internal processing to get pkginfo_list ready for generate().
 
 		new_pkginfo_list = []
 		for base_pkginfo in pkginfo_list:
-			new_pkginfo_list.append(
-				init_pkginfo_for_package(
-					generator_sub,
-					sub_path,
-					defaults=defaults, base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
+			if "version" not in base_pkginfo or isinstance(base_pkginfo["version"], (str, float)):
+				new_pkginfo_list.append(
+					init_pkginfo_for_package(
+						generator_sub,
+						sub_path,
+						defaults=[defaults], base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
+					)
 				)
-			)
+			else:
+				# expand multiple versions.
+				if isinstance(base_pkginfo["version"], dict):
+					versions = base_pkginfo["version"]
+					del base_pkginfo["version"]
+					for key, local_base_pkginfo in versions.items():
+						if isinstance(key, float):
+							# "3.14" unquoted in YAML is a float!
+							key = repr(key)
+						loop_version_defaults = init_pkginfo_for_package(
+							generator_sub,
+							sub_path,
+							defaults=[defaults, base_pkginfo], base_pkginfo=local_base_pkginfo,
+							template_path=template_path,
+							gen_path=gen_path
+						)
+						if key is None or key == "latest":
+							if "version" in loop_version_defaults:
+								del loop_version_defaults["version"]
+						else:
+							loop_version_defaults["version"] = key
+						new_pkginfo_list.append(loop_version_defaults)
+				elif isinstance(base_pkginfo["version"], list):
+					raise TypeError(f"Lists are not yet supported for defining multiple versions. Was processing this: {pkginfo_list}")
 		pkginfo_list = new_pkginfo_list
 
 		# The generator now has the ability to make arbitrary modifications to our pkginfo_list (YAML).
@@ -237,18 +344,38 @@ async def execute_generator(
 		if preprocess_func is not None:
 			pkginfo_list = [i async for i in preprocess_func(hub, pkginfo_list)]
 
+		# Perform selective filtering of autogens we may want to exclude via command-line:
+
+		if pkgtools.model.filter is not None:
+			filtered_pkginfo_list = []
+			for item in pkginfo_list:
+				catpkg = item['cat'] if 'cat' in item else "(None)"
+				catpkg += item['name'] if 'name' in item else "(None)"
+				if pkgtools.model.filter_cat:
+					if 'cat' not in item or item['cat'] != pkgtools.model.filter_cat:
+						pkgtools.model.log.debug(f"Filtered due to cat: {catpkg}")
+						continue
+				if pkgtools.model.filter_pkg:
+					if 'name' not in item or item['name'] != pkgtools.model.filter_pkg:
+						pkgtools.model.log.debug(f"Filtered due to name: {catpkg}")
+						continue
+				filtered_pkginfo_list.append(item)
+			pkginfo_list = filtered_pkginfo_list
+
+		pkgtools.model.log.debug(f"After filtering, items in pkginfo_list: {len(pkginfo_list)}, {gen_path}")
+
 		for pkginfo in pkginfo_list:
 			try:
 				if "version" in pkginfo and pkginfo["version"] != "latest":
-					logging.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
+					pkgtools.model.log.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']}-{pkginfo['version']}")
 				else:
-					logging.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
+					pkgtools.model.log.info(f"Autogen: {pkginfo['cat']}/{pkginfo['name']} (latest)")
 			except KeyError as ke:
 				raise pkgtools.ebuild.BreezyError(
 					f"{generator_sub_name} encountered a key error: missing value. pkginfo is {pkginfo}. Missing in pkginfo: {ke}"
 				)
 
-			logging.debug(f"Using the following pkginfo for auto-generation: {pkginfo}")
+			pkgtools.model.log.debug(f"Using the following pkginfo for auto-generation: {pkginfo}")
 
 			# Any .push() calls on BreezyBuilds will cause new tasks for those to be appended to
 			# hub.THREAD_CTX.running_breezybuilds. This will happen during this task execution:
@@ -264,7 +391,7 @@ async def execute_generator(
 				# WIP: work to remove direct access to pkgtools.ebuild and reroute to this hub instead.
 				# I got distracted on supporting subpop stuff for this.
 
-				#class FinderWrapper:
+				# class FinderWrapper:
 				#
 				#	def __init__(self, orig, ebuild):
 				#		self.orig = orig
@@ -286,7 +413,7 @@ async def execute_generator(
 
 					def __init__(self, autogen_id, pkgtools):
 						self.autogen_id = autogen_id
-						#self.pkgtools = FinderWrapper(pkgtools, self)
+						# self.pkgtools = FinderWrapper(pkgtools, self)
 						self.pkgtools = pkgtools
 
 					def Artifact(self, **kwargs):
@@ -312,6 +439,8 @@ async def execute_generator(
 					return autogen_info, AttributeError(f"generate() not found in {generator_sub}")
 				try:
 					try:
+						# Inject the autogen_id into pkginfo so it is available to ebuild.py/BreezyBuilds...
+						pkginfo["autogen_id"] = autogen_id
 						await generate(AutoHub(autogen_id, pkgtools), **pkginfo)
 					except TypeError as te:
 						if not inspect.iscoroutinefunction(generate):
@@ -342,7 +471,6 @@ async def execute_generator(
 
 
 def parse_yaml_rule(package_section=None):
-
 	pkginfo_list = []
 	defaults = {}
 	if isinstance(package_section, str):
@@ -389,6 +517,7 @@ def parse_yaml_rule(package_section=None):
 			del v_defaults["versions"]
 
 			for version, v_pkg_section in versions_section.items():
+				# TODO: we may want to do a recursive merge here....
 				v_pkginfo = {"name": package_name}
 				v_pkginfo.update(v_defaults)
 				v_pkginfo.update(v_pkg_section)
@@ -400,15 +529,17 @@ def parse_yaml_rule(package_section=None):
 	return defaults, pkginfo_list
 
 
-def queue_all_yaml_autogens():
-
+def queue_all_yaml_autogens(files=None):
 	"""
-	This function finds all autogen.yaml files in the repository and adds work to the `PENDING_QUE` (via calls
-	to `parse_yaml_rule`.) This queues up all generators to execute.
+	This function finds all autogen.yaml files in the repository recursively from the current directory and adds work
+	to the `PENDING_QUE` (via calls to `parse_yaml_rule`.) This queues up all generators to execute.
+
+	If files= is a list, we will process only those specific YAML autogens specified.
 	"""
 
-	s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % pkgtools.model.locator.start_path)
-	files = o.split("\n")
+	if files is None:
+		s, o = subprocess.getstatusoutput("find %s -iname autogen.yaml 2>&1" % pkgtools.model.locator.start_path)
+		files = o.split("\n")
 
 	for file in files:
 		file = file.strip()
@@ -437,12 +568,14 @@ def queue_all_yaml_autogens():
 					if os.path.exists(os.path.join(sub_path, rule["generator"] + ".py")):
 						# We found a generator in a "generators" directory next to the autogen.yaml that contains the
 						# generator.
-						logging.debug(f"Found generator {sub_name} in local tree.")
+						pkgtools.model.log.debug(f"Found generator {sub_name} in local tree.")
 					elif pkgtools.model.current_repo != pkgtools.model.kit_fixups_repo and \
-						os.path.exists(os.path.join(pkgtools.model.current_repo.root, "generators", rule["generator"] + ".py")):
+							os.path.exists(os.path.join(pkgtools.model.current_repo.root, "generators",
+														rule["generator"] + ".py")):
 						# if we are running doit inside "foo-sources", look in the local repo /generators too.
 						sub_path = os.path.join(pkgtools.model.current_repo.root, "generators")
-					elif os.path.exists(os.path.join(pkgtools.model.kit_fixups_repo.root, "generators", rule["generator"] + ".py")):
+					elif os.path.exists(
+							os.path.join(pkgtools.model.kit_fixups_repo.root, "generators", rule["generator"] + ".py")):
 						# fall back to kit-fixups/generators.
 						sub_path = os.path.join(pkgtools.model.kit_fixups_repo.root, "generators")
 					else:
@@ -456,7 +589,8 @@ def queue_all_yaml_autogens():
 				for package in rule["packages"]:
 					package_defaults, parsed_pkg = parse_yaml_rule(package_section=package)
 					pkginfo_list += parsed_pkg
-					defaults.update(package_defaults)
+					# recursively merge any package defaults in to the defaults:
+					defaults = recursive_merge(defaults, package_defaults)
 
 				PENDING_QUE.append(
 					{
@@ -468,7 +602,7 @@ def queue_all_yaml_autogens():
 						"pkginfo_list": pkginfo_list,
 					}
 				)
-				logging.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
+				pkgtools.model.log.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
 async def execute_all_queued_generators():
@@ -482,7 +616,7 @@ async def execute_all_queued_generators():
 			# attached to a specific BreezyBuild.
 
 			base = os.path.commonprefix([task_args["gen_path"], pkgtools.model.locator.root])
-			task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base)+1:]}"
+			task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base) + 1:]}"
 			async_func, pkginfo_list = await execute_generator(**task_args)
 			future = loop.run_in_executor(executor, hub.run_async_adapter, async_func, pkginfo_list)
 			futures.append(future)
@@ -495,8 +629,27 @@ async def start():
 	# don't experience race conditions loading modules, as this clobbers sys.modules in a non-threadsafe way currently.
 	for plugin in pkgtools:
 		pass
-	queue_all_indy_autogens()
-	queue_all_yaml_autogens()
+
+	# By default, recursively find all autogens:
+	yaml_autogens = indy_autogens = None
+
+	# However, if user has specified specific files, just process these files instead:
+	if len(pkgtools.model.autogens):
+		yaml_autogens = []
+		indy_autogens = []  # autogen.py files
+		for autogen in pkgtools.model.autogens:
+			abs_path = os.path.abspath(autogen)
+			if not os.path.exists(abs_path):
+				raise FileNotFoundError(f"Specified autogen not found: {abs_path}")
+			if abs_path.endswith(".yaml"):
+				yaml_autogens.append(abs_path)
+			elif abs_path.endswith(".py"):
+				indy_autogens.append(abs_path)
+			else:
+				raise TypeError(f"Unrecognized file type: {abs_path}")
+
+	queue_all_indy_autogens(indy_autogens)
+	queue_all_yaml_autogens(yaml_autogens)
 	await execute_all_queued_generators()
 	generate_manifests()
 	# TODO: return false on error
@@ -510,6 +663,5 @@ async def start():
 		return False
 	else:
 		return True
-
 
 # vim: ts=4 sw=4 noet
