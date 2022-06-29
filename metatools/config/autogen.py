@@ -14,19 +14,12 @@ from metatools.fetch_cache import FileStoreFetchCache
 from metatools.pretty_logging import TornadoPrettyLogFormatter
 from metatools.tree import GitTree
 
+class StoreConfig(MinimalConfig):
+	"""
+	This is used by the fastpull-daemon for access to the stores, and as a base class for AutogenConfig (used
+	by the 'doit' command).
+	"""
 
-class AutogenConfig(MinimalConfig):
-	"""
-	This class is used for the autogen workflow -- i.e. the 'doit' command.
-	"""
-	fetch_cache = None
-	fetch_cache_interval = None
-	check_disk_hashes = False
-	manifest_lines = defaultdict(set)
-	fetch_attempts = 3
-	config = None
-	kit_spy = None
-	spider = None
 	fpos = None
 	fastpull_scope = None
 	fastpull_session = None
@@ -34,11 +27,52 @@ class AutogenConfig(MinimalConfig):
 	blos = None
 	debug = False
 	log = None
+	logger_name = "metatools.cdn"
+
+	async def initialize(self, fastpull_scope=None, debug=False):
+		self.log = logging.getLogger(self.logger_name)
+		self.log.propagate = False
+		if debug:
+			self.debug = debug
+			self.log.setLevel(logging.DEBUG)
+		else:
+			self.log.setLevel(logging.INFO)
+		channel = logging.StreamHandler()
+		channel.setFormatter(TornadoPrettyLogFormatter())
+		self.log.addHandler(channel)
+		if debug:
+			self.log.warning("DEBUG enabled")
+		self.fastpull_scope = fastpull_scope
+		self.fetch_cache = FileStoreFetchCache(db_base_path=self.store_path)
+		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
+		self.blos = BaseLayerObjectStore(db_base_path=self.store_path, hashes=self.hashes)
+		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
+		self.fpos = IntegrityDatabase(
+			db_base_path=self.store_path,
+			blos=self.blos,
+			spider=self.spider,
+			hashes=self.hashes
+		)
+		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
+
+
+class AutogenConfig(StoreConfig):
+	"""
+	This class is used for the autogen workflow -- i.e. the 'doit' command.
+	"""
+	fetch_cache = None
+	fetch_cache_interval = None
+	manifest_lines = defaultdict(set)
+	fetch_attempts = 3
+	config = None
+	kit_spy = None
+	spider = None
 	kit_fixups = None
 	filter = None
 	filter_cat = None
 	filter_pkg = None
 	autogens = None
+	logger_name = 'metatools.autogen'
 
 	config_files = {
 		"autogen": "~/.autogen"
@@ -57,18 +91,7 @@ class AutogenConfig(MinimalConfig):
 		return "/".join(self.locator.root.split("/")[-2:])
 
 	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False, fixups_url=None, fixups_branch=None, fast=None, cat=None, pkg=None, autogens=None):
-		self.log = logging.getLogger('metatools.autogen')
-		self.log.propagate = False
-		if debug:
-			self.debug = debug
-			self.log.setLevel(logging.DEBUG)
-		else:
-			self.log.setLevel(logging.INFO)
-		channel = logging.StreamHandler()
-		channel.setFormatter(TornadoPrettyLogFormatter())
-		self.log.addHandler(channel)
-		if debug:
-			self.log.warning("doit: DEBUG enabled")
+		await super().initialize(fastpull_scope=fastpull_scope, debug=debug)
 
 		# Process specified autogens instead of recursing:
 		self.autogens = autogens
@@ -80,25 +103,16 @@ class AutogenConfig(MinimalConfig):
 			self.filter = True
 
 		self.log.debug(f"AutogenConfig received args: fetch_cache_interval={fetch_cache_interval}, fastpull_scope={fastpull_scope}, debug={debug}")
-		self.fastpull_scope = fastpull_scope
-		self.fetch_cache = FileStoreFetchCache(db_base_path=self.store_path)
+
 		self.config = yaml.safe_load(self.get_file("autogen"))
 		# Set to empty values if non-existent:
 		if self.config is None:
 			self.config = {}
-		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
-		self.blos = BaseLayerObjectStore(db_base_path=self.store_path, hashes=self.hashes)
+
 		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
 		# This turns on periodic logging of active downloads (to get rid of 'dots')
 		await self.spider.start_asyncio_tasks()
-		self.fpos = IntegrityDatabase(
-			db_base_path=self.store_path,
-			blos=self.blos,
-			spider=self.spider,
-			hashes=self.hashes
-		)
 
-		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
 		self.log.debug(f"Fetch cache interval set to {self.fetch_cache_interval} after model init")
 		self.locator = OverlayLocator()
 		self.current_repo = GitRepositoryLocator()

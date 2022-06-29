@@ -1,19 +1,21 @@
 #!/usr/bin/python3
-
+import asyncio
 import os
 from pprint import PrettyPrinter
 
 import tornado.gen
 import tornado.ioloop
 import tornado.web
+from pymongo import MongoClient
+from subpop.hub import Hub
 from tornado.httpserver import HTTPServer
 from tornado.log import enable_pretty_logging
 
-from subpop.hub import Hub
-
 hub = Hub()
 
-import dyne.org.funtoo.metatools.merge as merge
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
+from metatools.config.autogen import StoreConfig
 
 enable_pretty_logging()
 
@@ -27,7 +29,7 @@ class UptimeHandler(tornado.web.RequestHandler):
 class DistfileQueryHandler(tornado.web.RequestHandler):
 	def get(self, sha512):
 		self.set_header("Content-Type", "text/plain")
-		db_ent = hub.FASTPULL.find_one({"hashes.sha512": sha512})
+		db_ent = self.application.legacy_db.find_one({"hashes.sha512": sha512})
 		if db_ent is None:
 			self.write("Not found.")
 		else:
@@ -50,7 +52,7 @@ class RedirectHandler(tornado.web.RequestHandler):
 """
 			)
 			return
-		fp_ent = merge.model.FASTPULL.find_one({"filename": fn})
+		fp_ent = self.application.legacy_db.find_one({"filename": fn})
 		if fp_ent:
 			sh = fp_ent["hashes"]["sha512"]
 			basepath = f"{sh[:2]}/{sh[2:4]}/{sh[4:6]}/{sh}"
@@ -66,7 +68,7 @@ class DistfileHashHandler(tornado.web.RequestHandler):
 			print("problems", hp1, hp2, hp3, full_hash)
 			self.set_status(503)
 			return
-		fp_ent = merge.model.FASTPULL.find_one({"hashes.sha512" : full_hash})
+		fp_ent = self.application.legacy_db.find_one({"hashes.sha512": full_hash})
 		if fp_ent:
 			print("FOUND")
 			# file exists! redirect to CDN for fastest download:
@@ -127,15 +129,21 @@ class Application(tornado.web.Application):
 
 	def __init__(self):
 		tornado.web.Application.__init__(self, self.handlers, **settings)
+		mongo_client = MongoClient()
+		self.legacy_db = mongo_client.metatools.fastpull
 
 
-if __name__ == "__main__":
+async def main_thread():
+	await pkgtools.launch(StoreConfig, fastpull_scope="local")
 	application = Application()
 	http_server = HTTPServer(application, xheaders=True)
 	http_server.bind(8080, "127.0.0.1")
 	http_server.start()
+	# prevent function from ending:
+	while True:
+		# can potentially do something periodic here:
+		await asyncio.sleep(1)
 
-	# start ioloop
-	tornado.ioloop.IOLoop().current().start()
+asyncio.run(main_thread())
 
 # vim: ts=4 sw=4 noet
