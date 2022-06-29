@@ -490,6 +490,9 @@ class KitGenerator:
 		await self.run(self.copy_eclasses_steps())
 		await self.run(self.packages_yaml_copy_ebuilds_steps())
 		await self.run([metatools.steps.RemoveFiles(self.kit.get_excludes())])
+
+		self.out_tree.gitAdd()
+
 		await self.run(self.autogen_and_copy_from_kit_fixups())
 
 	def copy_licenses(self, used_licenses=None):

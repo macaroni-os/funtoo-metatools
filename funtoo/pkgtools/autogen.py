@@ -3,14 +3,16 @@
 import asyncio
 import inspect
 import os
+import threading
 import subprocess
 from asyncio import FIRST_EXCEPTION, Task
 from collections import defaultdict
 from concurrent.futures.thread import ThreadPoolExecutor
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
-from subpop.util import load_plugin
 from yaml import safe_load
+
+from subpop.util import load_plugin
 
 """
 The `PENDING_QUE` will be built up to contain a full list of all the catpkgs we want to autogen in the full run
@@ -23,6 +25,8 @@ work for all catpkgs in that generator, and wait for completion of this work bef
 
 PENDING_QUE = []
 AUTOGEN_FAILURES = []
+GENNED_BREEZYBUILDS = {}
+GENNED_BREEZYBUILDS_LOCK = threading.Lock()
 
 SUB_FP_MAP_LOCK = asyncio.Lock()
 SUB_FP_MAP = {}
@@ -108,7 +112,11 @@ def recursive_merge(dict1, dict2, depth="", overwrite=True):
 			else:
 				if overwrite:
 					out_dict[key] = dict2[key]
-					pkgtools.model.log.debug(f"dict key {depth}{key} overwritten.")
+					if key in ["cat", "python_compat"]:
+						# These are considered "common"/"not important" overwrites:
+						pkgtools.model.log.debug(f"dict key {depth}{key} overwritten.")
+					else:
+						pkgtools.model.log.warning(f"dict key {depth}{key} overwritten.")
 				else:
 					raise TypeError(f"Key '{depth}{key}' is both dicts but are different types; cannot merge.")
 		elif key in dict1 and key not in dict2:
@@ -116,6 +124,7 @@ def recursive_merge(dict1, dict2, depth="", overwrite=True):
 		elif key in dict2 and key not in dict1:
 			out_dict[key] = dict2[key]
 	return out_dict
+
 
 def queue_all_indy_autogens(files=None):
 	"""
@@ -288,7 +297,6 @@ async def execute_generator(
 
 		hub.THREAD_CTX.running_autogens = []
 		hub.THREAD_CTX.running_breezybuilds = []
-		hub.THREAD_CTX.genned_breezybuilds = set()
 
 		# Do our own internal processing to get pkginfo_list ready for generate().
 
@@ -431,6 +439,8 @@ async def execute_generator(
 					return autogen_info, AttributeError(f"generate() not found in {generator_sub}")
 				try:
 					try:
+						# Inject the autogen_id into pkginfo so it is available to ebuild.py/BreezyBuilds...
+						pkginfo["autogen_id"] = autogen_id
 						await generate(AutoHub(autogen_id, pkgtools), **pkginfo)
 					except TypeError as te:
 						if not inspect.iscoroutinefunction(generate):
