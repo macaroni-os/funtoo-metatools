@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 import asyncio
 import os
-from pprint import PrettyPrinter
 
 import tornado.gen
 import tornado.ioloop
@@ -25,16 +24,17 @@ class UptimeHandler(tornado.web.RequestHandler):
 		self.set_status(200)
 		return
 
-
-class DistfileQueryHandler(tornado.web.RequestHandler):
-	def get(self, sha512):
-		self.set_header("Content-Type", "text/plain")
-		db_ent = self.application.legacy_db.find_one({"hashes.sha512": sha512})
-		if db_ent is None:
-			self.write("Not found.")
-		else:
-			pp = PrettyPrinter(indent=4)
-			self.write(pp.pformat(db_ent))
+# This just shows contents of the mongo db record:
+#
+# class DistfileQueryHandler(tornado.web.RequestHandler):
+# 	def get(self, sha512):
+# 		self.set_header("Content-Type", "text/plain")
+# 		db_ent = self.application.legacy_db.find_one({"hashes.sha512": sha512})
+# 		if db_ent is None:
+# 			self.write("Not found.")
+# 		else:
+# 			pp = PrettyPrinter(indent=4)
+# 			self.write(pp.pformat(db_ent))
 
 
 redirect_url = "https://1153732560.rsc.cdn77.org/"
@@ -52,6 +52,7 @@ class RedirectHandler(tornado.web.RequestHandler):
 """
 			)
 			return
+		# TODO: search in fpos, blos (new)
 		fp_ent = self.application.legacy_db.find_one({"filename": fn})
 		if fp_ent:
 			sh = fp_ent["hashes"]["sha512"]
@@ -65,18 +66,16 @@ class RedirectHandler(tornado.web.RequestHandler):
 class DistfileHashHandler(tornado.web.RequestHandler):
 	def get(self, hp1, hp2, hp3, full_hash):
 		if hp1 != full_hash[0:2] or hp2 != full_hash[2:4] or hp3 != full_hash[4:6] or len(full_hash) != 128:
-			print("problems", hp1, hp2, hp3, full_hash)
 			self.set_status(503)
 			return
+		# TODO: search in fpos, blos (new)
 		fp_ent = self.application.legacy_db.find_one({"hashes.sha512": full_hash})
 		if fp_ent:
-			print("FOUND")
 			# file exists! redirect to CDN for fastest download:
 			basepath = f"{hp1}/{hp2}/{hp3}/{full_hash}"
 			url = redirect_url + basepath
 			self.redirect(url, permanent=False)
 		else:
-			print("NOTFOUND")
 			# file does not exist. Return 404 to avoid redirect loop.
 			self.set_status(404)
 
@@ -122,7 +121,6 @@ class Application(tornado.web.Application):
 		(r"/distfiles/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler),
 		(r"/distfiles/distfiles/(.*)", RedirectHandler),
 		(r"/distfiles/(.*)", RedirectHandler),
-		(r"/query/(.*)", DistfileQueryHandler),
 		(r"/up", UptimeHandler),
 		(r"/(.*)", RedirectHandler),
 	]
