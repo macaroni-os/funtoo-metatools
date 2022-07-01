@@ -297,6 +297,12 @@ class FileStorageBackend(StorageBackend):
 		if os.path.exists(blob_path):
 			os.unlink(blob_path)
 
+	def get_relative_path_to_root(self, disk_path):
+		common = os.path.commonpath([self.root, disk_path])
+		if common != self.root:
+			return None
+		return disk_path[len(common):].lstrip("/")
+
 
 class Store:
 
