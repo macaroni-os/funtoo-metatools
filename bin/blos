@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+
+import argparse
+import sys
+
+from subpop.hub import Hub
+
+from metatools.config.autogen import StoreConfig
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
+CLI_CONFIG = {
+	"action": {"default": None, "action": "store", "positional": True, "help": "Action. Currently must be 'add'"},
+	"objects": {"default": [], "action": "store", "positional": True, "nargs": "*", "help": "Files to add to BLOS."},
+	"fastpull_scope": {"default": "local", "action": "store", "help": "Default index into fastpull for collecting artifacts."},
+	"debug": {"default": False, "action": "store_true"},
+}
+
+
+def parse_args():
+	ap = argparse.ArgumentParser()
+	for arg, kwargs in CLI_CONFIG.items():
+		if "positional" in kwargs and kwargs["positional"]:
+			new_kwargs = kwargs.copy()
+			del new_kwargs["positional"]
+			ap.add_argument(arg, **new_kwargs)
+		else:
+			if "os" in kwargs:
+				del kwargs["os"]
+			ap.add_argument("--" + arg, **kwargs)
+	return ap.parse_args()
+
+
+async def main_thread():
+	hub.OPT = parse_args()
+	if hub.OPT.action != "add":
+		raise ValueError("I can only support the 'add' action for now.")
+	await pkgtools.launch(StoreConfig)
+	for obj in hub.OPT.objects:
+		pkgtools.model.blos.insert_blob(obj)
+
+if __name__ == "__main__":
+	success = hub.LOOP.run_until_complete(main_thread())
+	if not success:
+		sys.exit(1)
+
+# vim: ts=4 sw=4 noet

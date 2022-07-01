@@ -1,0 +1,135 @@
+#!/usr/bin/python3
+import asyncio
+import os
+
+import tornado.gen
+import tornado.ioloop
+import tornado.web
+from pymongo import MongoClient
+from subpop.hub import Hub
+from tornado.httpserver import HTTPServer
+from tornado.log import enable_pretty_logging
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
+from metatools.config.autogen import StoreConfig
+
+enable_pretty_logging()
+
+
+class UptimeHandler(tornado.web.RequestHandler):
+	def get(self):
+		self.set_status(200)
+		return
+
+
+redirect_url = "https://1153732560.rsc.cdn77.org/"
+
+
+class RedirectHandler(tornado.web.RequestHandler):
+	def get(self, fn):
+		fn = os.path.basename(fn)
+		success = False
+		if fn == "layout.conf":
+			self.set_header("Content-Type", "text/plain")
+			self.write(
+				"""[structure]
+0=flat
+"""
+			)
+			return
+		# TODO: search in fpos, blos (new)
+		fp_ent = self.application.legacy_db.find_one({"filename": fn})
+		if fp_ent:
+			sh = fp_ent["hashes"]["sha512"]
+			basepath = f"{sh[:2]}/{sh[2:4]}/{sh[4:6]}/{sh}"
+			url = redirect_url + basepath
+			self.redirect(url, permanent=False)
+		else:
+			self.set_status(404)
+
+
+class DistfileHashHandler(tornado.web.RequestHandler):
+	def get(self, hp1, hp2, hp3, full_hash):
+		if hp1 != full_hash[0:2] or hp2 != full_hash[2:4] or hp3 != full_hash[4:6] or len(full_hash) != 128:
+			self.set_status(503)
+			return
+		# TODO: search in fpos, blos (new)
+		fp_ent = self.application.legacy_db.find_one({"hashes.sha512": full_hash})
+		if fp_ent:
+			# file exists! redirect to CDN for fastest download:
+			basepath = f"{hp1}/{hp2}/{hp3}/{full_hash}"
+			url = redirect_url + basepath
+			self.redirect(url, permanent=False)
+		else:
+			# file does not exist. Return 404 to avoid redirect loop.
+			self.set_status(404)
+
+DISTFILE_HASHES = False
+
+
+class LayoutConfHandler(tornado.web.RequestHandler):
+	def get(self):
+		self.set_header("Content-Type", "text/plain")
+		if DISTFILE_HASHES:
+			self.write(
+				"""[structure]
+0=content-hash SHA512 8:8:8
+1=flat
+"""
+			)
+		else:
+			self.write(
+				"""[structure]
+0=flat
+"""
+			)
+
+
+settings = {
+	"xsrf_cookies": False,
+	"cache_json": False,
+}
+
+# TODO: I am not sure why, but layout.conf seems to come from the fastpull directory itself rather than
+#       being served by LayoutConfHandler. So I can't send something different to whoever is pulling our
+#       rsync.
+
+
+class Application(tornado.web.Application):
+
+	name = "fastpull beta service"
+	handlers = [
+		(r"/layout.conf", LayoutConfHandler),
+		(r"/distfiles/layout.conf", LayoutConfHandler),
+		(r"/distfiles/distfiles/layout.conf", LayoutConfHandler),
+		(r"/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler),
+		(r"/distfiles/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler),
+		(r"/distfiles/distfiles/(.*)", RedirectHandler),
+		(r"/distfiles/(.*)", RedirectHandler),
+		(r"/up", UptimeHandler),
+		(r"/(.*)", RedirectHandler),
+	]
+
+	def __init__(self):
+		tornado.web.Application.__init__(self, self.handlers, **settings)
+		mongo_client = MongoClient()
+		self.legacy_db = mongo_client.metatools.fastpull
+
+
+async def main_thread():
+	await pkgtools.launch(StoreConfig, fastpull_scope="local")
+	application = Application()
+	http_server = HTTPServer(application, xheaders=True)
+	http_server.bind(8080, "127.0.0.1")
+	http_server.start()
+	# prevent function from ending:
+	while True:
+		# can potentially do something periodic here:
+		await asyncio.sleep(1)
+
+asyncio.run(main_thread())
+
+# vim: ts=4 sw=4 noet
