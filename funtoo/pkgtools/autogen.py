@@ -174,6 +174,7 @@ async def gather_pending_tasks(task_list):
 			try:
 				result = done_item.result()
 				results.append(result)
+				pkgtools.model.log.debug(f"Gathered task: {done_item} {result}")
 			except Exception as e:
 				pkgtools.model.log.exception("Unexpected Exception!")
 				raise e
@@ -652,6 +653,7 @@ async def start():
 	queue_all_yaml_autogens(yaml_autogens)
 	await execute_all_queued_generators()
 	generate_manifests()
+	pkgtools.model.log.debug("generate_manifests() complete.")
 	# TODO: return false on error
 	if len(AUTOGEN_FAILURES):
 		if len(AUTOGEN_FAILURES) == 1:
@@ -663,5 +665,6 @@ async def start():
 		return False
 	else:
 		return True
+	pkgtools.model.log.debug("start() complete.")
 
 # vim: ts=4 sw=4 noet

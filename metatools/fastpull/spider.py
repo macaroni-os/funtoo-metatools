@@ -269,14 +269,16 @@ class WebSpider:
 	DOWNLOAD_SLOT = threading.Semaphore(value=20)
 	thread_ctx = threading.local()
 	fetch_headers = {"User-Agent": "funtoo-metatools (support@funtoo.org)"}
+	status_logger_task = None
+	keep_running = True
 
 	def __init__(self, temp_path, hashes):
 		self.temp_path = temp_path
 		self.hashes = hashes - {'size'}
 
-	async def status_logger_task(self):
-		while True:
-			await asyncio.sleep(5)
+	async def status_logger(self):
+		while self.keep_running:
+			await asyncio.sleep(1)
 			dl_count = len(self.DL_ACTIVE)
 			if dl_count > 1:
 				log.info(f"Spider active downloads: {len(self.DL_ACTIVE)}")
@@ -284,7 +286,12 @@ class WebSpider:
 				log.info(f"Spider active download: {list(self.DL_ACTIVE.keys())[0]}")
 
 	async def start_asyncio_tasks(self):
-		asyncio.create_task(self.status_logger_task())
+		self.status_logger_task = asyncio.create_task(self.status_logger())
+
+	def stop(self):
+		self.keep_running = False
+		self.status_logger_task.cancel()
+		asyncio.gather(self.status_logger_task)
 
 	async def download(self, request: FetchRequest, completion_pipeline=None):
 

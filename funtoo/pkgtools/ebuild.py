@@ -266,6 +266,7 @@ class BreezyBuild:
 		else:
 			self.artifacts = artifacts
 		self.template_args["artifacts"] = artifacts
+		self.template_args["autogen_id"] = autogen_id
 
 	def fixup_revision(self):
 		"""

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import asyncio
 import sys
 from datetime import timedelta
 
@@ -31,6 +32,7 @@ CLI_CONFIG = {
 	"autogens": {"default": [], "action": "store", "positional": True, "nargs": "*", "help": "Autogen.py/.yaml files to process (default is to recursively scan)"}
 }
 
+
 def parse_args():
 	ap = argparse.ArgumentParser()
 	for arg, kwargs in CLI_CONFIG.items():
@@ -53,13 +55,18 @@ async def main_thread():
 	if hub.OPT.immediate:
 		kwargs['fetch_cache_interval'] = timedelta(seconds=0)
 	await pkgtools.launch(AutogenConfig, **kwargs)
-	return await pkgtools.autogen.start()
+	result = await pkgtools.autogen.start()
+	pkgtools.model.log.debug("Stopping spider...")
+	pkgtools.model.spider.stop()
+	pkgtools.model.log.debug("Spider stopped.")
 
+	return result
 
 if __name__ == "__main__":
 	success = hub.LOOP.run_until_complete(main_thread())
-	if not success:
-		sys.exit(1)
+	hub.LOOP.close()
+	#if not success:
+	#	sys.exit(1)
 
 # TODO: add after-action report (listing any failures.)
 # TODO: add 'facts' database concept to allow more resiliency on failures (fall back to cached facts from last
