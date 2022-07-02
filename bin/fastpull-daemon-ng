@@ -25,7 +25,7 @@ class UptimeHandler(tornado.web.RequestHandler):
 		return
 
 
-redirect_url = "https://1153732560.rsc.cdn77.org/"
+redirect_url = "https://direct-cdn.funtoo.org/"
 
 
 class DistfileHashHandler(tornado.web.RequestHandler):
