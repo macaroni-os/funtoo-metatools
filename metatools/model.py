@@ -17,16 +17,21 @@ class ModelWrapper:
 		self.name = name
 
 	def __getattr__(self, item):
-		return getattr(MODELS[self.name], item)
+		try:
+			return getattr(MODELS[self.name], item)
+		except KeyError as ke:
+			print(f"Available models: {MODELS.keys()}")
+			raise ke
 
 
 def set_model(name, model):
-	model_split = name.split()
+	model_split = name.split('.')
 	if len(model_split) == 1:
 		MODELS[name] = model
 	elif len(model_split) == 2:
 		MODELS[name] = model
 		MODELS[model_split[0]] = model
+	# Set default model to last set:
 	MODELS[None] = model
 
 

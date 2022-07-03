@@ -310,8 +310,8 @@ def extract_ebuild_metadata(kit_gen_obj, atom, ebuild_path=None, env=None, eclas
 			missing = set(METADATA_LINES) - found
 			raise ValueError()
 		# Success! Clear previous error, if any:
-		if atom in kit_gen_obj.metadata_errors:
-			del kit_gen_obj.metadata_errors[atom]
+		if atom in kit_gen_obj.kit_cache.metadata_errors:
+			del kit_gen_obj.kit_cache.metadata_errors[atom]
 		return infos
 	except (FileNotFoundError, IndexError, ValueError) as ex:
 		exc_string = (''.join(traceback.format_exception(type(ex), value=ex, tb=ex.__traceback__)))
@@ -462,45 +462,5 @@ def do_package_use_line(pkg, def_python, bk_python, imps):
 			out = "%s python_single_target_%s python_targets_%s" % (pkg, imps[0], imps[0])
 	return out
 
-
-def get_atom(kit_gen_obj, atom, md5, manifest_md5):
-	"""
-	Read from our in-memory kit metadata cache. Return something if available, else None.
-
-	This will validate that our in-memory record has a matching md5 and that md5s of all
-	eclasses match. AND the md5 of the Manifest (if any exists) matches.
-	Otherwise we treat this as a cache miss.
-	"""
-	existing = None
-	if atom in kit_gen_obj.kit_cache:
-		if not kit_gen_obj.kit_cache[atom]:
-			logging.error(f"Kit cache atom {atom} invalid due to empty data")
-			bad = True
-		elif kit_gen_obj.kit_cache[atom]["md5"] != md5:
-			logging.error(f"Kit cache atom {atom} ignored due to non-matching MD5 (if this recurs: non-deterministic ebuild?)")
-			bad = True
-		else:
-			existing = kit_gen_obj.kit_cache[atom]
-			bad = False
-			if "manifest_md5" not in existing:
-				logging.error(f"Kit cache atom {atom} ignored due to missing manifest md5 (incomplete? bug?)")
-				bad = True
-			elif manifest_md5 != existing["manifest_md5"]:
-				logging.error(f"Kit cache atom {atom} ignored due to non-matching manifest MD5 (if this recurs: may indicate bug.)")
-				bad = True
-			elif existing["eclasses"]:
-				for eclass, md5 in existing["eclasses"]:
-					if eclass not in kit_gen_obj.merged_eclasses.hashes:
-						logging.warning(f"Kit cache atom {atom} can't be used due to missing eclass {eclass}")
-						bad = True
-						break
-					if kit_gen_obj.merged_eclasses.hashes[eclass] != md5:
-						logging.warning(f"Kit cache atom {atom} can't be used due to changed MD5 for {eclass}")
-						bad = True
-						break
-		if bad:
-			# stale cache entry, don't use.
-			existing = None
-	return existing
 
 # vim: ts=4 sw=4 noet

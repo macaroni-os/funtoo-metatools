@@ -54,44 +54,82 @@ class KitCache:
 	def path(self):
 		return os.path.join(model.temp_path, "kit_cache", f"{self.name}-{self.branch}")
 
-	@property
-	def __setattr__(self, atom, value):
-		self.json_dict["atoms"][atom] = value
+	def __setitem__(self, atom, value):
+		self.json_data["atoms"][atom] = value
 		self.writes.add(atom)
 
-	@property
-	def __getattr__(self, item):
-		return self.json_dict["atoms"][item]
+	def get_atom(self, atom, md5, manifest_md5, merged_eclasses):
+		"""
+		Read from our in-memory kit metadata cache. Return something if available, else None.
+
+		This will validate that our in-memory record has a matching md5 and that md5s of all
+		eclasses match. AND the md5 of the Manifest (if any exists) matches.
+		Otherwise we treat this as a cache miss.
+		"""
+		existing = None
+		if atom in self.json_data["atoms"]:
+			if not self.json_data["atoms"][atom]:
+				model.log.error(f"Kit cache atom {atom} invalid due to empty data")
+				bad = True
+			elif self[atom]["md5"] != md5:
+				model.log.error(f"Kit cache atom {atom} ignored due to non-matching MD5 (if this recurs: non-deterministic ebuild?)")
+				bad = True
+			else:
+				existing = self[atom]
+				bad = False
+				if "manifest_md5" not in existing:
+					model.log.error(f"Kit cache atom {atom} ignored due to missing manifest md5 (incomplete? bug?)")
+					bad = True
+				elif manifest_md5 != existing["manifest_md5"]:
+					model.log.error(f"Kit cache atom {atom} ignored due to non-matching manifest MD5 (if this recurs: may indicate bug.)")
+					bad = True
+				elif existing["eclasses"]:
+					for eclass, md5 in existing["eclasses"]:
+						if eclass not in merged_eclasses.hashes:
+							model.log.warning(f"Kit cache atom {atom} can't be used due to missing eclass {eclass}")
+							bad = True
+							break
+						if merged_eclasses.hashes[eclass] != md5:
+							model.log.warning(f"Kit cache atom {atom} can't be used due to changed MD5 for {eclass}")
+							bad = True
+							break
+			if bad:
+				# stale cache entry, don't use.
+				existing = None
+		return existing
+
+	def __getitem__(self, item):
+		return self.json_data["atoms"][item]
 
 	def keys(self):
-		return self.json_dict["atoms"].keys()
+		return self.json_data["atoms"].keys()
 
 	def save(self, prune=True):
 		remove_keys = set()
 		if prune:
-			all_keys = set(self.keys())
+			all_keys = set(self.json_data["atoms"].keys())
 			remove_keys = all_keys - (self.retrieved_atoms | self.writes)
 			extra_atoms = self.retrieved_atoms - all_keys
 			for key in remove_keys:
-				del self.kit_cache[key]
+				del self.json_data["atoms"][key]
 			if len(extra_atoms):
 				model.log.error("THERE ARE EXTRA ATOMS THAT WERE RETRIEVED BUT NOT IN CACHE!")
 				model.log.error(f"{extra_atoms}")
 		outdata = {
 			"cache_data_version": CACHE_DATA_VERSION,
-			"atoms": self.kit_cache,
+			"atoms": self.json_data["atoms"],
 			"metadata_errors": self.metadata_errors,
 		}
 		model.log.warning(
-			f"Flushed {self.kit.name}. {len(self.kit_cache)} atoms. Removed {len(remove_keys)} keys. {len(self.metadata_errors)} errors.")
+			f"Flushed {self.name}. {len(self.json_data['atoms'])} atoms. Removed {len(remove_keys)} keys. {len(self.metadata_errors)} errors.")
 		with open(self.path, "w") as f:
 			f.write(json.dumps(outdata))
 		error_outpath = os.path.join(
-			model.temp_path, f"metadata-errors-{self.out_tree.name}-{self.out_tree.branch}.log"
+			model.temp_path, f"metadata-errors-{self.name}-{self.branch}.log"
 		)
 		if len(self.metadata_errors):
 			model.metadata_error_stats.append(
-				{"name": self.out_tree.name, "branch": self.out_tree.branch, "count": len(self.metadata_errors)}
+				{"name": self.name, "branch": self.branch, "count": len(self.metadata_errors)}
 			)
 			with open(error_outpath, "w") as f:
 				f.write(json.dumps(self.metadata_errors))
@@ -99,7 +137,7 @@ class KitCache:
 			if os.path.exists(error_outpath):
 				os.unlink(error_outpath)
 
-		error_outpath = os.path.join(model.temp_path, f"warnings-{self.out_tree.name}-{self.out_tree.branch}.log")
+		error_outpath = os.path.join(model.temp_path, f"warnings-{self.name}-{self.branch}.log")
 		if len(self.processing_warnings):
 			model.processing_warning_stats.append(
 				{"name": self.name, "branch": self.branch, "count": len(self.processing_warnings)}
