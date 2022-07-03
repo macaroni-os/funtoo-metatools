@@ -1,7 +1,5 @@
-import logging
 import os
 from collections import defaultdict
-from datetime import timedelta
 
 import yaml
 
@@ -11,8 +9,8 @@ from metatools.context import OverlayLocator, GitRepositoryLocator
 from metatools.fastpull.core import IntegrityDatabase
 from metatools.fastpull.spider import WebSpider
 from metatools.fetch_cache import FileStoreFetchCache
-from metatools.pretty_logging import TornadoPrettyLogFormatter
 from metatools.tree import GitTree
+
 
 class StoreConfig(MinimalConfig):
 	"""
@@ -30,18 +28,7 @@ class StoreConfig(MinimalConfig):
 	logger_name = "metatools.cdn"
 
 	async def initialize(self, fastpull_scope=None, debug=False):
-		self.log = logging.getLogger(self.logger_name)
-		self.log.propagate = False
-		if debug:
-			self.debug = debug
-			self.log.setLevel(logging.DEBUG)
-		else:
-			self.log.setLevel(logging.INFO)
-		channel = logging.StreamHandler()
-		channel.setFormatter(TornadoPrettyLogFormatter())
-		self.log.addHandler(channel)
-		if debug:
-			self.log.warning("DEBUG enabled")
+		await super().initialize(debug=debug)
 		self.fastpull_scope = fastpull_scope
 		self.fetch_cache = FileStoreFetchCache(db_base_path=self.store_path)
 		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
@@ -150,4 +137,3 @@ class AutogenConfig(StoreConfig):
 				repo_name = repof.read().strip()
 		if repo_name is None:
 			self.log.warning("Unable to find %s." % repo_name_path)
-

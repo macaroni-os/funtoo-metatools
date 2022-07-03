@@ -62,8 +62,8 @@ class Application(tornado.web.Application):
 
 	name = "direct.funtoo.org distfile service"
 	handlers = [
-		(r"/by-hash/layout.conf", DirectHashLayoutConfHandler),
-		(r"/by-hash/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler),
+		(r"/distfiles/layout.conf", DirectHashLayoutConfHandler),
+		(r"/distfiles/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f][0-9a-f])/([0-9a-f]*)", DistfileHashHandler),
 	]
 
 	def __init__(self):

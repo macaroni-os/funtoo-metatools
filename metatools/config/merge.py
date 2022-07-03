@@ -59,23 +59,11 @@ class MergeConfig(MinimalConfig):
 	current_source_def = None
 	log = None
 	debug = False
+	logger_name = "metatools.merge"
 
 	async def initialize(self, prod=False, push=False, release=None, create_branches=False, fixups_url=None,
 						 fixups_branch=None, debug=False):
-
-		self.log = logging.getLogger('metatools.merge')
-		self.log.propagate = False
-		if debug:
-			self.debug = debug
-			self.log.setLevel(logging.DEBUG)
-		else:
-			self.log.setLevel(logging.INFO)
-		channel = logging.StreamHandler()
-		channel.setFormatter(TornadoPrettyLogFormatter())
-		self.log.addHandler(channel)
-		if debug:
-			self.log.debug("merge-kits: DEBUG enabled")
-
+		await super().initialize(debug=debug)
 		self.prod = prod
 		self.push = push
 		self.release = release
@@ -119,7 +107,6 @@ class MergeConfig(MinimalConfig):
 			self.git_class = GitTree
 			self.git_kwargs = {"checkout_all_branches": True}
 		self.log.debug("Model initialization complete.")
-		set_model("metatools.merge", self)
 
 	@property
 	def metadata_cache(self):

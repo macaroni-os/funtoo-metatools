@@ -1,30 +1,26 @@
 #!/usr/bin/env python3
 
 import glob
-import json
 import logging
 import os
 import re
 import subprocess
 import traceback
 from collections import defaultdict
+from logging import getLogger
 from shlex import quote
 
 #################################################################################################################
 # This file contains the more 'grizzly' low-level parts of the kit-cache generation code. It is used by
 # funtoo/merge/kit.py.
 #################################################################################################################
-
 #################################################################################################################
 # Increment this constant whenever we update the kit-cache to store new data. If what we retrieve is an earlier
 # version, we'll consider the kit cache stale and regenerate it.
 #################################################################################################################
 
-from logging import getLogger
 logging = getLogger('metatools.merge')
 
-
-CACHE_DATA_VERSION = "1.0.6"
 
 METADATA_LINES = [
 	"DEPEND",
@@ -465,28 +461,6 @@ def do_package_use_line(pkg, def_python, bk_python, imps):
 		else:
 			out = "%s python_single_target_%s python_targets_%s" % (pkg, imps[0], imps[0])
 	return out
-
-
-def load_json(fn, validate=True):
-	"""
-	This is a stand-alone function for loading kit cache JSON data, in case someone like me wants to manually load
-	it and look at it. It will check to make sure the CACHE_DATA_VERSION matches what this code is designed to
-	inspect, by default.
-	"""
-	with open(fn, "r") as f:
-		try:
-			kit_cache_data = json.loads(f.read())
-		except json.decoder.JSONDecodeError as jde:
-			logging.error(f"Unable to parse JSON in {fn}: {jde}")
-			raise jde
-		if validate:
-			if "cache_data_version" not in kit_cache_data:
-				logging.error("JSON invalid or missing cache_data_version.")
-				return None
-			elif kit_cache_data["cache_data_version"] != CACHE_DATA_VERSION:
-				logging.error(f"Cache data version is {kit_cache_data['cache_data_version']} but needing {CACHE_DATA_VERSION}")
-				return None
-		return kit_cache_data
 
 
 def get_atom(kit_gen_obj, atom, md5, manifest_md5):

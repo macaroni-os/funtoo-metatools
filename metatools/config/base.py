@@ -1,51 +1,11 @@
 #!/usr/bin/python3
 
-# Context -> (can we even tweak this? ideally we don't have it reading from args or env directly, so we can!)
-#   Configuration ->
-#     Entry Point (can tweak configuration) ->
-#       Model (gets config) ->
-#         Initialization of subsystem (in process of entry point)
-#                                |
-#                                \ subpop should make entry points accessible by other pieces of code, not just
-#                                  from the command-line.
-#                                  It can do this by having an explicit configuration pipeline rather than leaving
-#                                  things to the setuptools entrypoint to do everything. So we want to model this in
-#                                  code.
-#                                  We should be able to mark subsystems as needing initialization or not.
-#
-#
-# import dyne.org.funtoo.org.metatools.merge as merge
-#
-# config = {
-#	"env" : None,
-#	"user": None,
-#	"config":
-#       "main" : "~/.foo/bar"
-#}
-
-# one-stage launch:
-# await hub.launch(merge, payload={"regen"}, config=None)
-#
-# Even without payloads, you need to launch, because that's how you provide config. The only way you wouldn't need to
-# launch is if you don't have any config.
-#
-# two-stage launch:
-#
-# model = await hub.pre_launch(merge, payload={"regen"}, config)
-# (tweak/interact with model)
-# await merge.launch(model=model)
-#
-# orbit.model <-- the subsystem-specific hub? mapped into namespace?
-# orbit.foo
+import logging
 import os
 
+from metatools.model import set_model
+from metatools.pretty_logging import TornadoPrettyLogFormatter
 from subpop.config import SubPopModel
-
-
-# Components: fastpull: spider
-#             regen. full tree regen?
-#             autogen: a doit run
-#             deepdive: deepdive querying
 
 
 class MinimalConfig(SubPopModel):
@@ -53,10 +13,25 @@ class MinimalConfig(SubPopModel):
 	This class contains configuration settings common to all the metatools plugins and tools.
 	"""
 
-	db_name = "metatools2"
+	logger_name = "metatools"
 
 	def __init__(self):
 		super().__init__()
+
+	async def initialize(self, debug=False):
+		self.log = logging.getLogger(self.logger_name)
+		self.log.propagate = False
+		if debug:
+			self.debug = debug
+			self.log.setLevel(logging.DEBUG)
+		else:
+			self.log.setLevel(logging.INFO)
+		channel = logging.StreamHandler()
+		channel.setFormatter(TornadoPrettyLogFormatter())
+		self.log.addHandler(channel)
+		if debug:
+			self.log.warning("DEBUG enabled")
+		set_model(self.logger_name, self)
 
 	@property
 	def work_path(self):
