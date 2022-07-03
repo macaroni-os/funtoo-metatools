@@ -21,7 +21,7 @@ class ModelWrapper:
 
 
 def set_model(name, model):
-	model_split = model.split()
+	model_split = name.split()
 	if len(model_split) == 1:
 		MODELS[name] = model
 	elif len(model_split) == 2:
