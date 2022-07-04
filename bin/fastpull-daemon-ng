@@ -35,8 +35,8 @@ class DistfileHashHandler(tornado.web.RequestHandler):
 			return
 		# Look directly in the BLOS for the hash:
 		obj = pkgtools.model.blos.read({"hashes.sha512": full_hash})
-		if obj is not None or obj.blob is not None:
-			redirect_subpath = pkgtools.model.blos.get_relative_path_to_root(obj.blob.path)
+		if obj is not None and obj.blob is not None:
+			redirect_subpath = pkgtools.model.blos.backend.get_relative_path_to_root(obj.blob.path)
 			url = redirect_url + "/blos/" + redirect_subpath
 			self.redirect(url, permanent=False)
 		else:
