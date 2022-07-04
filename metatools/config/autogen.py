@@ -21,6 +21,7 @@ class StoreConfig(MinimalConfig):
 	fpos = None
 	fastpull_scope = None
 	fastpull_session = None
+
 	hashes = None
 	blos = None
 	debug = False
@@ -30,10 +31,9 @@ class StoreConfig(MinimalConfig):
 	async def initialize(self, fastpull_scope=None, debug=False):
 		await super().initialize(debug=debug)
 		self.fastpull_scope = fastpull_scope
-		self.fetch_cache = FileStoreFetchCache(db_base_path=self.store_path)
+
 		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
 		self.blos = BaseLayerObjectStore(db_base_path=self.store_path, hashes=self.hashes)
-		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
 		self.fpos = IntegrityDatabase(
 			db_base_path=self.store_path,
 			blos=self.blos,
@@ -43,17 +43,30 @@ class StoreConfig(MinimalConfig):
 		self.fastpull_session = self.fpos.get_scope(self.fastpull_scope)
 
 
-class AutogenConfig(StoreConfig):
+class StoreSpiderConfig(StoreConfig):
+
+	spider = None
+	logger_name = 'metatools.spider'
+
+	async def initialize(self, fastpull_scope=None, debug=False):
+		await super().initialize(fastpull_scope=fastpull_scope, debug=debug)
+		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
+		# This turns on periodic logging of active downloads (to get rid of 'dots')
+		await self.spider.start_asyncio_tasks()
+
+
+
+class AutogenConfig(StoreSpiderConfig):
 	"""
 	This class is used for the autogen workflow -- i.e. the 'doit' command.
 	"""
+
 	fetch_cache = None
 	fetch_cache_interval = None
 	manifest_lines = defaultdict(set)
 	fetch_attempts = 3
 	config = None
 	kit_spy = None
-	spider = None
 	kit_fixups = None
 	filter = None
 	filter_cat = None
@@ -80,6 +93,8 @@ class AutogenConfig(StoreConfig):
 	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False, fixups_url=None, fixups_branch=None, fast=None, cat=None, pkg=None, autogens=None):
 		await super().initialize(fastpull_scope=fastpull_scope, debug=debug)
 
+		self.fetch_cache = FileStoreFetchCache(db_base_path=self.store_path)
+
 		# Process specified autogens instead of recursing:
 		self.autogens = autogens
 
@@ -89,18 +104,11 @@ class AutogenConfig(StoreConfig):
 		if self.filter_cat or self.filter_pkg:
 			self.filter = True
 
-		self.log.debug(f"AutogenConfig received args: fetch_cache_interval={fetch_cache_interval}, fastpull_scope={fastpull_scope}, debug={debug}")
-
 		self.config = yaml.safe_load(self.get_file("autogen"))
 		# Set to empty values if non-existent:
 		if self.config is None:
 			self.config = {}
 
-		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
-		# This turns on periodic logging of active downloads (to get rid of 'dots')
-		await self.spider.start_asyncio_tasks()
-
-		self.log.debug(f"Fetch cache interval set to {self.fetch_cache_interval} after model init")
 		self.locator = OverlayLocator()
 		self.current_repo = GitRepositoryLocator()
 		current_repo_name = self.current_repo.root.split("/")[-1]

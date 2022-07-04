@@ -58,6 +58,9 @@ class KitCache:
 		self.json_data["atoms"][atom] = value
 		self.writes.add(atom)
 
+	def items(self):
+		yield from self.json_data["atoms"].items()
+
 	def get_atom(self, atom, md5, manifest_md5, merged_eclasses):
 		"""
 		Read from our in-memory kit metadata cache. Return something if available, else None.

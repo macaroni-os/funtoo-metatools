@@ -1,4 +1,3 @@
-import logging
 import os
 from collections import OrderedDict, defaultdict
 from concurrent.futures import as_completed
@@ -7,15 +6,13 @@ from datetime import datetime
 from enum import Enum
 
 import yaml
-from subpop.config import ConfigurationError
 
 from metatools.config.base import MinimalConfig
 from metatools.context import GitRepositoryLocator
-from metatools.pretty_logging import TornadoPrettyLogFormatter
 from metatools.tree import AutoCreatedGitTree
 from metatools.tree import GitTree
 from metatools.yaml_util import YAMLReader
-from metatools.model import set_model
+from subpop.config import ConfigurationError
 
 """
 This file contains classes used to create an object model for the contents of a releases/<release>.yaml file,
@@ -45,9 +42,6 @@ class MergeConfig(MinimalConfig):
 	git_kwargs = {}
 	fixups_url = None
 	fixups_branch = None
-
-	# Not sure if this is used:
-	_third_party_mirrors = None
 
 	# Things used during runtime processing:
 	kit_fixups: GitTree = None

@@ -1,0 +1,105 @@
+#!/usr/bin/env python3
+
+import argparse
+import ssl
+import sys
+
+from metatools.fastpull.spider import FetchRequest, FetchError, Download
+from metatools.kit_cache import KitCache
+from metatools.store import StoreObject
+from subpop.hub import Hub
+
+from metatools.config.autogen import StoreSpiderConfig
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
+CLI_CONFIG = {
+	"kit": {"default": None, "action": "store", "positional": True, "help": "Kit to process"},
+	"branch": {"default": None, "action": "store", "positional": True, "help": "Kit branch to process"},
+	"debug": {"default": False, "action": "store_true"},
+}
+
+
+def fetch_completion_callback(download: Download) -> StoreObject:
+	"""
+	This method is intended to be called *once* when an actual in-progress download of a tarball (by
+	the Spider) has completed. It performs several important finalization actions upon successful
+	download:
+
+	1. The downloaded file will be stored in the BLOS, and the resultant BLOSObject will be assigned to
+	``response.blos_object``.
+
+	2. The Spider will be told to clean up the temporary file, as it will not be accessed directly by
+	   anyone -- only the permanent file inserted into the BLOS will be handed back (via
+	   ``response.blos_object``.
+
+	We pass this to any Download() object we instantiate so that it has proper post-actions defined
+	for it.
+	"""
+
+	store_obj: StoreObject = pkgtools.model.blos.insert_download(download)
+	pkgtools.model.spider.cleanup(download)
+	return store_obj
+
+def parse_args():
+	ap = argparse.ArgumentParser()
+	for arg, kwargs in CLI_CONFIG.items():
+		if "positional" in kwargs and kwargs["positional"]:
+			new_kwargs = kwargs.copy()
+			del new_kwargs["positional"]
+			ap.add_argument(arg, **new_kwargs)
+		else:
+			if "os" in kwargs:
+				del kwargs["os"]
+			ap.add_argument("--" + arg, **kwargs)
+	return ap.parse_args()
+
+
+async def main_thread():
+	hub.OPT = parse_args()
+	await pkgtools.launch(StoreSpiderConfig)
+	kit_cache = KitCache(name=hub.OPT.kit, branch=hub.OPT.branch)
+	kit_cache.load()
+	for atom, pkg_dict in kit_cache.items():
+
+		# Filter out duplicate SHAs. Yes, this can and does happen with golang having multiple different filenames that are the same file.
+		shas = set()
+		if "files" in pkg_dict:
+			for file in pkg_dict["files"]:
+				obj = pkgtools.model.blos.read({"hashes.sha512": file['hashes']['sha512']})
+				if obj is None:
+					pkgtools.model.log.debug(f"DICT {pkg_dict}")
+					url = file['src_uri'][0]
+					if url.startswith("mirror://"):
+						pkgtools.model.log.warning(f"Skipping mirror: {url}")
+						continue
+					pkgtools.model.log.info(f"Fetching {url}")
+					freq = FetchRequest(url=url, expected_hashes={'sha512': file['hashes']['sha512']})
+					try:
+						fresp = await pkgtools.model.spider.download(freq, completion_pipeline=[fetch_completion_callback])
+					except ssl.SSLError as ssle:
+						pkgtools.model.log.warning(f"SSL error for {url}: {ssle}")
+						continue
+					except FetchError as fe:
+						pkgtools.model.log.warning(f"Fetch error for {url}: {fe}")
+						continue
+					if fresp is not None:
+						pkgtools.model.log.info(f"Fetch OK: {url}")
+					else:
+						pkgtools.model.log.error(f"Fetch FAIL: {url}")
+
+					shas.add(file['hashes']['sha512'])
+		#if shas:
+		#	print(atom)
+		#	for sha in shas:
+		#		print(">>>", sha)
+		#	print()
+
+if __name__ == "__main__":
+	success = hub.LOOP.run_until_complete(main_thread())
+	if not success:
+		sys.exit(1)
+
+# vim: ts=4 sw=4 noet
