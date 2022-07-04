@@ -68,12 +68,24 @@ async def main_thread():
 		shas = set()
 		if "files" in pkg_dict:
 			for file in pkg_dict["files"]:
+				if "hashes" not in file:
+					pkgtools.model.log.warning(f"No hashes for {file}")
+					continue
+				elif "sha512" not in file['hashes']:
+					pkgtools.model.log.warning(f"No sha512 for {file}")
+					continue
 				obj = pkgtools.model.blos.read({"hashes.sha512": file['hashes']['sha512']})
 				if obj is None:
 					pkgtools.model.log.debug(f"DICT {pkg_dict}")
+					if "src_uri" not in file:
+						pkgtools.model.log.warning(f"No src_uri for file: {file}")
+						continue
 					url = file['src_uri'][0]
 					if url.startswith("mirror://"):
 						pkgtools.model.log.warning(f"Skipping mirror: {url}")
+						continue
+					elif not url.startswith("http://") or not url.startswith("https://") or not url.startswith("ftp://"):
+						# likely a fetch-restricted file with just the filename
 						continue
 					pkgtools.model.log.info(f"Fetching {url}")
 					freq = FetchRequest(url=url, expected_hashes={'sha512': file['hashes']['sha512']})
