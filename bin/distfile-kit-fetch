@@ -43,6 +43,7 @@ def fetch_completion_callback(download: Download) -> StoreObject:
 	pkgtools.model.spider.cleanup(download)
 	return store_obj
 
+
 def parse_args():
 	ap = argparse.ArgumentParser()
 	for arg, kwargs in CLI_CONFIG.items():
@@ -55,6 +56,25 @@ def parse_args():
 				del kwargs["os"]
 			ap.add_argument("--" + arg, **kwargs)
 	return ap.parse_args()
+
+
+mirr_map = {
+	"gnu": "https://ftpmirror.gnu.org",
+	"gnupg": "ftp://ftp.gnupg.org/gcrypt",
+	"debian": "https://ftp.us.debian.org/debian",
+	"sourceforge": "https://download.sourceforge.net",
+	"gentoo": "https://gentoo.osuosl.org/distfiles",
+}
+
+
+def mini_mirror_expander(url):
+	url = url[:len("mirror://")]
+	mirr_name = url.split("/")[0]
+	path = "/".join(url.split("/")[1:])
+	if mirr_name in mirr_map:
+		return mirr_map[mirr_name] + "/" + path
+	else:
+		return None
 
 
 async def main_thread():
@@ -82,8 +102,12 @@ async def main_thread():
 						continue
 					url = file['src_uri'][0]
 					if url.startswith("mirror://"):
-						pkgtools.model.log.warning(f"Skipping mirror: {url}")
-						continue
+						new_url = mini_mirror_expander(url)
+						if new_url is None:
+							pkgtools.model.log.warning(f"Skipping mirror: {new_url}")
+							continue
+						else:
+							url = new_url
 					elif not url.startswith("http://") or not url.startswith("https://") or not url.startswith("ftp://"):
 						# likely a fetch-restricted file with just the filename
 						continue
@@ -103,11 +127,12 @@ async def main_thread():
 						pkgtools.model.log.error(f"Fetch FAIL: {url}")
 
 					shas.add(file['hashes']['sha512'])
-		#if shas:
-		#	print(atom)
-		#	for sha in shas:
-		#		print(">>>", sha)
-		#	print()
+	# if shas:
+	#	print(atom)
+	#	for sha in shas:
+	#		print(">>>", sha)
+	#	print()
+
 
 if __name__ == "__main__":
 	success = hub.LOOP.run_until_complete(main_thread())
