@@ -64,7 +64,11 @@ class KitCache:
 
 		This will validate that our in-memory record has a matching md5 and that md5s of all
 		eclasses match. AND the md5 of the Manifest (if any exists) matches.
-		Otherwise we treat this as a cache miss.
+		Otherwise, we treat this as a cache miss.
+
+		This method is really designed to be used by the KitGenerator and not by any stand-alone
+		tools, as it requires a ``merged_eclasses`` object to be passed to it which is used to
+		validate that the cache item is current.
 		"""
 		existing = None
 		if atom in self.json_data["atoms"]:
@@ -86,11 +90,11 @@ class KitCache:
 				elif existing["eclasses"]:
 					for eclass, md5 in existing["eclasses"]:
 						if eclass not in merged_eclasses.hashes:
-							model.log.warning(f"Kit cache atom {atom} can't be used due to missing eclass {eclass}")
+							model.log.warning(f"Kit cache atom {atom} can't be used due to missing eclass {eclass}.eclass")
 							bad = True
 							break
 						if merged_eclasses.hashes[eclass] != md5:
-							model.log.warning(f"Kit cache atom {atom} can't be used due to changed MD5 for {eclass}")
+							model.log.warning(f"Kit cache atom {atom} can't be used due to changed MD5 for {eclass}.eclass")
 							bad = True
 							break
 			if bad:
