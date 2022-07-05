@@ -59,16 +59,18 @@ def parse_args():
 
 
 mirr_map = {
-	"gnu": "https://ftpmirror.gnu.org",
-	"gnupg": "http://ftp.gnupg.org/gcrypt",
-	"debian": "https://ftp.us.debian.org/debian",
-	"sourceforge": "https://download.sourceforge.net",
+	"gnu": "http://ftpmirror.gnu.org",
+	"gnupg": "http://mirrors.dotsrc.org/gcrypt",
+	"debian": "http://ftp.us.debian.org/debian",
+	"sourceforge": "http://download.sourceforge.net",
 	"gentoo": "https://gentoo.osuosl.org/distfiles",
+	"apache": "http://apache.osuosl.org",
+	"kde": "https://download.kde.org"
 }
 
 
 def mini_mirror_expander(url):
-	url = url[:len("mirror://")]
+	url = url[len("mirror://"):]
 	mirr_name = url.split("/")[0]
 	path = "/".join(url.split("/")[1:])
 	if mirr_name in mirr_map:
@@ -104,7 +106,7 @@ async def main_thread():
 					if url.startswith("mirror://"):
 						new_url = mini_mirror_expander(url)
 						if new_url is None:
-							pkgtools.model.log.warning(f"Skipping mirror: {new_url}")
+							pkgtools.model.log.warning(f"Skipping mirror: {url}")
 							continue
 						else:
 							url = new_url
@@ -127,11 +129,13 @@ async def main_thread():
 						pkgtools.model.log.error(f"Fetch FAIL: {url}")
 
 					shas.add(file['hashes']['sha512'])
-	# if shas:
-	#	print(atom)
-	#	for sha in shas:
-	#		print(">>>", sha)
-	#	print()
+
+
+# if shas:
+#	print(atom)
+#	for sha in shas:
+#		print(">>>", sha)
+#	print()
 
 
 if __name__ == "__main__":
