@@ -60,7 +60,7 @@ def parse_args():
 
 mirr_map = {
 	"gnu": "https://ftpmirror.gnu.org",
-	"gnupg": "ftp://ftp.gnupg.org/gcrypt",
+	"gnupg": "http://ftp.gnupg.org/gcrypt",
 	"debian": "https://ftp.us.debian.org/debian",
 	"sourceforge": "https://download.sourceforge.net",
 	"gentoo": "https://gentoo.osuosl.org/distfiles",

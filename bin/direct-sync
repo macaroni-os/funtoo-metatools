@@ -1,0 +1,2 @@
+#!/bin/bash
+rsync -av ~/repo_tmp/stores/blos/ cdn@direct.funtoo.org:repo_tmp/stores/blos/
