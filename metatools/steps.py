@@ -45,7 +45,7 @@ class ThirdPartyMirrors(MergeStep):
 	async def run(self, kit_gen):
 		orig = "%s/profiles/thirdpartymirrors" % kit_gen.out_tree.root
 		new = "%s/profiles/thirdpartymirrors.new" % kit_gen.out_tree.root
-		mirrors = "https://fastpull-us.funtoo.org/distfiles"
+		mirrors = "https://direct.funtoo.org"
 		a = open(orig, "r")
 		b = open(new, "w")
 		for line in a:
