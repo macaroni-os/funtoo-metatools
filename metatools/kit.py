@@ -408,6 +408,16 @@ class KitGenerator:
 			if found:
 				run_shell(f"cp {found} {self.out_tree.root}/licenses", logger=model.log)
 
+	async def distfile_scan(self):
+		self.kit_cache.load()
+		# We can now perform the steps in distfile-kit-fetch as we have access to the kit-cache.
+		# TODO: add code here
+		# TODO: add extra code here to log any issues. We should temp. hook into the log handler
+		#       to re-route any messages to an appropriate log file. This would actually be a good
+		#       general idea as we don't have this mechanism in the autogen process right now
+		#       (separated logs don't go to disk.) So maybe we want to implement this outside this
+		#		method, in the KitJob.
+
 	async def reposcan(self):
 		self.fetch_kit()
 		self.gen_cache()
@@ -657,16 +667,22 @@ class KitExecutionPool:
 class MetaRepoJobController:
 	"""
 	This class is designed to run the full meta-repo and kit regeneration process -- in other words, the entire
-	technical flow of 'merge-kits' when it creates or updates kits and meta-repo.
+	technical flow of 'merge-kits' when it creates or updates kits and meta-repo. It is designed to "go through"
+	all the kits in a release.
 	"""
 
 	master_jobs = {}
 	kit_jobs = []
 	model = None
 	meta_repo = None
+	# Does this job controller update meta-repo? If so, this get set to True, otherwise False.
+	write = False
 
-	def __init__(self, model):
+	def __init__(self, model, write=None):
 		self.model = model
+		if write:
+			self.write = write
+		assert isinstance(self.write, bool)
 
 	def cleanup_error_logs(self):
 		# This should be explicitly called at the beginning of every command that generates metadata for kits:
@@ -769,6 +785,9 @@ class MetaRepoJobController:
 	async def reposcan(self):
 		await self.process_all_kits_in_release(method="reposcan")
 
+	async def distfile_sync(self):
+		await self.process_all_kits_in_release(method="distfile_scan")
+
 	async def generate(self):
 
 		meta_repo_config = model.release_yaml.get_repo_config("meta-repo")
@@ -789,6 +808,9 @@ class MetaRepoJobController:
 		self.cleanup_error_logs()
 
 		await self.process_all_kits_in_release(method="generate")
+
+		if not self.write:
+			return
 
 		# Create meta-repo commit referencing our updated kits:
 		self.generate_metarepo_metadata()
