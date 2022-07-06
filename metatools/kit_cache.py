@@ -13,7 +13,6 @@ model = get_model("metatools")
 
 
 class KitCache:
-
 	json_data = None
 
 	def __init__(self, name, branch):
@@ -28,6 +27,8 @@ class KitCache:
 	def load(self):
 		if os.path.exists(self.path):
 			self.json_data = self.load_json()
+		else:
+			self.json_data = {"atoms": {}}
 
 	def load_json(self, validate=True):
 		"""
@@ -46,7 +47,8 @@ class KitCache:
 					model.log.error("JSON invalid or missing cache_data_version.")
 					return None
 				elif kit_cache_data["cache_data_version"] != CACHE_DATA_VERSION:
-					model.log.error(f"Cache data version is {kit_cache_data['cache_data_version']} but needing {CACHE_DATA_VERSION}")
+					model.log.error(
+						f"Cache data version is {kit_cache_data['cache_data_version']} but needing {CACHE_DATA_VERSION}")
 					return None
 			return kit_cache_data
 
@@ -79,7 +81,8 @@ class KitCache:
 				model.log.error(f"Kit cache atom {atom} invalid due to empty data")
 				bad = True
 			elif self[atom]["md5"] != md5:
-				model.log.error(f"Kit cache atom {atom} ignored due to non-matching MD5 (if this recurs: non-deterministic ebuild?)")
+				model.log.error(
+					f"Kit cache atom {atom} ignored due to non-matching MD5 (if this recurs: non-deterministic ebuild?)")
 				bad = True
 			else:
 				existing = self[atom]
@@ -88,16 +91,19 @@ class KitCache:
 					model.log.error(f"Kit cache atom {atom} ignored due to missing manifest md5 (incomplete? bug?)")
 					bad = True
 				elif manifest_md5 != existing["manifest_md5"]:
-					model.log.error(f"Kit cache atom {atom} ignored due to non-matching manifest MD5 (if this recurs: may indicate bug.)")
+					model.log.error(
+						f"Kit cache atom {atom} ignored due to non-matching manifest MD5 (if this recurs: may indicate bug.)")
 					bad = True
 				elif existing["eclasses"]:
 					for eclass, md5 in existing["eclasses"]:
 						if eclass not in merged_eclasses.hashes:
-							model.log.warning(f"Kit cache atom {atom} can't be used due to missing eclass {eclass}.eclass")
+							model.log.warning(
+								f"Kit cache atom {atom} can't be used due to missing eclass {eclass}.eclass")
 							bad = True
 							break
 						if merged_eclasses.hashes[eclass] != md5:
-							model.log.warning(f"Kit cache atom {atom} can't be used due to changed MD5 for {eclass}.eclass")
+							model.log.warning(
+								f"Kit cache atom {atom} can't be used due to changed MD5 for {eclass}.eclass")
 							bad = True
 							break
 			if bad:
