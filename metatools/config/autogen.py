@@ -22,7 +22,7 @@ class StoreConfig(MinimalConfig):
 	fastpull_scope = None
 	fastpull_session = None
 
-	hashes = None
+	hashes = {'sha512', 'size', 'blake2b', 'sha256'}
 	blos = None
 	debug = False
 	log = None
@@ -32,8 +32,6 @@ class StoreConfig(MinimalConfig):
 	async def initialize(self, fastpull_scope=None, debug=False):
 		await super().initialize(debug=debug)
 		self.fastpull_scope = fastpull_scope
-
-		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
 		self.blos = BaseLayerObjectStore(db_base_path=self.store_path, hashes=self.hashes)
 		# This will need a spider (or None) to work
 		self.fpos = IntegrityDatabase(
