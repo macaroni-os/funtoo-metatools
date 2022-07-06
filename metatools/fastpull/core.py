@@ -133,5 +133,6 @@ class IntegrityDatabase:
 		"""
 
 		store_obj: StoreObject = self.blos.insert_download(download)
-		self.spider.cleanup(download)
+		if self.spider:
+			self.spider.cleanup(download)
 		return store_obj

@@ -27,6 +27,7 @@ class StoreConfig(MinimalConfig):
 	debug = False
 	log = None
 	logger_name = "metatools.cdn"
+	spider = None
 
 	async def initialize(self, fastpull_scope=None, debug=False):
 		await super().initialize(debug=debug)
@@ -34,6 +35,7 @@ class StoreConfig(MinimalConfig):
 
 		self.hashes = {'sha512', 'size', 'blake2b', 'sha256'}
 		self.blos = BaseLayerObjectStore(db_base_path=self.store_path, hashes=self.hashes)
+		# This will need a spider (or None) to work
 		self.fpos = IntegrityDatabase(
 			db_base_path=self.store_path,
 			blos=self.blos,
@@ -45,12 +47,12 @@ class StoreConfig(MinimalConfig):
 
 class StoreSpiderConfig(StoreConfig):
 
-	spider = None
+
 	logger_name = 'metatools.spider'
 
 	async def initialize(self, fastpull_scope=None, debug=False):
-		await super().initialize(fastpull_scope=fastpull_scope, debug=debug)
 		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
+		await super().initialize(fastpull_scope=fastpull_scope, debug=debug)
 		# This turns on periodic logging of active downloads (to get rid of 'dots')
 		await self.spider.start_asyncio_tasks()
 
