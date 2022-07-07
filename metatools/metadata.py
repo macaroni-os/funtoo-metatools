@@ -21,7 +21,6 @@ from shlex import quote
 
 logging = getLogger('metatools.merge')
 
-
 METADATA_LINES = [
 	"DEPEND",
 	"RDEPEND",
@@ -76,7 +75,7 @@ def strip_rev(s):
 	num_strip = s.rstrip("0123456789")
 	if num_strip != s and num_strip[-2:] == "-r":
 		rev_strip = num_strip[:-2]
-		rev = s[len(num_strip) :]
+		rev = s[len(num_strip):]
 		return rev_strip, rev
 	return s, None
 
@@ -232,7 +231,7 @@ def get_catpkg_relations_from_depstring(depstring):
 		has_version = False
 		for op in [">=", "<=", ">", "<", "=", "~"]:
 			if part.startswith(op):
-				part = part[len(op) :]
+				part = part[len(op):]
 				has_version = True
 				break
 
@@ -394,6 +393,8 @@ async def get_python_use_lines(kit_gen, catpkg, cpv_list, cur_tree, def_python, 
 	#       Best solution would be to move it to the release metadata.
 	ebs = {}
 	for cpv in cpv_list:
+		if "metadata" not in kit_gen.kit_cache[cpv]:
+			continue
 		metadata = kit_gen.kit_cache[cpv]["metadata"]
 		if not metadata:
 			imps = []
@@ -461,6 +462,5 @@ def do_package_use_line(pkg, def_python, bk_python, imps):
 		else:
 			out = "%s python_single_target_%s python_targets_%s" % (pkg, imps[0], imps[0])
 	return out
-
 
 # vim: ts=4 sw=4 noet
