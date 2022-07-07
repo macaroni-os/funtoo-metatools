@@ -117,7 +117,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	skip_filters = factor_filters(include)
 
 	if not release_data:
-		release_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/releases", is_json=True)
+		release_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/releases?per_page=100", is_json=True)
 
 	versions_and_release_elements = []
 
@@ -172,7 +172,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		version, release = versions_and_release_elements[0]
 		# We want to grab the default tarball for the associated tag:
 		desired_tag = release['tag_name']
-		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags", is_json=True)
+		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100", is_json=True)
 		sha = None
 		for tag_ent in tag_data:
 			if tag_ent["name"] != desired_tag:
@@ -256,7 +256,7 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, trans
 	if matcher is None:
 		matcher = RegexMatcher()
 	if tag_data is None:
-		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags", is_json=True)
+		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100", is_json=True)
 	versions_and_tag_elements = list(iter_tag_versions(tag_data, select=select, filter=filter, matcher=matcher, transform=transform, version=version))
 	if not len(versions_and_tag_elements):
 		return
