@@ -198,7 +198,7 @@ class KitGenerator:
 			prelim = set(infos["LICENSE"].split()) - {'||', ')', '('}
 			return {i for i in prelim if not i.endswith('?')}
 
-	def get_ebuild_metadata(self, merged_eclasses, ebuild_path):
+	def get_ebuild_metadata(self, merged_eclasses, ebuild_path) -> set:
 		"""
 		This function will grab metadata from a single ebuild pointed to by `ebuild_path` and
 		return it as a dictionary.
@@ -236,7 +236,7 @@ class KitGenerator:
 			env, infos = self.gen_ebuild_metadata(atom, merged_eclasses, ebuild_path)
 			if infos is None:
 				self.kit_cache[atom] = {}
-				return {}
+				return set()
 
 		eclass_out = ""
 		eclass_tuples = []
