@@ -52,7 +52,7 @@ async def main_thread(args):
 		fixups_branch=args.fixups_branch,
 		debug=args.debug
 	)
-	controller = MetaRepoJobController(model)
+	controller = MetaRepoJobController(model, write=True)
 	try:
 		await controller.generate()
 	except KeyboardInterrupt:
