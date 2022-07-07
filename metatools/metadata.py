@@ -315,7 +315,7 @@ def extract_ebuild_metadata(kit_gen_obj, atom, ebuild_path=None, env=None, eclas
 		return infos
 	except (FileNotFoundError, IndexError, ValueError) as ex:
 		exc_string = (''.join(traceback.format_exception(type(ex), value=ex, tb=ex.__traceback__)))
-		kit_gen_obj.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": err_out, "exception": exc_string}
+		kit_gen_obj.kit_cache.metadata_errors[atom] = {"status": "ebuild.sh failure", "output": err_out, "exception": exc_string}
 		logging.error(f"{atom} metadata error: {err_out}")
 		return None
 

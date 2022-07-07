@@ -62,7 +62,7 @@ async def main_thread(args):
 
 CLI_CONFIG = {
 	"fixups_url": {"type": str},
-	"fixups_branch" : {"type": str, "default": "master"},
+	"fixups_branch": {"type": str, "default": "master"},
 	"force": {"action": "store_true", "default": False},
 	"nopush": {"action": "store_true", "default": False},
 	"prod": {"action": "store_true", "default": False},
