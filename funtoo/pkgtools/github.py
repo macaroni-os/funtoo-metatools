@@ -90,6 +90,7 @@ def fetch_release_data(hub, github_user, github_repo):
 def fetch_tag_data(hub, github_user, github_repo):
 	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100", is_json=True)
 
+
 def match_tag_name(tag_name, select=None, filter=None, matcher=None, transform=None):
 	if transform:
 		tag_name = transform(tag_name)
