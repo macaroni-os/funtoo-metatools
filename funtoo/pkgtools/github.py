@@ -91,7 +91,7 @@ def fetch_tag_data(hub, github_user, github_repo):
 	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100", is_json=True)
 
 
-async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, filter=None, matcher=None, version=None, include=None, sort: SortMethod = SortMethod.VERSION, **kwargs):
+async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, filter=None, matcher=None, transform=None, version=None, include=None, sort: SortMethod = SortMethod.VERSION, **kwargs):
 	"""
 	This method will query the GitHub API for releases for a specific project, find the most recent
 	release, and then return a dictionary containing the keys "version", "artifacts" and "sha", which
@@ -115,6 +115,10 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	``filter`` can be either a regex string or a list of regex strings. Anything that matches
 	this string or strings will be excluded.
 
+	``transform`` is a lambda/single-argument function that if specified will be used to
+	arbitrarily modify the tag before it is searched for versions, or for the ``select``
+	regex.
+
 	``version`` may contain a version string we are looking for specifically. We currently look in the
 	tag_name of the release.
 
@@ -136,6 +140,8 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		if any(release[skip] for skip in skip_filters):
 			continue
 		the_thing = release['tag_name']
+		if transform:
+			the_thing = transform(the_thing)
 		if select and not re.match(select, the_thing):
 			continue
 		if filter:
