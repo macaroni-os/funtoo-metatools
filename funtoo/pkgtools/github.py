@@ -90,6 +90,21 @@ def fetch_release_data(hub, github_user, github_repo):
 def fetch_tag_data(hub, github_user, github_repo):
 	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100", is_json=True)
 
+def match_tag_name(tag_name, select=None, filter=None, matcher=None, transform=None):
+	if transform:
+		tag_name = transform(tag_name)
+	if select and not re.match(select, tag_name):
+		return None
+	if filter:
+		if isinstance(filter, str):
+			if re.match(filter, tag_name):
+				return None
+		elif isinstance(filter, list):
+			for each_filter in filter:
+				if re.match(each_filter, tag_name):
+					return None
+	return matcher.match(tag_name)
+
 
 async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, filter=None, matcher=None, transform=None, version=None, include=None, sort: SortMethod = SortMethod.VERSION, **kwargs):
 	"""
@@ -140,19 +155,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		if any(release[skip] for skip in skip_filters):
 			continue
 		the_thing = release['tag_name']
-		if transform:
-			the_thing = transform(the_thing)
-		if select and not re.match(select, the_thing):
-			continue
-		if filter:
-			if isinstance(filter, str):
-				if re.match(filter, the_thing):
-					continue
-			elif isinstance(filter, list):
-				for each_filter in filter:
-					if re.match(each_filter, the_thing):
-						continue
-		match = matcher.match(the_thing)
+		match = match_tag_name(the_thing, select, filter, matcher, transform)
 		if match:
 			if version is not None and match != version:
 				continue
@@ -235,19 +238,7 @@ def iter_tag_versions(tags_list, select=None, filter=None, matcher=None, transfo
 		matcher = RegexMatcher()
 	for tag_data in tags_list:
 		tag = tag_data['name']
-		if transform:
-			tag = transform(tag)
-		if select and not re.match(select, tag):
-			continue
-		if filter:
-			if isinstance(filter, str):
-				if re.match(filter, tag):
-					continue
-			elif isinstance(filter, list):
-				for each_filter in filter:
-					if re.match(each_filter, tag):
-						continue
-		match = matcher.match(tag)
+		match = match_tag_name(tag, select, filter, matcher, transform)
 		if match:
 			if version:
 				if match != version:
