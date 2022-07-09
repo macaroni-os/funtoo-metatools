@@ -177,13 +177,15 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 
 	if tarball:
 		for version, release in versions_and_release_elements:
+			tag_name = release["tag_name"]
 			# We are looking for a specific tarball:
-			archive_name = tarball.format(version=version, tag=release["tag_name"])
+			archive_name = tarball.format(version=version, tag=tag_name)
 			for asset in release['assets']:
 				if asset['name'] == archive_name:
 					return {
 						"version": version,
-						"artifacts": [hub.pkgtools.ebuild.Artifact(url=asset['browser_download_url'], final_name=archive_name)]
+						"artifacts": [hub.pkgtools.ebuild.Artifact(url=asset['browser_download_url'], final_name=archive_name)],
+						"tag": tag_name,
 					}
 	else:
 		version, release = versions_and_release_elements[0]
@@ -209,7 +211,8 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		return {
 			"version": version,
 			"artifacts": [hub.pkgtools.ebuild.Artifact(url=url, final_name=f'{github_repo}-{version}-{sha[:7]}.tar.gz')],
-			"sha": sha
+			"sha": sha,
+			"tag": desired_tag,
 		}
 
 
