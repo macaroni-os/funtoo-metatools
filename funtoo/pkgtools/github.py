@@ -154,8 +154,8 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	for release in release_data:
 		if any(release[skip] for skip in skip_filters):
 			continue
-		the_thing = release['tag_name']
-		match = match_tag_name(the_thing, select, filter, matcher, transform)
+		tag_name = release['tag_name']
+		match = match_tag_name(tag_name, select, filter, matcher, transform)
 		if match:
 			if version is not None and match != version:
 				continue
@@ -178,7 +178,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	if tarball:
 		for version, release in versions_and_release_elements:
 			# We are looking for a specific tarball:
-			archive_name = tarball.format(version=version)
+			archive_name = tarball.format(version=version, tag=release["tag_name"])
 			for asset in release['assets']:
 				if asset['name'] == archive_name:
 					return {
