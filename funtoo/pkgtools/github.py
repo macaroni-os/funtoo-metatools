@@ -83,6 +83,14 @@ def factor_filters(include):
 	return valid_filters - include
 
 
+def fetch_release_data(hub, github_user, github_repo):
+	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/releases?per_page=100", is_json=True)
+
+
+def fetch_tag_data(hub, github_user, github_repo):
+	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100", is_json=True)
+
+
 async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, filter=None, matcher=None, version=None, include=None, sort: SortMethod = SortMethod.VERSION, **kwargs):
 	"""
 	This method will query the GitHub API for releases for a specific project, find the most recent
@@ -117,7 +125,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	skip_filters = factor_filters(include)
 
 	if not release_data:
-		release_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/releases?per_page=100", is_json=True)
+		release_data = await fetch_release_data(hub, github_user, github_repo)
 
 	versions_and_release_elements = []
 
@@ -256,7 +264,7 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, trans
 	if matcher is None:
 		matcher = RegexMatcher()
 	if tag_data is None:
-		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100", is_json=True)
+		tag_data = await fetch_tag_data(hub, github_user, github_repo)
 	versions_and_tag_elements = list(iter_tag_versions(tag_data, select=select, filter=filter, matcher=matcher, transform=transform, version=version))
 	if not len(versions_and_tag_elements):
 		return
