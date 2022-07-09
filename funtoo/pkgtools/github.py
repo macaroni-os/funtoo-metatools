@@ -290,5 +290,6 @@ async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, fil
 	return {
 		"version": version,
 		"artifacts": [hub.pkgtools.ebuild.Artifact(url=url, final_name=f'{github_repo}-{version}-{sha[:7]}.tar.gz')],
-		"sha": sha
+		"sha": sha,
+		"tag": tag_data["name"],
 	}
