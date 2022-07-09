@@ -44,7 +44,7 @@ class RegexMatcher(Matcher):
 	This is the default matcher used by these functions.
 	"""
 
-	def __init__(self, regex='([0-9.]+)'):
+	def __init__(self, regex='([\d.]+(?:_p\d+)?(?:-r\d+)?)'):
 		self.regex = regex
 
 	def match(self, input: str):
