@@ -43,7 +43,7 @@ def pypi_metadata_init(local_pkginfo, json_dict):
 			local_el = el
 		local_pkginfo[local_el] = json_dict["info"][el] if el in json_dict["info"] else ""
 		if not isinstance(local_pkginfo[local_el], str):
-			local_pkginfo[el] = ""
+			local_pkginfo[local_el] = ""
 
 	if local_pkginfo["project_url"] != "":
 		local_pkginfo["homepage"] += " " + local_pkginfo["project_url"]
