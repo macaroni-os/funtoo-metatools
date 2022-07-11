@@ -44,7 +44,7 @@ class RegexMatcher(Matcher):
 	This is the default matcher used by these functions.
 	"""
 
-	def __init__(self, regex='([0-9.]+)'):
+	def __init__(self, regex='([\d.]+(?:_p\d+)?(?:-r\d+)?)'):
 		self.regex = regex
 
 	def match(self, input: str):
@@ -83,7 +83,31 @@ def factor_filters(include):
 	return valid_filters - include
 
 
-async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, filter=None, matcher=None, version=None, include=None, sort: SortMethod = SortMethod.VERSION, **kwargs):
+def fetch_release_data(hub, github_user, github_repo):
+	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/releases?per_page=100", is_json=True)
+
+
+def fetch_tag_data(hub, github_user, github_repo):
+	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100", is_json=True)
+
+
+def match_tag_name(tag_name, select=None, filter=None, matcher=None, transform=None):
+	if transform:
+		tag_name = transform(tag_name)
+	if select and not re.match(select, tag_name):
+		return None
+	if filter:
+		if isinstance(filter, str):
+			if re.match(filter, tag_name):
+				return None
+		elif isinstance(filter, list):
+			for each_filter in filter:
+				if re.match(each_filter, tag_name):
+					return None
+	return matcher.match(tag_name)
+
+
+async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, filter=None, matcher=None, transform=None, version=None, include=None, sort: SortMethod = SortMethod.VERSION, **kwargs):
 	"""
 	This method will query the GitHub API for releases for a specific project, find the most recent
 	release, and then return a dictionary containing the keys "version", "artifacts" and "sha", which
@@ -107,6 +131,10 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	``filter`` can be either a regex string or a list of regex strings. Anything that matches
 	this string or strings will be excluded.
 
+	``transform`` is a lambda/single-argument function that if specified will be used to
+	arbitrarily modify the tag before it is searched for versions, or for the ``select``
+	regex.
+
 	``version`` may contain a version string we are looking for specifically. We currently look in the
 	tag_name of the release.
 
@@ -117,7 +145,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	skip_filters = factor_filters(include)
 
 	if not release_data:
-		release_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/releases?per_page=100", is_json=True)
+		release_data = await fetch_release_data(hub, github_user, github_repo)
 
 	versions_and_release_elements = []
 
@@ -127,18 +155,8 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	for release in release_data:
 		if any(release[skip] for skip in skip_filters):
 			continue
-		the_thing = release['tag_name']
-		if select and not re.match(select, the_thing):
-			continue
-		if filter:
-			if isinstance(filter, str):
-				if re.match(filter, the_thing):
-					continue
-			elif isinstance(filter, list):
-				for each_filter in filter:
-					if re.match(each_filter, the_thing):
-						continue
-		match = matcher.match(the_thing)
+		tag_name = release['tag_name']
+		match = match_tag_name(tag_name, select, filter, matcher, transform)
 		if match:
 			if version is not None and match != version:
 				continue
@@ -160,19 +178,21 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 
 	if tarball:
 		for version, release in versions_and_release_elements:
+			tag_name = release["tag_name"]
 			# We are looking for a specific tarball:
-			archive_name = tarball.format(version=version)
+			archive_name = tarball.format(version=version, tag=tag_name)
 			for asset in release['assets']:
 				if asset['name'] == archive_name:
 					return {
 						"version": version,
-						"artifacts": [hub.pkgtools.ebuild.Artifact(url=asset['browser_download_url'], final_name=archive_name)]
+						"artifacts": [hub.pkgtools.ebuild.Artifact(url=asset['browser_download_url'], final_name=archive_name)],
+						"tag": tag_name,
 					}
 	else:
 		version, release = versions_and_release_elements[0]
 		# We want to grab the default tarball for the associated tag:
 		desired_tag = release['tag_name']
-		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100", is_json=True)
+		tag_data = await fetch_tag_data(hub, github_user, github_repo)
 		sha = None
 		for tag_ent in tag_data:
 			if tag_ent["name"] != desired_tag:
@@ -192,7 +212,8 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		return {
 			"version": version,
 			"artifacts": [hub.pkgtools.ebuild.Artifact(url=url, final_name=f'{github_repo}-{version}-{sha[:7]}.tar.gz')],
-			"sha": sha
+			"sha": sha,
+			"tag": desired_tag,
 		}
 
 
@@ -221,19 +242,7 @@ def iter_tag_versions(tags_list, select=None, filter=None, matcher=None, transfo
 		matcher = RegexMatcher()
 	for tag_data in tags_list:
 		tag = tag_data['name']
-		if transform:
-			tag = transform(tag)
-		if select and not re.match(select, tag):
-			continue
-		if filter:
-			if isinstance(filter, str):
-				if re.match(filter, tag):
-					continue
-			elif isinstance(filter, list):
-				for each_filter in filter:
-					if re.match(each_filter, tag):
-						continue
-		match = matcher.match(tag)
+		match = match_tag_name(tag, select, filter, matcher, transform)
 		if match:
 			if version:
 				if match != version:
@@ -256,7 +265,7 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, trans
 	if matcher is None:
 		matcher = RegexMatcher()
 	if tag_data is None:
-		tag_data = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100", is_json=True)
+		tag_data = await fetch_tag_data(hub, github_user, github_repo)
 	versions_and_tag_elements = list(iter_tag_versions(tag_data, select=select, filter=filter, matcher=matcher, transform=transform, version=version))
 	if not len(versions_and_tag_elements):
 		return
@@ -282,5 +291,6 @@ async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, fil
 	return {
 		"version": version,
 		"artifacts": [hub.pkgtools.ebuild.Artifact(url=url, final_name=f'{github_repo}-{version}-{sha[:7]}.tar.gz')],
-		"sha": sha
+		"sha": sha,
+		"tag": tag_data["name"],
 	}
