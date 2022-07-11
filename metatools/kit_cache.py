@@ -135,6 +135,7 @@ class KitCache:
 		}
 		model.log.warning(
 			f"Flushed {self.name}. {len(self.json_data['atoms'])} atoms. Removed {len(remove_keys)} keys. {len(self.metadata_errors)} errors.")
+		os.makedirs(os.path.dirname(self.path), exist_ok=True)
 		with open(self.path, "w") as f:
 			f.write(json.dumps(outdata))
 		error_outpath = os.path.join(
