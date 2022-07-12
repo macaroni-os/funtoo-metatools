@@ -13,7 +13,6 @@ class SortMethod(Enum):
 
 
 class Matcher:
-
 	"""
 	Big picture: This class abstracts versioning handling, so we can have pluggable version handlers that
 	have differing abilities to handle different types of versions.
@@ -39,7 +38,6 @@ class Matcher:
 
 
 class RegexMatcher(Matcher):
-
 	"""
 	This is the default matcher used by these functions.
 	"""
@@ -84,11 +82,13 @@ def factor_filters(include):
 
 
 def fetch_release_data(hub, github_user, github_repo):
-	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/releases?per_page=100", is_json=True)
+	return hub.pkgtools.fetch.get_page(
+		f"https://api.github.com/repos/{github_user}/{github_repo}/releases?per_page=100", is_json=True)
 
 
 def fetch_tag_data(hub, github_user, github_repo):
-	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100", is_json=True)
+	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100",
+									   is_json=True)
 
 
 def match_tag_name(tag_name, select=None, filter=None, matcher=None, transform=None):
@@ -107,7 +107,9 @@ def match_tag_name(tag_name, select=None, filter=None, matcher=None, transform=N
 	return matcher.match(tag_name)
 
 
-async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, select=None, filter=None, matcher=None, transform=None, version=None, include=None, sort: SortMethod = SortMethod.VERSION, **kwargs):
+async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, assets: dict = None, select=None,
+					  filter=None, matcher=None, transform=None, version=None, include=None,
+					  sort: SortMethod = SortMethod.VERSION, **kwargs):
 	"""
 	This method will query the GitHub API for releases for a specific project, find the most recent
 	release, and then return a dictionary containing the keys "version", "artifacts" and "sha", which
@@ -115,11 +117,29 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	this release, and the SHA1 for the commit for this tagged release. This info can easily be added
 	to the pkginfo dict.
 
-	If 'tarball' (string) is specified, this method will look for a tarball in the release that matches
-	the string. A literal '{version}' in the string will be replaced with the version of the release,
-	so you will probably want to use that in your tarball string. If no tarball string is specified,
-	we grab the source code by looking at the tag associated with the release, and grab a tarball for
-	this particular tag.
+	There are **three** ways to specify assets you want to grab from a release as Artifacts. One
+	is to not specify tarball= or assets=, in which case we attempt to grab the source code by looking
+	for the tag associated with the release, and we then grab a tarball associated with that particular
+	tag.
+
+	The second way is to specify a string using ``tarball=``. We will look for an asset with this name.
+	We call this "tarball" because most of the time, we are grabbing a tarball asset, but this is really
+	"Funtoo slang" and the correct GitHub term is "asset". When a match is found, the returned dictionary
+	will contain an ``artifacts`` key with a value being a single-element list containing the artifact.
+
+	The third way is to specify a dictionary of key/value pairs, where values are filenames, as a
+	``assets=`` keyword argument. We will look for release with assets that contain all specified
+	assets. The returned dictionary will contain an ``artifacts`` dictionary containing artifacts,
+	indexed by the same keys.
+
+	When using the ``tarball=`` or ``assets=`` method, special python-style string expansions can
+	occur in the string. ``{version}``, ``{github_user}``, and ``{github_repo}`` will be replaced
+	with their respective ``release_gen()`` arguments. You can also use ``{key}`` to refer to the
+	dictionary key if using ``assets=``, and ``{tag}`` to refer to the GitHub tag name associated
+	with the release. Additionally, any additional keyword arguments passed to this function
+	(which are handled by the wildcard ``**kwargs`` in the function definition) can be expanded,
+	allowing this variable-expansion functionality to be extended. Note that these special strings
+	are Python-style with single curly-quotes, not Jinja-style with double curly-quotes.
 
 	``release_data`` may contain the full decoded JSON of a query to the /releases endpoint, as returned
 	by ``hub.pkgtools.fetch.get_page(url, is_json=True).`` Otherwise, this information will be queried
@@ -141,6 +161,9 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	``include`` may contain a list or set of strings (currently supporting "prerelease" and "draft") which
 	if defined will be considered as a match. By default, prereleases and drafts are skipped.
 	"""
+
+	if tarball and assets:
+		raise ValueError("Please specify tarball= or assets=, but not both.")
 
 	skip_filters = factor_filters(include)
 
@@ -174,20 +197,58 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 
 	if sort == SortMethod.VERSION:
 		# Have most recent by version at the beginning:
-		versions_and_release_elements = sorted(versions_and_release_elements, key=lambda v: matcher.sortable(v[0]), reverse=True)
+		versions_and_release_elements = sorted(versions_and_release_elements, key=lambda v: matcher.sortable(v[0]),
+											   reverse=True)
+	if tarball or assets:
 
-	if tarball:
+		# We will look for a single specified tarball, or use an assets dict to look for a collection of assets. GitHub calls
+		# these things "assets" officially. "Tarball" is sort of funtoo slang for a single asset. It doesn't need to actually
+		# be a tarballl, it just usually is.
+
+		# Make a singleton dictionary so we can use the same code as the assets processing code. We will convert it back
+		# after.
+
+		if tarball:
+			assets = {"default": tarball}
+
 		for version, release in versions_and_release_elements:
 			tag_name = release["tag_name"]
-			# We are looking for a specific tarball:
-			archive_name = tarball.format(version=version, tag=tag_name)
+
+			# Expand asset filenames using version, as well as any extra keyword arguments passed to this function. This allows
+			# assets to use {slot}, etc. if slot= is passed to this function, making the string expansion feature more capable.
+			# We will also include github_user, github_repo as these could potentially be used:
+
+			# Note: this expanded_assets dict is reversed. Filenames are keys, keys are values. Minor performance improvement, pain-free:
+
+			expanded_assets = {}
+
+			for asset_key, asset_filename in assets.items():
+				expanded_assets[
+					asset_filename.format(version=version, github_user=github_user, github_repo=github_repo, tag=tag_name, key=asset_key, **kwargs)] = asset_key
+
+			found_assets = {}
+
 			for asset in release['assets']:
-				if asset['name'] == archive_name:
-					return {
-						"version": version,
-						"artifacts": [hub.pkgtools.ebuild.Artifact(url=asset['browser_download_url'], final_name=archive_name)],
-						"tag": tag_name,
-					}
+				if asset['name'] in expanded_assets:
+					found_asset_name = asset['name']
+					found_asset_key = expanded_assets[asset['name']]
+					found_assets[found_asset_key] = {"url": asset['browser_download_url'], 'final_name': found_asset_name}
+
+			# If we have found all desired assets, we are now happy and done!:
+
+			if len(found_assets.keys()) == len(expanded_assets.keys()):
+				if tarball:
+					artifacts = [hub.pkgtools.ebuild.Artifact(**found_assets["default"])]
+				else:
+					artifacts = {}
+					for artifact_key, art_kwargs in found_assets.items():
+						artifacts[artifact_key] = hub.pkgtools.ebuild.Artifact(**art_kwargs)
+				return {
+					"version": version,
+					"artifacts": artifacts,
+					"tag": tag_name,
+				}
+
 	else:
 		version, release = versions_and_release_elements[0]
 		# We want to grab the default tarball for the associated tag:
@@ -211,7 +272,8 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		url = f"https://github.com/{github_user}/{github_repo}/tarball/{sha}"
 		return {
 			"version": version,
-			"artifacts": [hub.pkgtools.ebuild.Artifact(url=url, final_name=f'{github_repo}-{version}-{sha[:7]}.tar.gz')],
+			"artifacts": [
+				hub.pkgtools.ebuild.Artifact(url=url, final_name=f'{github_repo}-{version}-{sha[:7]}.tar.gz')],
 			"sha": sha,
 			"tag": desired_tag,
 		}
@@ -250,7 +312,8 @@ def iter_tag_versions(tags_list, select=None, filter=None, matcher=None, transfo
 			yield match, tag_data
 
 
-async def latest_tag_version(hub, github_user, github_repo, tag_data=None, transform=None, select=None, filter=None, matcher=None, version=None):
+async def latest_tag_version(hub, github_user, github_repo, tag_data=None, transform=None, select=None, filter=None,
+							 matcher=None, version=None):
 	"""
 	This method will look at all the tags in a repository, look for a version string in each tag,
 	find the most recent version, and return the version and entire tag data as a tuple.
@@ -266,14 +329,17 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, trans
 		matcher = RegexMatcher()
 	if tag_data is None:
 		tag_data = await fetch_tag_data(hub, github_user, github_repo)
-	versions_and_tag_elements = list(iter_tag_versions(tag_data, select=select, filter=filter, matcher=matcher, transform=transform, version=version))
+	versions_and_tag_elements = list(
+		iter_tag_versions(tag_data, select=select, filter=filter, matcher=matcher, transform=transform,
+						  version=version))
 	if not len(versions_and_tag_elements):
 		return
 	else:
 		return max(versions_and_tag_elements, key=lambda v: matcher.sortable(v[0]))
 
 
-async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, filter=None, matcher=None, transform=None, version=None, **kwargs):
+async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, filter=None, matcher=None, transform=None,
+				  version=None, **kwargs):
 	"""
 	Similar to ``release_gen``, this will query the GitHub API for the latest tagged version of a project,
 	and return a dictionary that can be added to pkginfo containing the version, artifacts and commit sha.
@@ -282,7 +348,8 @@ async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, fil
 	"""
 	if matcher is None:
 		matcher = RegexMatcher()
-	result = await latest_tag_version(hub, github_user, github_repo, tag_data=tag_data, transform=transform, select=select, filter=filter, matcher=matcher, version=version)
+	result = await latest_tag_version(hub, github_user, github_repo, tag_data=tag_data, transform=transform,
+									  select=select, filter=filter, matcher=matcher, version=version)
 	if result is None:
 		return None
 	version, tag_data = result
