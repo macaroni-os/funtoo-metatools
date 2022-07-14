@@ -12,6 +12,45 @@ class SortMethod(Enum):
 	VERSION = "VERSION"
 
 
+class VersionMatch(Enum):
+	"""
+	This Enum is used to collect our official regexes to match versions in strings, in the general case.
+	STANDARD will match a regular version string like 0.5.3, etc. and will also support an optional
+	_p(patchlevel) and -r(revision), which is compatible with both Gentoo/Funtoo and packaging.version
+	sorting.
+
+	Note that this regex is *not* anchored at all, so it can appear *anywhere* in the string. Because
+	``RegexMatcher`` uses re.search(), it will grab the first occurrence in the string, wherever it
+	appears.
+	"""
+	GRABBY = r'([\d.]+(?:_p\d+)?(?:-r\d+)?)'
+
+
+class TagVersionMatch(Enum):
+	"""
+	This Enum is used to collect our official regexes for matching versions in *tags*. GitHub tags
+	typically have the format 1.2.3 or v1.2.3. the STANDARD regex will match these formats, but is
+	anchored so will not match th numeric part of test_20220101.
+
+	We used to use the GRABBY regex as default, which *would* match 20220101 in the regex above,
+	as it is not anchored.
+
+	This, we found, is likely not a great default regex so it was changed to STANDARD.
+	"""
+	GRABBY = VersionMatch.GRABBY
+	STANDARD = f"^v?{VersionMatch.GRABBY}$"
+
+
+class ReleaseVersionMatch(Enum):
+	"""
+	This Enum is used to collect our official regexes for matchin versions in *releases*.
+
+	For *releases*, we are a bit more ambitious due to the variety of GitHub release names, and we
+	use the default "grabby" non-anchored regex.
+	"""
+	STANDARD = VersionMatch.GRABBY
+
+
 class Matcher:
 	"""
 	Big picture: This class abstracts versioning handling, so we can have pluggable version handlers that
@@ -42,16 +81,41 @@ class RegexMatcher(Matcher):
 	This is the default matcher used by these functions.
 	"""
 
-	def __init__(self, regex='([\d.]+(?:_p\d+)?(?:-r\d+)?)'):
-		self.regex = regex
+	regex = None
 
-	def match(self, input: str):
-		match = re.search(self.regex, input)
+	def __init__(self, regex=None):
+		if regex:
+			self.regex = regex
+		else:
+			self.regex = VersionMatch.GRABBY
+
+	def match(self, input: str, select=None, filter=None, transform=None):
+		if transform:
+			input = transform(input)
+		if select and not re.match(select, input):
+			return None
+		if filter:
+			if isinstance(filter, str):
+				if re.match(filter, input):
+					return None
+			elif isinstance(filter, list):
+				for each_filter in filter:
+					if re.match(each_filter, input):
+						return None
+		match = re.search(self.regex.value, input)
 		if match:
 			return match.groups()[0]
 
 	def sortable(self, version):
 		return packaging.version.parse(version)
+
+
+class TagRegexMatcher(RegexMatcher):
+	regex = TagVersionMatch.STANDARD
+
+
+class ReleaseRegexMatcher(RegexMatcher):
+	regex = ReleaseVersionMatch.STANDARD
 
 
 def factor_filters(include):
@@ -89,22 +153,6 @@ def fetch_release_data(hub, github_user, github_repo):
 def fetch_tag_data(hub, github_user, github_repo):
 	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100",
 									   is_json=True)
-
-
-def match_tag_name(tag_name, select=None, filter=None, matcher=None, transform=None):
-	if transform:
-		tag_name = transform(tag_name)
-	if select and not re.match(select, tag_name):
-		return None
-	if filter:
-		if isinstance(filter, str):
-			if re.match(filter, tag_name):
-				return None
-		elif isinstance(filter, list):
-			for each_filter in filter:
-				if re.match(each_filter, tag_name):
-					return None
-	return matcher.match(tag_name)
 
 
 async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, assets: dict = None, select=None,
@@ -173,13 +221,15 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	versions_and_release_elements = []
 
 	if matcher is None:
-		matcher = RegexMatcher()
+		# Technically, we are scanning tags, and yet many projects use wacky names for their release tags.
+		# Therefore, this will use the less strict ReleaseRegexMatcher.
+		matcher = ReleaseRegexMatcher()
 
 	for release in release_data:
 		if any(release[skip] for skip in skip_filters):
 			continue
 		tag_name = release['tag_name']
-		match = match_tag_name(tag_name, select, filter, matcher, transform)
+		match = matcher.match(tag_name, select=select, filter=filter, transform=transform)
 		if match:
 			if version is not None and match != version:
 				continue
@@ -301,10 +351,9 @@ def iter_tag_versions(tags_list, select=None, filter=None, matcher=None, transfo
 	pattern somewhere within the tag.
 	"""
 	if matcher is None:
-		matcher = RegexMatcher()
+		matcher = TagRegexMatcher()
 	for tag_data in tags_list:
-		tag = tag_data['name']
-		match = match_tag_name(tag, select, filter, matcher, transform)
+		match = matcher.match(tag_data['name'], select=select, filter=filter, transform=transform)
 		if match:
 			if version:
 				if match != version:
@@ -326,7 +375,7 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, trans
 	If no matching versions, None is returned.
 	"""
 	if matcher is None:
-		matcher = RegexMatcher()
+		matcher = TagRegexMatcher()
 	if tag_data is None:
 		tag_data = await fetch_tag_data(hub, github_user, github_repo)
 	versions_and_tag_elements = list(
@@ -347,7 +396,7 @@ async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, fil
 	This method may return None if no suitable tags are found.
 	"""
 	if matcher is None:
-		matcher = RegexMatcher()
+		matcher = TagRegexMatcher()
 	result = await latest_tag_version(hub, github_user, github_repo, tag_data=tag_data, transform=transform,
 									  select=select, filter=filter, matcher=matcher, version=version)
 	if result is None:
