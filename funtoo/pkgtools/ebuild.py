@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import shutil
 import threading
 from asyncio import Task
 from collections import OrderedDict
@@ -12,32 +13,11 @@ from typing import Optional
 import jinja2
 
 from metatools.store import StoreObject
+from metatools.fastpull.spider import FetchError, FetchRequest
 
 log = logging.getLogger('metatools.autogen')
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
-
-from metatools.fastpull.spider import FetchError, FetchRequest
-
-# This is not currently used, as what the Spider downloads at any given moment is considered to
-# be authoritative. This may be used for tools that repopulate the BLOS, but is not otherwise
-# needed.
-#
-# class DigestFailure(Exception):
-# 	def __init__(self, artifact=None, kind=None, expected=None, actual=None):
-# 		self.artifact = artifact
-# 		self.kind = kind
-# 		self.expected = expected
-# 		self.actual = actual
-#
-# 	@property
-# 	def message(self):
-# 		out = f"Digest Failure for {self.artifact.final_name}:\n"
-# 		out += f"    Kind: {self.kind}\n"
-# 		out += f"Expected: {self.expected}\n"
-# 		out += f"  Actual: {self.actual}"
-# 		return out
-#
 
 
 class BreezyError(Exception):
@@ -45,40 +25,18 @@ class BreezyError(Exception):
 		self.msg = msg
 
 
-class Fetchable:
-	def __init__(self, url=None, **kwargs):
-		self.url = url
-		assert self.url is not None
-		try:
-			assert self.url.split(':')[0] in ['http', 'https', 'ftp']
-		except (IndexError, AssertionError):
-			raise ValueError(f"url= argument of Artifact is '{url}', which appears invalid.")
+class Archive:
 
+	_final_name: str = None
+	_top_directory: str = None
 
-class Artifact(Fetchable):
-	"""
-	An artifact is a tarball or other archive that is used by a BreezyBuild, and ultimately referenced in an ebuild. It's also
-	possible that an artifact could be fetched by an autogen directly, but not included in an ebuild.
-
-	If an artifact is going to be incorporated into an ebuild, it's passed to the ``artifacts=[]`` keyword argument of the
-	``BreezyBuild`` constructor. When it is passed in this way, we perform extra processing. We will store the resultant download
-	in the "fastpull" database (an archive of fetched artifacts, indexed by their SHA512 hash), and we will also generate an
-	entry in the "distfile integrity database" for each catpkg. This "distfile integrity database" is what links the BreezyBuild's
-	catpkg, via the filename, to the entries in the fastpull database. So, for example:
-
-	"sys-apps/foo-1.0.ebuild" references "foo-1.0.tar.gz".
-	The distfile integrity database entry for "sys-apps/foo" has an entry for "foo-1.0.tar.gz" which points it to <SHA512>.
-	The fastpull database stores an entry for <SHA512>.
-
-	When an artifact is used in a stand-alone fashion
-
-	"""
-	def __init__(self, url=None, key=None, final_name=None, extra_http_headers=None, **kwargs):
-		super().__init__(url=url, **kwargs)
-		self.key = key
+	def __init__(self, final_name):
+		"""
+		:param final_name: This is the on-disk name for the artifact, which may be different from
+			what is in the URL.
+		"""
 		self._final_name = final_name
 		self.breezybuilds = []
-		self.extra_http_headers = extra_http_headers
 		self.blos_object: Optional[StoreObject] = None
 
 	@property
@@ -99,8 +57,151 @@ class Artifact(Fetchable):
 		return os.path.join(pkgtools.model.temp_path, "artifact_extract", self.final_name)
 
 	@property
+	def temp_archive_path(self):
+		return os.path.join(pkgtools.model.temp_path, "archive_create", self.final_name)
+
+	@property
 	def final_path(self):
 		return self.blos_object.blob.path
+
+	@property
+	def final_name(self):
+		return self._final_name
+
+	@property
+	def top_path(self):
+		if self._top_directory:
+			return os.path.join(self.extract_path, self._top_directory)
+		else:
+			return os.path.join(self.extract_path)
+
+	def initialize(self, top_directory=None):
+		"""
+		This method is supposed to create an empty extract_path so we can fill the archive with
+		things we want. top_directory is optional and specifies the directory to create which will
+		contain the files.
+		:return:
+		"""
+		self._top_directory = top_directory
+		if os.path.exists(self.extract_path):
+			shutil.rmtree(self.extract_path)
+		os.makedirs(self.top_path, exist_ok=False)
+
+	# TODO: add a method to try to retrieve the archive and create it from our dynamic
+	#       store.
+
+	def archive(self, key=None):
+		"""
+		This method is designed to archive the contents of files in extract_path, store it as
+		final_name, add it to the BLOS, and create or update the dynamic integrity database.
+		:param format:
+		:return:
+		"""
+		temp_archive = self.temp_archive_path
+
+		# Ensure we have a clean location for creating a new temporary archive:
+
+		if not os.path.exists(os.path.dirname(temp_archive)):
+			os.makedirs(os.path.dirname(temp_archive), exist_ok=True)
+
+		if os.path.exists(temp_archive):
+			os.unlink(temp_archive)
+
+		# Create the archive:
+
+		if self.final_name.endswith(".tar.xz"):
+			cmd = f"tar -C {self.extract_path} -cJf {temp_archive}"
+		elif self.final_name.endswith(".tar.zstd"):
+			cmd = f"tar -C {self.extract_path} -c --zstd -f {temp_archive}"
+		else:
+			raise ValueError(f"Unrecognized archive format: {self.final_name}")
+		s, o = getstatusoutput(cmd)
+		if s != 0:
+			raise pkgtools.ebuild.BreezyError(f"Couldn't create archive {self.final_name}")
+
+		# Insert the archive. We will unconditionally store 'final_name' in the key, as
+		# all files should at least be referenced by their expected name, and we will need
+		# this for checking for this particular file's existence.
+
+		key["final_name"] = self.final_name
+		assert isinstance(key, dict)
+
+		# Store in BLOS and create integrity database reference:
+
+		self.blos_object = pkgtools.model.blos.insert_blob(temp_archive)
+		pkgtools.model.fastpull_session.store_file_dynamic(key, self.blos_object)
+
+	def extract(self):
+		ep = self.extract_path
+		os.makedirs(ep, exist_ok=True)
+		if self.final_name.endswith(".zip"):
+			cmd = f"unzip {ep} -d {self.final_path}"
+		else:
+			cmd = f"tar -C {ep} -xf {self.final_path}"
+		s, o = getstatusoutput(cmd)
+		if s != 0:
+			raise pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
+
+	def cleanup(self):
+		# TODO: check for path stuff like ../.. in final_name to avoid security issues.
+		getstatusoutput("rm -rf " + os.path.join(pkgtools.model.temp_path, "artifact_extract", self.final_name))
+
+	@property
+	def hashes(self):
+		return self.blos_object.data["hashes"]
+
+	@property
+	def size(self):
+		return self.blos_object.data["hashes"]["size"]
+
+	def hash(self, h):
+		return self.blos_object.data["hashes"][h]
+
+
+class Artifact(Archive):
+	"""
+	An artifact is a tarball or other archive that is used by a BreezyBuild, and ultimately referenced in an ebuild.
+	It's also possible that an artifact could be fetched by an autogen directly, but not included in an ebuild.
+	All Artifacts have a ``url`` which represents the official download location of the artifact.
+
+	If an artifact is going to be incorporated into an ebuild, it's passed to the ``artifacts=`` keyword argument
+	of the ``BreezyBuild`` constructor. When it is passed in this way, we perform extra processing. We will store the
+	resultant download BLOS (base layer object store) and create a reference to this binary blob in the distfile
+	integrity database, so the URL is associated with the hashes.sha512 index in the BLOS.
+
+	So, say that "sys-apps/foo-1.0.ebuild" references "foo-1.0.tar.gz". The distfile integrity database entry
+	will associate the download URL for "foo-1.0.tar.gz" with its hashes.sha512 digest, which also happens to be
+	the index for the binary data in the BLOS.
+	"""
+
+	def __init__(self, url=None, key=None, final_name=None, extra_http_headers=None, **kwargs):
+		"""
+		:param url: A required URL for fetching the resource.
+		:param key: Appears unused.
+		:param final_name: This is the on-disk name for the artifact, which may be different from
+			what is in the URL.
+		:param extra_http_headers: An optional dictionary of additional HTTP headers to be used
+			when fetching the file.
+		:param kwargs: Not used, but allows extra keyword arguments to be passed to constructor
+			which will be ignored.
+		"""
+
+		# Initialization of final_name. This has to happen in this order to work.
+
+		self.url = url
+		if final_name:
+			self._final_name = final_name
+
+		super().__init__(self.final_name)
+
+		assert self.url is not None
+
+		try:
+			assert self.url.split(':')[0] in ['http', 'https', 'ftp']
+		except (IndexError, AssertionError):
+			raise ValueError(f"url= argument of Artifact is '{url}', which appears invalid.")
+		self.key = key
+		self.extra_http_headers = extra_http_headers
 
 	@property
 	def final_name(self):
@@ -116,17 +217,6 @@ class Artifact(Fetchable):
 		return os.path.exists(self.final_path)
 
 	@property
-	def hashes(self):
-		return self.blos_object.data["hashes"]
-
-	@property
-	def size(self):
-		return self.blos_object.data["hashes"]["size"]
-
-	def hash(self, h):
-		return self.blos_object.data["hashes"][h]
-
-	@property
 	def src_uri(self):
 		if self._final_name is None:
 			return self.url
@@ -136,19 +226,7 @@ class Artifact(Fetchable):
 	def extract(self):
 		if not self.exists:
 			self.fetch()
-		ep = self.extract_path
-		os.makedirs(ep, exist_ok=True)
-		if self.final_name.endswith(".zip"):
-			cmd = f"unzip {ep} -d {self.final_path}"
-		else:
-			cmd = f"tar -C {ep} -xf {self.final_path}"
-		s, o = getstatusoutput(cmd)
-		if s != 0:
-			raise pkgtools.ebuild.BreezyError("Command failure: %s" % cmd)
-
-	def cleanup(self):
-		# TODO: check for path stuff like ../.. in final_name to avoid security issues.
-		getstatusoutput("rm -rf " + os.path.join(pkgtools.model.temp_path, "artifact_extract", self.final_name))
+		super().extract()
 
 	def exists(self):
 		return self.is_fetched()
