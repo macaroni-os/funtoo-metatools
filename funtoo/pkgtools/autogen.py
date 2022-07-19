@@ -126,6 +126,20 @@ def recursive_merge(dict1, dict2, depth="", overwrite=True):
 	return out_dict
 
 
+def recursive_merge_many(*dicts, overwrite=True):
+	"""
+	This function applies `recursive_merge` to multiple `dicts`, going from left to right.
+	"""
+	result = {}
+	for current_dict in dicts:
+		if not current_dict:
+			continue
+
+		result = recursive_merge(result, current_dict, overwrite=overwrite)
+
+	return result
+
+
 def queue_all_indy_autogens(files=None):
 	"""
 	This will recursively find all independent autogens and queue them up in the pending queue, unless a
@@ -183,8 +197,7 @@ async def gather_pending_tasks(task_list):
 	return results
 
 
-def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginfo=None, template_path=None,
-							 gen_path=None):
+def init_pkginfo_for_package(pkginfo, sub_path, template_path=None, gen_path=None):
 	"""
 	This function generates the final pkginfo that is passed to the generate() function in the generator sub
 	for each catpkg being generated. If an autogen.yaml is being used, then these settings come from YAML. If
@@ -215,15 +228,6 @@ def init_pkginfo_for_package(generator_sub, sub_path, defaults=None, base_pkginf
 	   If using this form of YAML, these settings will be pre-merged into ``base_pkginfo`` using the
 	   ``recursive_merge`` function before we get ``base_pkginfo`` as an argument.
 	"""
-	glob_defs = getattr(generator_sub, "GLOBAL_DEFAULTS", {})
-	pkginfo = glob_defs.copy()
-	if defaults is not None:
-		for default in defaults:
-			if default is None:
-				continue
-			pkginfo = recursive_merge(pkginfo, default)
-			pkgtools.model.log.debug(f"Merging {default}, got {pkginfo}")
-	pkginfo = recursive_merge(pkginfo, base_pkginfo)
 	if template_path:
 		pkginfo["template_path"] = template_path
 	pkginfo["sub_path"] = sub_path
@@ -294,6 +298,8 @@ async def execute_generator(
 	generator_sub.sub_path = sub_path
 	generator_sub.FOO = "bar"
 
+	global_defaults = getattr(generator_sub, "GLOBAL_DEFAULTS", {})
+
 	async def generator_thread_task(pkginfo_list):
 
 		hub.THREAD_CTX.running_autogens = []
@@ -303,40 +309,39 @@ async def execute_generator(
 
 		new_pkginfo_list = []
 		for base_pkginfo in pkginfo_list:
-			if defaults is not None:
-				base_pkginfo = recursive_merge(base_pkginfo, defaults)
+			pkginfo = recursive_merge_many(global_defaults, defaults, base_pkginfo)
 
-			if "version" not in base_pkginfo or isinstance(base_pkginfo["version"], (str, float)):
+			if "version" not in pkginfo or isinstance(pkginfo["version"], (str, float)):
 				new_pkginfo_list.append(
 					init_pkginfo_for_package(
-						generator_sub,
+						pkginfo,
 						sub_path,
-						defaults=[], base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
+						template_path=template_path,
+						gen_path=gen_path,
 					)
 				)
 			else:
 				# expand multiple versions.
-				if isinstance(base_pkginfo["version"], dict):
-					versions = base_pkginfo["version"]
-					del base_pkginfo["version"]
-					for key, local_base_pkginfo in versions.items():
+				if isinstance(pkginfo["version"], dict):
+					versions = pkginfo["version"]
+					del pkginfo["version"]
+					for key, version_info in versions.items():
 						if isinstance(key, float):
 							# "3.14" unquoted in YAML is a float!
 							key = repr(key)
-						loop_version_defaults = init_pkginfo_for_package(
-							generator_sub,
+						pkginfo = init_pkginfo_for_package(
+							recursive_merge(pkginfo, version_info),
 							sub_path,
-							defaults=[base_pkginfo], base_pkginfo=local_base_pkginfo,
 							template_path=template_path,
-							gen_path=gen_path
+							gen_path=gen_path,
 						)
 						if key is None or key == "latest":
-							if "version" in loop_version_defaults:
-								del loop_version_defaults["version"]
+							if "version" in pkginfo:
+								del pkginfo["version"]
 						else:
-							loop_version_defaults["version"] = key
-						new_pkginfo_list.append(loop_version_defaults)
-				elif isinstance(base_pkginfo["version"], list):
+							pkginfo["version"] = key
+						new_pkginfo_list.append(pkginfo)
+				elif isinstance(pkginfo["version"], list):
 					raise TypeError(f"Lists are not yet supported for defining multiple versions. Was processing this: {pkginfo_list}")
 		pkginfo_list = new_pkginfo_list
 
