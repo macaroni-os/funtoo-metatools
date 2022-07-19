@@ -303,12 +303,15 @@ async def execute_generator(
 
 		new_pkginfo_list = []
 		for base_pkginfo in pkginfo_list:
+			if defaults is not None:
+				base_pkginfo = recursive_merge(base_pkginfo, defaults)
+
 			if "version" not in base_pkginfo or isinstance(base_pkginfo["version"], (str, float)):
 				new_pkginfo_list.append(
 					init_pkginfo_for_package(
 						generator_sub,
 						sub_path,
-						defaults=[defaults], base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
+						defaults=[], base_pkginfo=base_pkginfo, template_path=template_path, gen_path=gen_path
 					)
 				)
 			else:
@@ -323,7 +326,7 @@ async def execute_generator(
 						loop_version_defaults = init_pkginfo_for_package(
 							generator_sub,
 							sub_path,
-							defaults=[defaults, base_pkginfo], base_pkginfo=local_base_pkginfo,
+							defaults=[base_pkginfo], base_pkginfo=local_base_pkginfo,
 							template_path=template_path,
 							gen_path=gen_path
 						)
