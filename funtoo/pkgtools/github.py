@@ -37,8 +37,8 @@ class TagVersionMatch(Enum):
 
 	This, we found, is likely not a great default regex so it was changed to STANDARD.
 	"""
-	GRABBY = VersionMatch.GRABBY
-	STANDARD = f"^v?{VersionMatch.GRABBY}$"
+	GRABBY = VersionMatch.GRABBY.value
+	STANDARD = f"^v?{VersionMatch.GRABBY.value}$"
 
 
 class ReleaseVersionMatch(Enum):
@@ -48,7 +48,7 @@ class ReleaseVersionMatch(Enum):
 	For *releases*, we are a bit more ambitious due to the variety of GitHub release names, and we
 	use the default "grabby" non-anchored regex.
 	"""
-	STANDARD = VersionMatch.GRABBY
+	STANDARD = VersionMatch.GRABBY.value
 
 
 class Matcher:
@@ -81,13 +81,11 @@ class RegexMatcher(Matcher):
 	This is the default matcher used by these functions.
 	"""
 
-	regex = None
+	regex = VersionMatch.GRABBY
 
 	def __init__(self, regex=None):
 		if regex:
 			self.regex = regex
-		else:
-			self.regex = VersionMatch.GRABBY
 
 	def match(self, input: str, select=None, filter=None, transform=None):
 		if transform:
