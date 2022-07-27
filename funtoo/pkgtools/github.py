@@ -85,7 +85,14 @@ class RegexMatcher(Matcher):
 
 	def __init__(self, regex=None):
 		if regex:
-			self.regex = regex
+			if isinstance(regex, Enum):
+				self.regex = re.compile(regex.value)
+			elif isinstance(regex, re.Pattern):
+				pass
+			elif isinstance(regex, str):
+				self.regex = re.compile(regex)
+			else:
+				raise ValueError(f"Unrecognized regex type: {type(regex)}")
 
 	def match(self, input: str, select=None, filter=None, transform=None):
 		if transform:
@@ -100,7 +107,7 @@ class RegexMatcher(Matcher):
 				for each_filter in filter:
 					if re.match(each_filter, input):
 						return None
-		match = re.search(self.regex.value, input)
+		match = self.regex.search(input)
 		if match:
 			return match.groups()[0]
 
