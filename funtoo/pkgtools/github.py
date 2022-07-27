@@ -81,7 +81,7 @@ class RegexMatcher(Matcher):
 	This is the default matcher used by these functions.
 	"""
 
-	regex = VersionMatch.GRABBY
+	regex = re.compile(VersionMatch.GRABBY.value)
 
 	def __init__(self, regex=None):
 		if regex:
@@ -116,11 +116,11 @@ class RegexMatcher(Matcher):
 
 
 class TagRegexMatcher(RegexMatcher):
-	regex = TagVersionMatch.STANDARD
+	regex = re.compile(TagVersionMatch.STANDARD.value)
 
 
 class ReleaseRegexMatcher(RegexMatcher):
-	regex = ReleaseVersionMatch.STANDARD
+	regex = re.compile(ReleaseVersionMatch.STANDARD.value)
 
 
 def factor_filters(include):
@@ -384,8 +384,7 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, trans
 	if tag_data is None:
 		tag_data = await fetch_tag_data(hub, github_user, github_repo)
 	versions_and_tag_elements = list(
-		iter_tag_versions(tag_data, select=select, filter=filter, matcher=matcher, transform=transform,
-						  version=version))
+		iter_tag_versions(tag_data, select=select, filter=filter, matcher=matcher, transform=transform, version=version))
 	if not len(versions_and_tag_elements):
 		return
 	else:
