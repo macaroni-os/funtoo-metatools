@@ -81,10 +81,17 @@ class RegexMatcher(Matcher):
 	This is the default matcher used by these functions.
 	"""
 
-	regex = re.compile(VersionMatch.GRABBY.value)
+	regex = None
 
-	def __init__(self, regex=None):
-		if regex:
+	def __init__(self, regex=None, select=None, filter=None, transform=None):
+		self.select = select
+		self.filter = filter
+		self.transform = transform
+
+		if regex is None:
+			if self.regex is None:
+				self.regex = self.get_default_regex()
+		else:
 			if isinstance(regex, Enum):
 				self.regex = re.compile(regex.value)
 			elif isinstance(regex, re.Pattern):
@@ -93,6 +100,9 @@ class RegexMatcher(Matcher):
 				self.regex = re.compile(regex)
 			else:
 				raise ValueError(f"Unrecognized regex type: {type(regex)}")
+
+	def get_default_regex(self):
+		return re.compile(VersionMatch.GRABBY.value)
 
 	def match(self, input: str, select=None, filter=None, transform=None):
 		if transform:
@@ -116,7 +126,12 @@ class RegexMatcher(Matcher):
 
 
 class TagRegexMatcher(RegexMatcher):
-	regex = re.compile(TagVersionMatch.STANDARD.value)
+
+	def get_default_regex(self):
+		if self.filter or self.select:
+			return re.compile(TagVersionMatch.GRABBY.value)
+		else:
+			return re.compile(TagVersionMatch.STANDARD.value)
 
 
 class ReleaseRegexMatcher(RegexMatcher):
@@ -356,7 +371,7 @@ def iter_tag_versions(tags_list, select=None, filter=None, matcher=None, transfo
 	pattern somewhere within the tag.
 	"""
 	if matcher is None:
-		matcher = TagRegexMatcher()
+		matcher = TagRegexMatcher(select=select, filter=filter)
 	for tag_data in tags_list:
 		match = matcher.match(tag_data['name'], select=select, filter=filter, transform=transform)
 		if match:
@@ -380,7 +395,7 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, trans
 	If no matching versions, None is returned.
 	"""
 	if matcher is None:
-		matcher = TagRegexMatcher()
+		matcher = TagRegexMatcher(select=select, filter=filter)
 	if tag_data is None:
 		tag_data = await fetch_tag_data(hub, github_user, github_repo)
 	versions_and_tag_elements = list(
@@ -400,7 +415,7 @@ async def tag_gen(hub, github_user, github_repo, tag_data=None, select=None, fil
 	This method may return None if no suitable tags are found.
 	"""
 	if matcher is None:
-		matcher = TagRegexMatcher()
+		matcher = TagRegexMatcher(select=select, filter=filter)
 	result = await latest_tag_version(hub, github_user, github_repo, tag_data=tag_data, transform=transform,
 									  select=select, filter=filter, matcher=matcher, version=version)
 	if result is None:
