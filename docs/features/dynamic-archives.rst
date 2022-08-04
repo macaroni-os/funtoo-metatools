@@ -126,6 +126,16 @@ What archive formats are supported?
 Currently, ".tar.xz" and ".tar.zstd" format archives are supported, and the compression format is
 specified by the filename of your archive.
 
+What can I store in the ``key=`` keyword argument?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``key=`` must be a dictionary, but it can contain a lot of things, including booleans, strings, integers,
+floating-point, DateTime, lists and other dictionaries. So you can organize the data within ``key=`` so
+that it makes sense for your needs and it's definitely possible to create nested and more
+complex structures that contain different kinds of data. For a complete list of supported object types,
+see https://pymongo.readthedocs.io/en/stable/api/bson/index.html for a list of objects that are listed
+as "both" for "Supported direction"
+
 How does my archive end up on the CDN?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
