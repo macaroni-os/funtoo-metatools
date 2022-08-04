@@ -431,6 +431,10 @@ async def execute_generator(
 					def BreezyBuild(self, **kwargs):
 						return pkgtools.ebuild.BreezyBuild(**kwargs)
 
+					@property
+					def Archive(self):
+						return pkgtools.ebuild.Archive
+
 					def BreezyError(self, **kwargs):
 						return pkgtools.ebuild.BreezyError(**kwargs)
 

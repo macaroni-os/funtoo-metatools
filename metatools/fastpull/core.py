@@ -88,15 +88,17 @@ class IntegrityScope:
             {"url": request.url, "sha512": new_ref.data["hashes"]["sha512"], "updated_on": datetime.utcnow()})
         return new_ref
 
-    async def get_file_dynamic(self, key_dict: dict) -> StoreObject:
+    def get_file_dynamic(self, key_dict: dict) -> StoreObject:
         existing_ref: StoreObject = self.dynamic.read({"key": key_dict})
+        if existing_ref:
+            log.debug(f"get_file_dynamic: existing_ref: {existing_ref.data}")
         if existing_ref is not None:
-            obj = self.parent.blos.read({"hashes.sha512": existing_ref.data['sha512']})
+            obj = self.parent.blos.read({"hashes.sha512": existing_ref.data['hashes']['sha512']})
             if obj is not None:
                 return obj
 
-    async def store_file_dynamic(self, key_dict: dict, obj: StoreObject):
-        store_obj = self.parent.blos.insert_blob(obj.blob)
+    def store_file_dynamic(self, key_dict: dict, obj_path):
+        store_obj = self.parent.blos.insert_blob(obj_path)
         self.dynamic.write({"key": key_dict, "hashes": store_obj.data["hashes"]})
 
 

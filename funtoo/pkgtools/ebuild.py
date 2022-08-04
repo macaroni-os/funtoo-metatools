@@ -46,6 +46,18 @@ class Archive:
 		return None
 
 	@property
+	def url(self):
+		sha = self.final_data["sha512"]
+		return f"https://direct.funtoo.org/{sha[0:2]}/{sha[2:4]}/{sha[4:6]}/{sha}"
+
+	@property
+	def src_uri(self):
+		if self._final_name is None:
+			return self.url
+		else:
+			return self.url + " -> " + self._final_name
+
+	@property
 	def catpkgs(self):
 		outstr = ""
 		for bzb in self.breezybuilds:
@@ -90,13 +102,16 @@ class Archive:
 	# TODO: add a method to try to retrieve the archive and create it from our dynamic
 	#       store.
 
-	def archive(self, key=None):
+	def store(self, key=None):
 		"""
 		This method is designed to archive the contents of files in extract_path, store it as
 		final_name, add it to the BLOS, and create or update the dynamic integrity database.
 		:param format:
 		:return:
 		"""
+		if key is None:
+			key = {}
+
 		temp_archive = self.temp_archive_path
 
 		# Ensure we have a clean location for creating a new temporary archive:
@@ -110,14 +125,15 @@ class Archive:
 		# Create the archive:
 
 		if self.final_name.endswith(".tar.xz"):
-			cmd = f"tar -C {self.extract_path} -cJf {temp_archive}"
+			cmd = f"tar -C {self.extract_path} -cJf {temp_archive} ."
 		elif self.final_name.endswith(".tar.zstd"):
-			cmd = f"tar -C {self.extract_path} -c --zstd -f {temp_archive}"
+			cmd = f"tar -C {self.extract_path} -c --zstd -f {temp_archive} ."
 		else:
 			raise ValueError(f"Unrecognized archive format: {self.final_name}")
+		log.debug(f"store: command: {cmd}")
 		s, o = getstatusoutput(cmd)
 		if s != 0:
-			raise pkgtools.ebuild.BreezyError(f"Couldn't create archive {self.final_name}")
+			raise pkgtools.ebuild.BreezyError(f"Couldn't create archive {self.final_name}. Error: {o}")
 
 		# Insert the archive. We will unconditionally store 'final_name' in the key, as
 		# all files should at least be referenced by their expected name, and we will need
@@ -129,7 +145,21 @@ class Archive:
 		# Store in BLOS and create integrity database reference:
 
 		self.blos_object = pkgtools.model.blos.insert_blob(temp_archive)
-		pkgtools.model.fastpull_session.store_file_dynamic(key, self.blos_object)
+		pkgtools.model.fastpull_session.store_file_dynamic(key, temp_archive)
+
+	@classmethod
+	def find(cls, final_name, key=None):
+		if key is None:
+			key = {}
+		key["final_name"] = final_name
+		blos_object = pkgtools.model.fastpull_session.get_file_dynamic(key)
+		log.debug(f"In find, blos object found: {blos_object} using key {key}")
+		if blos_object is None:
+			return None
+		else:
+			found_archive = Archive(final_name)
+			found_archive.blos_object = blos_object
+			return found_archive
 
 	def extract(self):
 		ep = self.extract_path
@@ -156,6 +186,9 @@ class Archive:
 
 	def hash(self, h):
 		return self.blos_object.data["hashes"][h]
+
+	async def ensure_completed(self) -> bool:
+		return True
 
 
 class Artifact(Archive):
@@ -215,13 +248,6 @@ class Artifact(Archive):
 
 	def is_fetched(self):
 		return os.path.exists(self.final_path)
-
-	@property
-	def src_uri(self):
-		if self._final_name is None:
-			return self.url
-		else:
-			return self.url + " -> " + self._final_name
 
 	def extract(self):
 		if not self.exists:
@@ -397,7 +423,8 @@ class BreezyBuild:
 		fetch_tasks_dict = {}
 
 		for artifact in self.iter_artifacts():
-			if type(artifact) != Artifact:
+			art_type = type(artifact)
+			if art_type not in [Artifact, Archive]:
 				artifact = Artifact(**artifact)
 
 			# This records that the artifact is used by this catpkg, because an Artifact can be shared among multiple
@@ -406,17 +433,18 @@ class BreezyBuild:
 			if self not in artifact.breezybuilds:
 				artifact.breezybuilds.append(self)
 
-			async def lil_coroutine(a):
-				try:
-					status = await a.ensure_completed()
-					return a, status
-				except Exception as e:
-					pkgtools.model.log.error(e, exc_info=True)
-					raise e
+			if art_type is Artifact:
+				async def lil_coroutine(a):
+					try:
+						status = await a.ensure_completed()
+						return a, status
+					except Exception as e:
+						pkgtools.model.log.error(e, exc_info=True)
+						raise e
 
-			fetch_task = asyncio.Task(lil_coroutine(artifact))
-			fetch_task.add_done_callback(pkgtools.autogen._artifact_handle_task_result)
-			fetch_tasks_dict[artifact] = fetch_task
+				fetch_task = asyncio.Task(lil_coroutine(artifact))
+				fetch_task.add_done_callback(pkgtools.autogen._artifact_handle_task_result)
+				fetch_tasks_dict[artifact] = fetch_task
 
 		# Wait for any artifacts that are still fetching:
 		results = await pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values())
