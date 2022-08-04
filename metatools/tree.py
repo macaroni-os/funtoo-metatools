@@ -99,6 +99,8 @@ class Tree:
 		if self.model.debug:
 			cmd_str += " --debug"
 			self.log.debug(cmd_str)
+		if self.model.prod:
+			cmd_str += " --prod"
 		# use subprocess.call so we can see the output of autogen:
 		retcode = subprocess.call(
 			cmd_str,

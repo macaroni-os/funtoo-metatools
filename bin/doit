@@ -29,7 +29,9 @@ CLI_CONFIG = {
 	"fast": {"default": False, "action": "store_true", "help": "Skip updating kit-fixups repo (assume this has been done for us, and it's ready to go."},
 	"cat": {"default": None, "action": "store", "help": "Only run autogens matching this category."},
 	"pkg": {"default": None, "action": "store", "help": "Only run autogens matching this package name."},
-	"autogens": {"default": [], "action": "store", "positional": True, "nargs": "*", "help": "Autogen.py/.yaml files to process (default is to recursively scan)"}
+	"autogens": {"default": [], "action": "store", "positional": True, "nargs": "*", "help": "Autogen.py/.yaml files to process (default is to recursively scan)"},
+	"prod": {"default": False, "action": "store_true", "help": "Indicate we are doing a production tree regen (default: just being run as a dev)"},
+	"force_dynamic": {"default": False, "action": "store_true", "help": "Force the regeneration of dynamic archives."},
 }
 
 

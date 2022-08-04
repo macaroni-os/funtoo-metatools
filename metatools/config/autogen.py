@@ -72,6 +72,8 @@ class AutogenConfig(StoreSpiderConfig):
 	filter_cat = None
 	filter_pkg = None
 	autogens = None
+	prod = False
+	force_dynamic = False
 	logger_name = 'metatools.autogen'
 
 	config_files = {
@@ -90,13 +92,15 @@ class AutogenConfig(StoreSpiderConfig):
 		"""
 		return "/".join(self.locator.root.split("/")[-2:])
 
-	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False, fixups_url=None, fixups_branch=None, fast=None, cat=None, pkg=None, autogens=None):
+	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False, fixups_url=None, prod=False, force_dynamic=False, fixups_branch=None, fast=None, cat=None, pkg=None, autogens=None):
 		await super().initialize(fastpull_scope=fastpull_scope, debug=debug)
 
 		self.fetch_cache = FileStoreFetchCache(db_base_path=self.store_path)
 
 		# Process specified autogens instead of recursing:
 		self.autogens = autogens
+		self.prod = prod
+		self.force_dynamic = force_dynamic
 
 		# Selective filtering of autogens:
 		self.filter_cat = cat
