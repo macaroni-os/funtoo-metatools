@@ -237,20 +237,23 @@ class Artifact(Archive):
 
 		# Initialization of final_name. This has to happen in this order to work.
 
-		self.url = url
+		self._url = url
 		if final_name:
 			self._final_name = final_name
 
 		super().__init__(self.final_name)
 
-		assert self.url is not None
-
+		assert self._url is not None
 		try:
-			assert self.url.split(':')[0] in ['http', 'https', 'ftp']
+			assert self._url.split(':')[0] in ['http', 'https', 'ftp']
 		except (IndexError, AssertionError):
-			raise ValueError(f"url= argument of Artifact is '{url}', which appears invalid.")
+			raise ValueError(f"url= argument of Artifact is '{_url}', which appears malformed or an unsupported protocol.")
 		self.key = key
 		self.extra_http_headers = extra_http_headers
+
+	@property
+	def url(self):
+		return self._url
 
 	@property
 	def final_name(self):
