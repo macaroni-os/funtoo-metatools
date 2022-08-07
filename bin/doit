@@ -67,10 +67,9 @@ async def main_thread():
 if __name__ == "__main__":
 	success = hub.LOOP.run_until_complete(main_thread())
 	hub.LOOP.close()
-	#if not success:
-	#	sys.exit(1)
+	if not success:
+		sys.exit(1)
 
-# TODO: add after-action report (listing any failures.)
 # TODO: add 'facts' database concept to allow more resiliency on failures (fall back to cached facts from last
 #       successful run)
 

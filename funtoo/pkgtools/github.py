@@ -227,7 +227,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 	tag_name of the release.
 
 	``include`` may contain a list or set of strings (currently supporting "prerelease" and "draft") which
-	if defined will be considered as a match. By default, prereleases and drafts are skipped.
+	if defined will be considered as a match. By default, pre-releases and drafts are skipped.
 	"""
 
 	if tarball and assets:

@@ -466,7 +466,7 @@ class BreezyBuild:
 				fetch_tasks_dict[artifact] = fetch_task
 
 		# Wait for any artifacts that are still fetching:
-		results = await pkgtools.autogen.gather_pending_tasks(fetch_tasks_dict.values())
+		results = await pkgtools.autogen.gather_pending_tasks("fetch", fetch_tasks_dict.values())
 		completion_list = aggregate(results)
 		for artifact, status in completion_list:
 			if status is False:

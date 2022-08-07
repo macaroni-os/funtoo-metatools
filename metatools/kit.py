@@ -135,7 +135,11 @@ class KitGenerator:
 		for step in steps:
 			if step is not None:
 				model.log.info(f"Running step {step.__class__.__name__} for {self.out_tree.root}")
-				await step.run(self)
+				try:
+					await step.run(self)
+				except Exception as e:
+					model.log.critical(f"Step {step.__class__.__name__} failed with Exception: {e}")
+					raise e
 
 	def iter_ebuilds(self):
 		"""
@@ -660,8 +664,12 @@ class KitExecutionPool:
 			model.log.debug(f"KitExecutionPool: running job {kit_job}")
 			kit_job.initialize_sources()
 			method = getattr(kit_job, self.method)
-			await method()
-			model.log.debug(f"KitExecutionPool: job {kit_job} complete")
+			try:
+				await method()
+				model.log.debug(f"KitExecutionPool: job {kit_job} complete")
+			except Exception as e:
+				return False
+		return True
 
 
 class MetaRepoJobController:
@@ -777,10 +785,14 @@ class MetaRepoJobController:
 					other_jobs_list.append(kit_job)
 
 		master_pool = KitExecutionPool(jobs=master_jobs_list, method=method)
-		await master_pool.run()
+		success = await master_pool.run()
+		if not success:
+			return False
 
 		other_pool = KitExecutionPool(jobs=other_jobs_list, method=method)
-		await other_pool.run()
+		success = await other_pool.run()
+		if not success:
+			return False
 
 	async def reposcan(self):
 		await self.process_all_kits_in_release(method="reposcan")
@@ -807,7 +819,10 @@ class MetaRepoJobController:
 		model.log.debug("In generate() start")
 		self.cleanup_error_logs()
 
-		await self.process_all_kits_in_release(method="generate")
+		success = await self.process_all_kits_in_release(method="generate")
+		if not success:
+			self.display_error_summary()
+			return
 
 		if not self.write:
 			return

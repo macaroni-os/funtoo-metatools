@@ -106,6 +106,7 @@ class Tree:
 			cmd_str,
 			shell=True,
 		)
+		# TODO: we don't need to see this GitTreeError traceback
 		if retcode != 0:
 			self.log.error(f"Command failure from merge-kits: {cmd_str}")
 			raise GitTreeError(f"failed autogen in {self.root} -- offset {src_offset}.")

@@ -172,28 +172,36 @@ def queue_all_indy_autogens(files=None):
 		pkgtools.model.log.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
-async def gather_pending_tasks(task_list):
+async def gather_pending_tasks(name, task_list):
 	"""
 	This function collects completed asyncio coroutines, catches any exceptions recorded during their execution.
+
+	Use "name" to specify the kinds of tasks you are collecting. This will assist with error reporting.
 	"""
 	results = []
 	cur_tasks = task_list
+	exceptions = 0
 	if not len(cur_tasks):
 		return [], []
 	while True:
 		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
-		# TODO: Due to the way we are setting a _handle for each Task, which is handling any exceptions, I don't think
-		#       we still need to handle any exceptions here.
+		# Because we are setting add_done_callback(_handle_task_result) for each task we are trying to gather, and
+		# using the callback to look at the result and detect exceptions, we don't have to do this here anymore.
+		# The callback is preferred because we can set the proper kind of exception handling for the particular
+		# task rather than having to figure that out here.
 		for done_item in done_list:
 			try:
 				result = done_item.result()
 				results.append(result)
-				pkgtools.model.log.debug(f"Gathered task: {done_item} {result}")
 			except Exception as e:
-				pkgtools.model.log.exception("Unexpected Exception!")
-				raise e
+				exceptions += 1
+			pkgtools.model.log.debug(f"Gathered task: {done_item} {result}")
 		if not len(cur_tasks):
 			break
+	if exceptions:
+		pkgtools.model.log.critical(f"{name} exceptions encountered: {exceptions}")
+		raise RuntimeError("One or more tasks failed.")
+
 	return results
 
 
@@ -451,20 +459,19 @@ async def execute_generator(
 				if generate is None:
 					return autogen_info, AttributeError(f"generate() not found in {generator_sub}")
 				try:
-					try:
-						# Inject the autogen_id into pkginfo so it is available to ebuild.py/BreezyBuilds...
-						pkginfo["autogen_id"] = autogen_id
-						await generate(AutoHub(autogen_id, pkgtools), **pkginfo)
-					except TypeError as te:
-						if not inspect.iscoroutinefunction(generate):
-							pkgtools.model.log.error(f"generate() in {generator_sub} must be async")
-							return False
-						else:
-							pkgtools.model.log.error(te, exc_info=True)
-							raise te
+					# Inject the autogen_id into pkginfo so it is available to ebuild.py/BreezyBuilds...
+					pkginfo["autogen_id"] = autogen_id
+					await generate(AutoHub(autogen_id, pkgtools), **pkginfo)
+				except TypeError as te:
+					if not inspect.iscoroutinefunction(generate):
+						pkgtools.model.log.error(f"generate() in {generator_sub} must be async")
+						return False
+					else:
+						pkgtools.model.log.error(te, exc_info=True)
+						raise te
 				except Exception as e:
 					pkgtools.model.log.error(e, exc_info=True)
-					return False
+					raise e
 				return True
 
 			task = Task(gen_wrapper(pkginfo, generator_sub))
@@ -477,8 +484,8 @@ async def execute_generator(
 			task.add_done_callback(_handle_task_result)
 			hub.THREAD_CTX.running_autogens.append(task)
 
-		await gather_pending_tasks(hub.THREAD_CTX.running_autogens)
-		await gather_pending_tasks(hub.THREAD_CTX.running_breezybuilds)
+		await gather_pending_tasks("autogen", hub.THREAD_CTX.running_autogens)
+		await gather_pending_tasks("breezybuild", hub.THREAD_CTX.running_breezybuilds)
 
 	return generator_thread_task, pkginfo_list
 
@@ -634,7 +641,7 @@ async def execute_all_queued_generators():
 			future = loop.run_in_executor(executor, hub.run_async_adapter, async_func, pkginfo_list)
 			futures.append(future)
 
-		await gather_pending_tasks(futures)
+		await gather_pending_tasks("generator", futures)
 
 
 async def start():
@@ -663,20 +670,26 @@ async def start():
 
 	queue_all_indy_autogens(indy_autogens)
 	queue_all_yaml_autogens(yaml_autogens)
-	await execute_all_queued_generators()
-	generate_manifests()
-	pkgtools.model.log.debug("generate_manifests() complete.")
-	# TODO: return false on error
-	if len(AUTOGEN_FAILURES):
-		if len(AUTOGEN_FAILURES) == 1:
-			pkgtools.model.log.error(f"An error was encountered when processing {AUTOGEN_FAILURES[0]}")
-		else:
-			pkgtools.model.log.error(f"Errors were encountered when processing the following autogens:")
-			for fail in AUTOGEN_FAILURES:
-				pkgtools.model.log.error(f" * {fail}")
-		return False
-	else:
+
+	failure = False
+	try:
+		await execute_all_queued_generators()
+	except RuntimeError:
+		failure = True
+
+	if not failure:
+		generate_manifests()
+		pkgtools.model.log.debug("generate_manifests() complete.")
 		return True
-	pkgtools.model.log.debug("start() complete.")
+	else:
+		if len(AUTOGEN_FAILURES):
+			if len(AUTOGEN_FAILURES) == 1:
+				pkgtools.model.log.error(f"An error was encountered when processing {AUTOGEN_FAILURES[0]}")
+			else:
+				pkgtools.model.log.error(f"Errors were encountered when processing the following autogens:")
+				for fail in AUTOGEN_FAILURES:
+					pkgtools.model.log.error(f" * {fail}")
+			return False
+
 
 # vim: ts=4 sw=4 noet
