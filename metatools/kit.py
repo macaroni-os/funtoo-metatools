@@ -699,6 +699,7 @@ class MetaRepoJobController:
 			os.unlink(file)
 
 	def display_error_summary(self):
+		model.log.debug("display_error_summary start")
 		for stat_list, name, shortname in [
 			(model.metadata_error_stats, "metadata extraction errors", "errors"),
 			(model.processing_warning_stats, "warnings", "warnings"),
@@ -710,6 +711,7 @@ class MetaRepoJobController:
 					branch_info = f"{stat_info.name} branch {stat_info.branch}".ljust(30)
 					model.log.warning(f"* {branch_info} -- {stat_info.count} {shortname}.")
 				model.log.warning(f"{name} errors logged to {model.temp_path}.")
+		model.log.debug("display_error_summary end")
 
 	def get_output_sha1s(self):
 		output_sha1s = {}
@@ -822,9 +824,11 @@ class MetaRepoJobController:
 		success = await self.process_all_kits_in_release(method="generate")
 		if not success:
 			self.display_error_summary()
+			model.log.debug("FAILURE in process_all_kits_in_release")
 			return False
 
 		if not self.write:
+			model.log.debug("not doing commit, so exiting from job controller early")
 			return True
 
 		# Create meta-repo commit referencing our updated kits:
@@ -839,12 +843,14 @@ class MetaRepoJobController:
 		#		await self.checkout_kit(ctx, pull=False)
 
 		if not model.mirror_repos:
+			model.log.debug("not mirroring repos, so exiting from job controller early")
 			self.display_error_summary()
 			return True
 
 		# Mirroring to GitHub happens here:
 		if model.push:
 			self.mirror_all_repositories()
+		model.log.debug("exiting from job controller")
 		self.display_error_summary()
 		return True
 
