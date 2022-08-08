@@ -54,11 +54,12 @@ async def main_thread(args):
 	)
 	controller = MetaRepoJobController(model, write=True)
 	try:
-		await controller.generate()
+		success = await controller.generate()
+		return success
 	except KeyboardInterrupt:
 		model.log.error("Keyboard interrupt -- shutting down.")
 		await do_process_teardown()
-
+	return False
 
 CLI_CONFIG = {
 	"fixups_url": {"type": str},
@@ -89,7 +90,9 @@ def parse_args():
 
 if __name__ == "__main__":
 	args = parse_args()
-	hub.LOOP.run_until_complete(main_thread(args))
-	sys.exit(0)
+	if hub.LOOP.run_until_complete(main_thread(args)):
+		sys.exit(0)
+	else:
+		sys.exit(1)
 
 # vim: ts=4 sw=4 noet

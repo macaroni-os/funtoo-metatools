@@ -822,10 +822,10 @@ class MetaRepoJobController:
 		success = await self.process_all_kits_in_release(method="generate")
 		if not success:
 			self.display_error_summary()
-			return
+			return False
 
 		if not self.write:
-			return
+			return True
 
 		# Create meta-repo commit referencing our updated kits:
 		self.generate_metarepo_metadata()
@@ -840,12 +840,13 @@ class MetaRepoJobController:
 
 		if not model.mirror_repos:
 			self.display_error_summary()
-			return
+			return True
 
 		# Mirroring to GitHub happens here:
 		if model.push:
 			self.mirror_all_repositories()
 		self.display_error_summary()
+		return True
 
 	def mirror_repository(self, repo: Tree, base_path, mirror):
 		"""
