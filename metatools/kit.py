@@ -794,8 +794,7 @@ class MetaRepoJobController:
 
 		other_pool = KitExecutionPool(jobs=other_jobs_list, method=method)
 		success = await other_pool.run()
-		if not success:
-			return False
+		return success
 
 	async def reposcan(self):
 		await self.process_all_kits_in_release(method="reposcan")
