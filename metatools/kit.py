@@ -668,6 +668,7 @@ class KitExecutionPool:
 				await method()
 				model.log.debug(f"KitExecutionPool: job {kit_job} complete")
 			except Exception as e:
+				model.log.exception("Kit job failure:")
 				return False
 		return True
 
