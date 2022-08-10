@@ -89,7 +89,7 @@ def pypi_get_artifact_url(pkginfo, json_dict, strict=True):
 	if artifact_url is None:
 		if not strict:
 			# dang, the latest official release doesn't have a source tarball. Let's scan for the most recent release with a source tarball:
-			for version in reversed(json_dict["releases"].keys()):
+			for version in reversed(list(json_dict["releases"].keys())):
 				artifact_url = sdist_artifact_url(json_dict["releases"], version)
 				if artifact_url is not None:
 					pkginfo["version"] = version
