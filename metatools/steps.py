@@ -95,11 +95,11 @@ class SyncDir(MergeStep):
 
 class SyncFromTree(SyncDir):
 	# sync a full portage tree, deleting any excess files in the target dir:
-	def __init__(self, src_tree, exclude=None):
+	def __init__(self, src_tree, exclude=None, delete=True):
 		if exclude is None:
 			exclude = []
 		self.src_tree = src_tree
-		SyncDir.__init__(self, src_tree, srcdir=None, destdir=None, exclude=exclude, delete=True)
+		SyncDir.__init__(self, src_tree, srcdir=None, destdir=None, exclude=exclude, delete=delete)
 
 	async def run(self, kit_gen):
 		await SyncDir.run(self, kit_gen)
