@@ -295,7 +295,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 			for asset_key, asset_filename in assets.items():
 				expanded_assets[
 					asset_filename.format(version=version, github_user=github_user, github_repo=github_repo, tag=tag_name, key=asset_key, **kwargs)] = asset_key
-
+			hub.pkgtools.model.log.debug(f"github: Expanded assets: {expanded_assets}")
 			found_assets = {}
 
 			for asset in release['assets']:
@@ -305,19 +305,33 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 					found_assets[found_asset_key] = {"url": asset['browser_download_url'], 'final_name': found_asset_name}
 
 			# If we have found all desired assets, we are now happy and done!:
+			crates_dict = None
 
-			if len(found_assets.keys()) == len(expanded_assets.keys()):
-				if tarball:
-					artifacts = [hub.pkgtools.ebuild.Artifact(**found_assets["default"])]
-				else:
-					artifacts = {}
-					for artifact_key, art_kwargs in found_assets.items():
-						artifacts[artifact_key] = hub.pkgtools.ebuild.Artifact(**art_kwargs)
-				return {
-					"version": version,
-					"artifacts": artifacts,
-					"tag": tag_name,
-				}
+			if len(found_assets.keys()) != len(expanded_assets.keys()):
+				hub.pkgtools.model.log.debug(f"github: Found only these assets: {found_assets}")
+				continue
+
+			if tarball:
+				artifacts = [hub.pkgtools.ebuild.Artifact(**found_assets["default"])]
+			else:
+				artifacts = {}
+				for artifact_key, art_kwargs in found_assets.items():
+					artifacts[artifact_key] = hub.pkgtools.ebuild.Artifact(**art_kwargs)
+
+				for key, artifact in artifacts.items():
+					if artifact.final_name == "Cargo.lock":
+						await artifact.fetch()
+						crates_dict = await hub.pkgtools.rust.get_crates_artifacts(artifact.final_path)
+
+			out_dict = {
+				"version": version,
+				"artifacts": artifacts,
+				"tag": tag_name,
+			}
+
+			if crates_dict:
+				out_dict.update(crates_dict)
+			return out_dict
 
 	else:
 		version, release = versions_and_release_elements[0]
