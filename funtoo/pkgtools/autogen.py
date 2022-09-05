@@ -599,7 +599,7 @@ def queue_all_yaml_autogens(files=None):
 						# fall back to kit-fixups/generators.
 						sub_path = os.path.join(pkgtools.model.kit_fixups_repo.root, "generators")
 					else:
-						raise pkgtools.ebuild.BreezyError("Required generator \'{rule['generator']}\' not found.")
+						raise pkgtools.ebuild.BreezyError(f"Required generator \'{rule['generator']}\' not found.")
 				else:
 					# Fallback: Use an ad-hoc 'generator.py' generator in the same dir as autogen.yaml:
 					sub_name = "generator"
