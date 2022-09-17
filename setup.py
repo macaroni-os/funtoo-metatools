@@ -8,14 +8,14 @@ with open("README.rst", "r") as fh:
 
 setuptools.setup(
 	name="funtoo-metatools",
-	version="1.1.0",
+	version="1.1.1",
 	author="Daniel Robbins",
 	author_email="drobbins@funtoo.org",
 	description="Funtoo framework for auto-creation of ebuilds.",
 	long_description=long_description,
 	long_description_content_type="text/x-rst",
 	url="https://code.funtoo.org/bitbucket/users/drobbins/repos/funtoo-metatools/browse",
-	scripts=["bin/doit"],
+	scripts=["bin/doit", "bin/merge-kits"],
 	classifiers=[
 		"Programming Language :: Python :: 3",
 		"License :: OSI Approved :: Apache Software License",
