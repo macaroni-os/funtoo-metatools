@@ -506,11 +506,14 @@ class GitTree(Tree):
 				self.cleanTree()
 				self.do_pull()
 			else:
-				old_head = self.head()
-				self.do_pull()
-				new_head = self.head()
-				if old_head != new_head:
-					self.cleanTree()
+				if self.create_branches:
+					self.run_shell("(cd %s && git checkout -b %s)" % (self.root, branch))
+				else:
+					old_head = self.head()
+					self.do_pull()
+					new_head = self.head()
+					if old_head != new_head:
+						self.cleanTree()
 		if branch and self.currentLocalBranch != branch:
 			raise GitTreeError(
 				"%s: On branch %s. not able to check out branch %s." % (self.root, self.currentLocalBranch, branch)
