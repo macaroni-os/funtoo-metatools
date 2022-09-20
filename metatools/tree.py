@@ -507,12 +507,12 @@ class GitTree(Tree):
 					self.do_pull()
 				elif self.create_branches:
 					self.run_shell(f"(cd {self.root} && git checkout -b {branch})")
-					self.run_shell(f"(cd {self.root} && git branch --set-upstream-to=origin/{branch} {branch})")
+					self.run_shell(f"(cd {self.root} && git push origin {branch})")
 					self.cleanTree()
 			else:
 				if self.create_branches:
 					self.run_shell(f"(cd {self.root} && git checkout -b {branch})")
-					self.run_shell(f"(cd {self.root} && git branch --set-upstream-to=origin/{branch} {branch})")
+					self.run_shell(f"(cd {self.root} && git push origin {branch})")
 					self.cleanTree()
 				else:
 					old_head = self.head()
