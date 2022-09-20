@@ -498,16 +498,22 @@ class GitTree(Tree):
 				self.run_shell("(cd %s && git fetch --verbose)" % self.root)
 				if self.localBranchExists(branch):
 					self.run_shell("(cd %s && git checkout %s)" % (self.root, branch))
+					self.cleanTree()
+					self.do_pull()
 				elif self.remoteBranchExists(branch):
 					# An AutoCreatedGitTree will automatically create branches as needed, as forks of master.
 					self.run_shell("(cd %s && git checkout -b %s --track origin/%s)" % (self.root, branch, branch))
-				else:
-					self.run_shell("(cd %s && git checkout -b %s)" % (self.root, branch))
-				self.cleanTree()
-				self.do_pull()
+					self.cleanTree()
+					self.do_pull()
+				elif self.create_branches:
+					self.run_shell(f"(cd {self.root} && git checkout -b {branch})")
+					self.run_shell(f"(cd {self.root} && git branch --set-upstream-to=origin/{branch} {branch})")
+					self.cleanTree()
 			else:
 				if self.create_branches:
-					self.run_shell("(cd %s && git checkout -b %s)" % (self.root, branch))
+					self.run_shell(f"(cd {self.root} && git checkout -b {branch})")
+					self.run_shell(f"(cd {self.root} && git branch --set-upstream-to=origin/{branch} {branch})")
+					self.cleanTree()
 				else:
 					old_head = self.head()
 					self.do_pull()
