@@ -507,19 +507,16 @@ class GitTree(Tree):
 					self.do_pull()
 				elif self.create_branches:
 					self.run_shell(f"(cd {self.root} && git checkout -b {branch})")
-					self.run_shell(f"(cd {self.root} && git push origin {branch})")
+					self.run_shell(f"echo 'created by merge-kits.' > {self.root}/README")
+					self.run_shell(f"(cd {self.root} && git add README; git commit -a -m 'initial commit by merge-kits' )")
+					self.run_shell(f"(cd {self.root} && git push --set-upstream origin {branch})")
 					self.cleanTree()
 			else:
-				if self.create_branches:
-					self.run_shell(f"(cd {self.root} && git checkout -b {branch})")
-					self.run_shell(f"(cd {self.root} && git push origin {branch})")
+				old_head = self.head()
+				self.do_pull()
+				new_head = self.head()
+				if old_head != new_head:
 					self.cleanTree()
-				else:
-					old_head = self.head()
-					self.do_pull()
-					new_head = self.head()
-					if old_head != new_head:
-						self.cleanTree()
 		if branch and self.currentLocalBranch != branch:
 			raise GitTreeError(
 				"%s: On branch %s. not able to check out branch %s." % (self.root, self.currentLocalBranch, branch)

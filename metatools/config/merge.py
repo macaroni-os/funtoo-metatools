@@ -96,7 +96,6 @@ class MergeConfig(MinimalConfig):
 			# or by Funtoo itself for updating official kits and meta-repo.
 			self.push = push
 			self.nest_kits = False
-			self.push = push
 			self.mirror_repos = push
 			self.git_class = GitTree
 			self.git_kwargs = {"checkout_all_branches": True}
