@@ -1,4 +1,6 @@
 import re
+import types
+
 import packaging.version
 
 # tag_gen and release_gen are higher-level functions that return a dict of items, suitable for
@@ -363,7 +365,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		}
 
 
-def iter_tag_versions(tags_list, select=None, filter=None, matcher=None, transform=None, version=None):
+async def iter_tag_versions(tags_list, select=None, filter=None, matcher=None, transform=None, version=None):
 	"""
 	This method iterates over each tag in tags_list, extracts the version information, and
 	yields a tuple of that version as well as the entire GitHub tag data for that tag.
@@ -386,13 +388,43 @@ def iter_tag_versions(tags_list, select=None, filter=None, matcher=None, transfo
 	"""
 	if matcher is None:
 		matcher = TagRegexMatcher(select=select, filter=filter)
-	for tag_data in tags_list:
+
+	# To simplify the code, if we don't get tags_list as an async generator, let's just wrap our list so
+	# that it's in an async generator. This may be unnecessary, but need to do some testing
+	# to see, so let's just do it this way for now:
+
+	if not isinstance(tags_list, types.AsyncGeneratorType):
+		async def tags_list_gen(t_list):
+			for tag in t_list:
+				yield tag
+		tags_gen = tags_list_gen(tags_list)
+	else:
+		# We already have an async generator:
+		tags_gen = tags_list
+
+	async for tag_data in tags_gen:
 		match = matcher.match(tag_data['name'], select=select, filter=filter, transform=transform)
 		if match:
 			if version:
 				if match != version:
 					continue
 			yield match, tag_data
+
+
+async def iter_tags_pages(hub, github_user, github_repo):
+	page = 1
+	while True:
+		current_page = await hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/tags?per_page=100&page={page}", is_json=True)
+		if not len(current_page):
+			break
+		yield current_page
+		page += 1
+
+
+async def iter_all_tags(hub, github_user, github_repo):
+	async for tags_page in iter_tags_pages(hub, github_user, github_repo):
+		for tag_data in tags_page:
+			yield tag_data
 
 
 async def latest_tag_version(hub, github_user, github_repo, tag_data=None, transform=None, select=None, filter=None,
@@ -411,9 +443,10 @@ async def latest_tag_version(hub, github_user, github_repo, tag_data=None, trans
 	if matcher is None:
 		matcher = TagRegexMatcher(select=select, filter=filter)
 	if tag_data is None:
-		tag_data = await fetch_tag_data(hub, github_user, github_repo)
-	versions_and_tag_elements = list(
-		iter_tag_versions(tag_data, select=select, filter=filter, matcher=matcher, transform=transform, version=version))
+		tag_data = iter_all_tags(hub, github_user, github_repo)
+	versions_and_tag_elements = []
+	async for v_tagel in iter_tag_versions(tag_data, select=select, filter=filter, matcher=matcher, transform=transform, version=version):
+		versions_and_tag_elements.append(v_tagel)
 	if not len(versions_and_tag_elements):
 		return
 	else:
