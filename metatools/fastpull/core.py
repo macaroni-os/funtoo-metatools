@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
 import logging
 from datetime import datetime
+from typing import Tuple
 
 from metatools.blos import BaseLayerObjectStore
 from metatools.fastpull.spider import FetchRequest, Download
@@ -12,27 +14,27 @@ log = logging.getLogger('metatools.autogen')
 
 class IntegrityScope:
 
-    def __init__(self, parent, scope, validate_hashes=None):
-        if validate_hashes is None:
-            validate_hashes = {"sha512"}
-        self.validate_hashes = validate_hashes
-        self.parent = parent
-        self.scope = scope
-        self.store = Store(
-            collection="integrity",
-            prefix=self.scope,
-            backend=FileStorageBackend(db_base_path=self.parent.db_base_path),
-            key_spec=DerivedKey(["url"])
-        )
-        self.dynamic = Store(
-            collection="dynamic",
-            prefix=self.scope,
-            backend=FileStorageBackend(db_base_path=self.parent.db_base_path),
-            key_spec=DerivedKey(["key"])
-        )
+	def __init__(self, parent, scope, validate_hashes=None):
+		if validate_hashes is None:
+			validate_hashes = {"sha512"}
+		self.validate_hashes = validate_hashes
+		self.parent = parent
+		self.scope = scope
+		self.store = Store(
+			collection="integrity",
+			prefix=self.scope,
+			backend=FileStorageBackend(db_base_path=self.parent.db_base_path),
+			key_spec=DerivedKey(["url"])
+		)
+		self.dynamic = Store(
+			collection="dynamic",
+			prefix=self.scope,
+			backend=FileStorageBackend(db_base_path=self.parent.db_base_path),
+			key_spec=DerivedKey(["key"])
+		)
 
-    async def get_file_by_url(self, request: FetchRequest) -> StoreObject:
-        """
+	async def get_file_by_url(self, request: FetchRequest) -> StoreObject:
+		"""
 
 		This method will attempt to return a StoreObject reference to binary data which is associated with
 		a URL, referenced by ``request.url``, in this ``IntegrityScope``. Typically, this means that a
@@ -74,38 +76,43 @@ class IntegrityScope:
 		the root cause of the fetch error can be propagated to the caller.
 		"""
 
-        existing_ref: StoreObject = self.store.read({"url": request.url})
-        if existing_ref is not None:
-            obj = self.parent.blos.read({"hashes.sha512": existing_ref.data['sha512']})
-            if obj is not None:
-                log.debug(
-                    f"IntegrityScope:{self.scope}._get_file_by_url_new: existing object found for ref {request.url}")
-                return obj
-        new_ref = await self.parent.spider.download(request,
-                                                    completion_pipeline=[self.parent.fetch_completion_callback])
-        assert isinstance(new_ref, StoreObject)
-        self.store.write(
-            {"url": request.url, "sha512": new_ref.data["hashes"]["sha512"], "updated_on": datetime.utcnow()})
-        return new_ref
+		existing_ref: StoreObject = self.store.read({"url": request.url})
+		if existing_ref is not None:
+			obj = self.parent.blos.read({"hashes.sha512": existing_ref.data['sha512']})
+			if obj is not None:
+				log.debug(
+					f"IntegrityScope:{self.scope}._get_file_by_url_new: existing object found for ref {request.url}")
+				return obj
+		new_ref = await self.parent.spider.download(request,
+		                                            completion_pipeline=[self.parent.fetch_completion_callback])
+		assert isinstance(new_ref, StoreObject)
+		self.store.write(
+			{"url": request.url, "sha512": new_ref.data["hashes"]["sha512"], "updated_on": datetime.utcnow()})
+		return new_ref
 
-    def get_file_dynamic(self, key_dict: dict) -> StoreObject:
-        existing_ref: StoreObject = self.dynamic.read({"key": key_dict})
-        if existing_ref:
-            log.debug(f"get_file_dynamic: existing_ref: {existing_ref.data}")
-        if existing_ref is not None:
-            obj = self.parent.blos.read({"hashes.sha512": existing_ref.data['hashes']['sha512']})
-            if obj is not None:
-                return obj
+	def get_file_dynamic(self, key_dict: dict) -> Tuple[StoreObject, dict] | Tuple[None, None]:
+		existing_ref: StoreObject = self.dynamic.read({"key": key_dict})
+		if existing_ref:
+			log.debug(f"get_file_dynamic: existing_ref: {existing_ref.data}")
+		if existing_ref is not None:
+			obj = self.parent.blos.read({"hashes.sha512": existing_ref.data['hashes']['sha512']})
+			if obj is not None:
+				if "metadata" in existing_ref.data:
+					metadata = existing_ref.data["metadata"]
+				else:
+					metadata = {}
+				return obj, metadata
+		return None, None
 
-    def store_file_dynamic(self, key_dict: dict, obj_path):
-        store_obj = self.parent.blos.insert_blob(obj_path)
-        self.dynamic.write({"key": key_dict, "hashes": store_obj.data["hashes"]})
+	def store_file_dynamic(self, key_dict: dict, obj_path, metadata: dict = None):
+		store_obj = self.parent.blos.insert_blob(obj_path)
+		self.dynamic.write({"key": key_dict, "hashes": store_obj.data["hashes"], "metadata": metadata if metadata else {}})
 
 
 class IntegrityDatabase:
 
-    def __init__(self, db_base_path, blos: BaseLayerObjectStore = None, spider=None, hashes: set = None):
-        """
+	def __init__(self, db_base_path, blos: BaseLayerObjectStore = None, spider=None, hashes: set = None):
+		"""
 		``blos`` is an instance of a Base Layer Object Store (used to store distfiles, indexed by their hashes,
 		and also takes care of all integrity checking tasks for us.
 
@@ -120,25 +127,25 @@ class IntegrityDatabase:
 		fastpull by their hash. They should be retrieved by target URL (and scope). So we always want to retrieve
 		the ref by the URL, then from the returned record, use the sha512 to see if the BLOS entry exists.
 		"""
-        assert hashes
-        self.db_base_path = db_base_path
-        self.hashes = hashes
-        self.blos: BaseLayerObjectStore = blos
-        self.spider = spider
-        self.scopes = {}
+		assert hashes
+		self.db_base_path = db_base_path
+		self.hashes = hashes
+		self.blos: BaseLayerObjectStore = blos
+		self.spider = spider
+		self.scopes = {}
 
-    def get_scope(self, scope_id):
-        """
+	def get_scope(self, scope_id):
+		"""
 		This method returns an 'IntegrityScope', which is basically like a session for doit (autogen) to
 		associate URLs with entries in the BLOS, or Base Layer Object Store.
 		"""
-        if scope_id not in self.scopes:
-            self.scopes[scope_id] = IntegrityScope(self, scope_id)
-        log.debug(f"FastPull Integrity Scope: {scope_id}")
-        return self.scopes[scope_id]
+		if scope_id not in self.scopes:
+			self.scopes[scope_id] = IntegrityScope(self, scope_id)
+		log.debug(f"FastPull Integrity Scope: {scope_id}")
+		return self.scopes[scope_id]
 
-    def fetch_completion_callback(self, download: Download) -> StoreObject:
-        """
+	def fetch_completion_callback(self, download: Download) -> StoreObject:
+		"""
 		This method is intended to be called *once* when an actual in-progress download of a tarball (by
 		the Spider) has completed. It performs several important finalization actions upon successful
 		download:
@@ -154,7 +161,7 @@ class IntegrityDatabase:
 		for it.
 		"""
 
-        store_obj: StoreObject = self.blos.insert_download(download)
-        if self.spider:
-            self.spider.cleanup(download)
-        return store_obj
+		store_obj: StoreObject = self.blos.insert_download(download)
+		if self.spider:
+			self.spider.cleanup(download)
+		return store_obj

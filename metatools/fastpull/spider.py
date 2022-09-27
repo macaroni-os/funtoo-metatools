@@ -278,20 +278,38 @@ class WebSpider:
 
 	async def status_logger(self):
 		while self.keep_running:
-			await asyncio.sleep(1)
+			await asyncio.sleep(0.1)
 			dl_count = len(self.DL_ACTIVE)
 			if dl_count > 1:
 				log.info(f"Spider active downloads: {len(self.DL_ACTIVE)}")
 			elif dl_count == 1:
 				log.info(f"Spider active download: {list(self.DL_ACTIVE.keys())[0]}")
+		log.info("Status logger done.")
 
 	async def start_asyncio_tasks(self):
-		self.status_logger_task = asyncio.create_task(self.status_logger())
+		self.status_logger_task = asyncio.Task(self.status_logger())
 
-	def stop(self):
+	async def stop(self):
 		self.keep_running = False
 		self.status_logger_task.cancel()
-		asyncio.gather(self.status_logger_task)
+		try:
+			await self.status_logger_task
+		except:
+			# This works around what is, from what I can tell, an asyncio bug. This, along with os._exit() in
+			# doit, prevents a traceback that looks like this on exit with python3.7
+			#
+			#   File "/usr/lib/python3.7/asyncio/selector_events.py", line 271, in _remove_reader
+			#     key = self._selector.get_key(fd)
+			#   File "/usr/lib/python3.7/selectors.py", line 190, in get_key
+			#     return mapping[fileobj]
+			#   File "/usr/lib/python3.7/selectors.py", line 71, in __getitem__
+			#     fd = self._selector._fileobj_lookup(fileobj)
+			#   File "/usr/lib/python3.7/selectors.py", line 225, in _fileobj_lookup
+			#     return _fileobj_to_fd(fileobj)
+			#   File "/usr/lib/python3.7/selectors.py", line 42, in _fileobj_to_fd
+			#     raise ValueError("Invalid file descriptor: {}".format(fd))
+			# ValueError: Invalid file descriptor: -1
+			pass
 
 	async def download(self, request: FetchRequest, completion_pipeline=None):
 

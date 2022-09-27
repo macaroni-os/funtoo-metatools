@@ -35,7 +35,6 @@ async def gentoo_staging_update():
 
 
 if __name__ == "__main__":
-
 	hub.LOOP.run_until_complete(gentoo_staging_update())
 
 # vim: ts=4 sw=4 noet
