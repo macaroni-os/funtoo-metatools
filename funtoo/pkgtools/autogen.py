@@ -605,7 +605,10 @@ async def execute_all_queued_generators():
 			futures.append(future)
 
 		results, failures = await gather_pending_tasks("generator", futures)
-		all_failures += failures
+		# All the "results" of the async_func are lists of failures -- so we should aggregate all of these:
+		all_fails = pkgtools.ebuild.aggregate(results)
+		all_fails += pkgtools.ebuild.aggregate(failures)
+		all_failures += all_fails
 	return all_failures
 
 

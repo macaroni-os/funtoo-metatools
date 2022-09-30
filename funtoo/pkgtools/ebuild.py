@@ -508,7 +508,6 @@ class BreezyBuild:
 		# Wait for any artifacts that are still fetching:
 		results, failures = await pkgtools.autogen.gather_pending_tasks("fetch", fetch_tasks_dict.values())
 		completion_list = aggregate(results)
-		print(f"COMPLETION LIST: {completion_list}")
 		if failures:
 			for fail_task in failures:
 				logging.exception("Fetch exception", exc_info=fail_task.exception())
