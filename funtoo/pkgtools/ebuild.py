@@ -533,7 +533,7 @@ class BreezyBuild:
 				return True
 			except Exception as e:
 				pkgtools.model.log.error(e, exc_info=True)
-				return False
+				raise e
 
 		# This will cause the BreezyBuild to start autogeneration immediately, appending the task to the thread-
 		# local context so we can grab the result later. The return value will be the BreezyBuild object itself,
