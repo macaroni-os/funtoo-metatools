@@ -683,20 +683,22 @@ async def start():
 		await execute_all_queued_generators()
 	except RuntimeError:
 		failure = True
-
+	pkgtools.model.log.debug(f"ALL GENERATORS COMPLETE for repo {pkgtools.model.current_repo.name} : failure: {failure}")
 	if not failure:
 		generate_manifests()
-		pkgtools.model.log.debug("generate_manifests() complete.")
+		pkgtools.model.log.debug(f"FINISH: start() complete for {pkgtools.model.current_repo.name} - path 1, return True")
 		return True
 	else:
 		if len(AUTOGEN_FAILURES):
 			if len(AUTOGEN_FAILURES) == 1:
-				pkgtools.model.log.error(f"An error was encountered when processing {AUTOGEN_FAILURES[0]}")
+				pkgtools.model.log.error(f"An error was encountered when processing {AUTOGEN_FAILURES[0]} for kit {pkgtools.model.current_repo.name}")
 			else:
-				pkgtools.model.log.error(f"Errors were encountered when processing the following autogens:")
+				pkgtools.model.log.error(f"Errors were encountered when processing the following autogens for kit for kit {pkgtools.model.current_repo.name}:")
 				for fail in AUTOGEN_FAILURES:
 					pkgtools.model.log.error(f" * {fail}")
-			return False
+		pkgtools.model.log.debug(f"FINISH: start() FAILED for {pkgtools.model.current_repo.name} - path 2, return False")
+		return False
+
 
 
 # vim: ts=4 sw=4 noet
