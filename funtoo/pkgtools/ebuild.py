@@ -288,7 +288,7 @@ class Artifact(Archive):
 		try:
 			assert self._url.split(':')[0] in ['http', 'https', 'ftp']
 		except (IndexError, AssertionError):
-			raise ValueError(f"url= argument of Artifact is '{_url}', which appears malformed or an unsupported protocol.")
+			raise ValueError(f"url= argument of Artifact is '{self._url}', which appears malformed or an unsupported protocol.")
 		self.key = key
 		self.extra_http_headers = extra_http_headers
 
@@ -503,12 +503,16 @@ class BreezyBuild:
 						raise e
 
 				fetch_task = asyncio.Task(lil_coroutine(artifact))
-				fetch_task.add_done_callback(pkgtools.autogen._artifact_handle_task_result)
 				fetch_tasks_dict[artifact] = fetch_task
 
 		# Wait for any artifacts that are still fetching:
-		results = await pkgtools.autogen.gather_pending_tasks("fetch", fetch_tasks_dict.values())
+		results, failures = await pkgtools.autogen.gather_pending_tasks("fetch", fetch_tasks_dict.values())
 		completion_list = aggregate(results)
+		print(f"COMPLETION LIST: {completion_list}")
+		if failures:
+			for fail_task in failures:
+				logging.exception("Fetch exception", exc_info=fail_task.exception())
+			raise BreezyError("Fetch exceptions encountered.")
 		for artifact, status in completion_list:
 			if status is False:
 				raise BreezyError(f"Artifact for url {artifact.url} referenced in {artifact.catpkgs} could not be fetched.")
@@ -537,7 +541,6 @@ class BreezyBuild:
 		bzb_task = Task(wrapper(self))
 		bzb_task.bzb = self
 		bzb_task.info = self.catpkg_version_rev
-		bzb_task.add_done_callback(pkgtools.autogen._handle_task_result)
 		hub.THREAD_CTX.running_breezybuilds.append(bzb_task)
 
 	@property
