@@ -255,16 +255,21 @@ def _handle_task_result(task: Task):
 		if not success:
 			fail_info = getattr(task, 'info', None)
 			if fail_info:
+				pkgtools.model.log.debug(f"_handle_task_result AUTOGEN_FAILURES path 1, append {fail_info}")
 				AUTOGEN_FAILURES.append(fail_info)
 			else:
+				pkgtools.model.log.debug(f"_handle_task_result AUTOGEN_FAILURES path 2, unknown")
 				AUTOGEN_FAILURES.append("Unknown Autogen!")
 	except asyncio.CancelledError:
+		pkgtools.model.log.debug(f"_handle_task_result AUTOGEN_FAILURES path 3, task cancelled so not recorded as failure")
 		pass
 	except Exception as e:
 		fail_info = getattr(task, 'info', None)
 		if fail_info:
+			pkgtools.model.log.debug(f"_handle_task_result AUTOGEN_FAILURES path 4, append {fail_info}")
 			AUTOGEN_FAILURES.append(fail_info)
 		else:
+			pkgtools.model.log.debug(f"_handle_task_result AUTOGEN_FAILURES path 5, unknown")
 			AUTOGEN_FAILURES.append("Unknown Autogen (2)!")
 
 
@@ -272,8 +277,10 @@ def _artifact_handle_task_result(task: Task):
 	try:
 		task.result()
 	except asyncio.CancelledError:
+		pkgtools.model.log.debug(f"_artifact_handle_task_result, task cancelled so not logging")
 		pass
 	except Exception as e:
+		pkgtools.model.log.debug(f"_artifact_handle_task_result, logging exception:")
 		pkgtools.model.log.error(e, exc_info=True)
 
 
