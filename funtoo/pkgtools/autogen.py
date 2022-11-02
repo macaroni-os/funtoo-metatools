@@ -8,6 +8,7 @@ import subprocess
 from asyncio import FIRST_EXCEPTION, Task
 from collections import defaultdict
 from concurrent.futures.thread import ThreadPoolExecutor
+from typing import Tuple, List
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 from yaml import safe_load
@@ -24,7 +25,6 @@ work for all catpkgs in that generator, and wait for completion of this work bef
 """
 
 PENDING_QUE = []
-AUTOGEN_FAILURES = []
 GENNED_BREEZYBUILDS = {}
 GENNED_BREEZYBUILDS_LOCK = threading.Lock()
 
@@ -172,37 +172,31 @@ def queue_all_indy_autogens(files=None):
 		pkgtools.model.log.debug(f"Added to queue of pending autogens: {PENDING_QUE[-1]}")
 
 
-async def gather_pending_tasks(name, task_list):
+async def gather_pending_tasks(name, task_list) -> Tuple[List, List]:
 	"""
-	This function collects completed asyncio coroutines, catches any exceptions recorded during their execution.
+	This function collects completed asyncio coroutines, catches any exceptions recorded during their execution,
+	and will any tasks that returned execptions to the returned list.
+
+	This function returns a tuple: a list of results from each successful tasks that weren't just None, and a
+	list of tasks that failed (threw exceptions) -- so you can inspect them further.
 
 	Use "name" to specify the kinds of tasks you are collecting. This will assist with error reporting.
 	"""
-	results = []
 	cur_tasks = task_list
-	exceptions = 0
+	failures = []
+	results = []
 	if not len(cur_tasks):
 		return [], []
 	while True:
 		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
-		# Because we are setting add_done_callback(_handle_task_result) for each task we are trying to gather, and
-		# using the callback to look at the result and detect exceptions, we don't have to do this here anymore.
-		# The callback is preferred because we can set the proper kind of exception handling for the particular
-		# task rather than having to figure that out here.
 		for done_item in done_list:
 			try:
-				result = done_item.result()
-				results.append(result)
-			except Exception as e:
-				exceptions += 1
-			pkgtools.model.log.debug(f"Gathered task: {done_item} {result}")
+				results.append(done_item.result())
+			except Exception:
+				failures.append(done_item)
 		if not len(cur_tasks):
 			break
-	if exceptions:
-		pkgtools.model.log.critical(f"{name} exceptions encountered: {exceptions}")
-		raise RuntimeError("One or more tasks failed.")
-
-	return results
+	return results, failures
 
 
 def init_pkginfo_for_package(pkginfo, sub_path, template_path=None, gen_path=None):
@@ -247,37 +241,6 @@ def init_pkginfo_for_package(pkginfo, sub_path, template_path=None, gen_path=Non
 	path_from_root = gen_path[len(common_prefix):].lstrip("/")
 	pkginfo["gen_path"] = f"${{REPODIR}}/{path_from_root}"
 	return pkginfo
-
-
-def _handle_task_result(task: Task):
-	try:
-		success = task.result()
-		if not success:
-			fail_info = getattr(task, 'info', None)
-			if fail_info:
-				AUTOGEN_FAILURES.append(fail_info)
-			else:
-				AUTOGEN_FAILURES.append("Unknown Autogen!")
-	except asyncio.CancelledError:
-		pass
-	except Exception as e:
-		fail_info = getattr(task, 'info', None)
-		if fail_info:
-			AUTOGEN_FAILURES.append(fail_info)
-		else:
-			AUTOGEN_FAILURES.append("Unknown Autogen (2)!")
-
-
-def _artifact_handle_task_result(task: Task):
-	try:
-		task.result()
-	except asyncio.CancelledError:
-		pass
-	except Exception as e:
-		pkgtools.model.log.error(e, exc_info=True)
-
-
-# TODO: record these failures in a global place if this is still a valid exception-catching path.
 
 
 async def execute_generator(
@@ -480,12 +443,11 @@ async def execute_generator(
 			task.info = sub_path
 			if "cat" in pkginfo and "name" in pkginfo:
 				task.info += f" ({pkginfo['cat']}/{pkginfo['name']})"
-
-			task.add_done_callback(_handle_task_result)
 			hub.THREAD_CTX.running_autogens.append(task)
 
-		await gather_pending_tasks("autogen", hub.THREAD_CTX.running_autogens)
-		await gather_pending_tasks("breezybuild", hub.THREAD_CTX.running_breezybuilds)
+		a_results, a_failures = await gather_pending_tasks("autogen", hub.THREAD_CTX.running_autogens)
+		b_results, b_failures = await gather_pending_tasks("breezybuild", hub.THREAD_CTX.running_breezybuilds)
+		return a_failures + b_failures
 
 	return generator_thread_task, pkginfo_list
 
@@ -628,6 +590,7 @@ def queue_all_yaml_autogens(files=None):
 async def execute_all_queued_generators():
 	futures = []
 	loop = asyncio.get_running_loop()
+	all_failures = []
 	with ThreadPoolExecutor(max_workers=16) as executor:
 		while len(PENDING_QUE):
 			task_args = PENDING_QUE.pop(0)
@@ -641,7 +604,12 @@ async def execute_all_queued_generators():
 			future = loop.run_in_executor(executor, hub.run_async_adapter, async_func, pkginfo_list)
 			futures.append(future)
 
-		await gather_pending_tasks("generator", futures)
+		results, failures = await gather_pending_tasks("generator", futures)
+		# All the "results" of the async_func are lists of failures -- so we should aggregate all of these:
+		all_fails = pkgtools.ebuild.aggregate(results)
+		all_fails += pkgtools.ebuild.aggregate(failures)
+		all_failures += all_fails
+	return all_failures
 
 
 async def start():
@@ -672,24 +640,29 @@ async def start():
 	queue_all_yaml_autogens(yaml_autogens)
 
 	failure = False
+	fail_list = []
 	try:
-		await execute_all_queued_generators()
+		fail_list = await execute_all_queued_generators()
 	except RuntimeError:
 		failure = True
-
+	if fail_list:
+		failure = True
 	if not failure:
 		generate_manifests()
-		pkgtools.model.log.debug("generate_manifests() complete.")
+		pkgtools.model.log.debug(f"FINISH: start() complete for {pkgtools.model.current_repo.root} - path 1, return True")
 		return True
 	else:
-		if len(AUTOGEN_FAILURES):
-			if len(AUTOGEN_FAILURES) == 1:
-				pkgtools.model.log.error(f"An error was encountered when processing {AUTOGEN_FAILURES[0]}")
-			else:
-				pkgtools.model.log.error(f"Errors were encountered when processing the following autogens:")
-				for fail in AUTOGEN_FAILURES:
-					pkgtools.model.log.error(f" * {fail}")
-			return False
-
+		pkgtools.model.log.error(f"Autogen failed (count: {len(fail_list)}).")
+		extra_info = []
+		if len(fail_list):
+			for fail in fail_list:
+				fail_info = getattr(fail, 'info', None)
+				if fail_info:
+					extra_info.append(fail_info)
+		if len(extra_info):
+			pkgtools.model.log.error(f"Errors were encountered when processing the following autogens:")
+			for fail in extra_info:
+				pkgtools.model.log.error(f" * {fail}")
+		return False
 
 # vim: ts=4 sw=4 noet
