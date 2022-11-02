@@ -24,4 +24,5 @@ if [ $? -ne 0 ]; then
 	echo "Failed to update metatools. Exiting."
 	exit 1
 fi
+echo $PATH
 merge-kits --prod "${ARGS[@]}" 2>&1 | tee "$LOGPATH/${LOGFILE:-output-$(date +%F_%T).log}"
