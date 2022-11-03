@@ -8,7 +8,6 @@ LICENSE_CLASSIFIER_MAP = {
 	"License :: OSI Approved :: MIT License": "MIT",
 }
 
-log = logging.getLogger("metatools.autogen")
 
 def pypi_license_to_gentoo(classifiers):
 	"""
@@ -53,21 +52,10 @@ def pypi_metadata_init(local_pkginfo, json_dict):
 		local_pkginfo["license"] = pypi_license_to_gentoo(json_dict["info"]["classifiers"])
 
 
-def sdist_artifact_url(releases, pkginfo, version=None):
+def sdist_artifact_url(releases, version):
 	# Sometimes a version does not have a source tarball. This function lets us know if our version is legit.
 	# Returns artifact_url for version, or None if no sdist release was available.
-	if version:
-		# We are scanning for potentially a different version
-		pkginfo["version"] = version
-		release = releases[version]
-	elif "version" not in pkginfo or pkginfo["version"] == "latest":
-		# only look at latest release, update version to reflect this:
-		pkginfo["version"] = version = next(reversed(list(releases.keys())))
-		release = releases[version]
-	else:
-		# assume version is in pkginfo
-		release = releases[pkginfo["version"]]
-	for artifact in release:
+	for artifact in releases[version]:
 		if artifact["packagetype"] == "sdist":
 			return artifact["url"]
 	return None
@@ -97,20 +85,19 @@ def pypi_get_artifact_url(pkginfo, json_dict, strict=True):
 	pkginfo. If ``strict`` is True, will insist on the ``version`` defined in ``pkginfo``, otherwise, will be flexible
 	and fall back to most recent sdist.
 	"""
-	artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo)
+	artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo["version"])
 	if artifact_url is None:
-		spec_version = pkginfo['version'] if 'version' in pkginfo else '(latest)'
-		log.warning(f"Autogen for {pkginfo['name']} version {spec_version} does not have a source distribution -- scanning for latest with one...")
 		if not strict:
 			# dang, the latest official release doesn't have a source tarball. Let's scan for the most recent release with a source tarball:
-			versions = list(reversed(list(json_dict["releases"].keys())))[1:]
-			for version in versions:
-				artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo, version=version)
+			for version in reversed(list(json_dict["releases"].keys())):
+				artifact_url = sdist_artifact_url(json_dict["releases"], version)
 				if artifact_url is not None:
 					pkginfo["version"] = version
 					break
-	if not artifact_url:
-		raise AssertionError(f"Could not find a source distribution for {pkginfo['name']}")
+		else:
+			raise AssertionError(f"Could not find a source distribution for {pkginfo['name']} version {pkginfo['version']}")
+	else:
+		artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo["version"])
 	return artifact_url
 
 
