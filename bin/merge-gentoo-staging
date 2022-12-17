@@ -20,7 +20,7 @@ async def gentoo_staging_update():
 	)
 	gentoo_staging_w.initialize()
 
-	gentoo_src = GitTree("gentoo-x86", "master", "https://gitmerge.com/gentoo/gentoo.git", pull=True)
+	gentoo_src = GitTree("gentoo-x86", "master", "https://github.com/gentoo/gentoo.git", pull=True)
 	gentoo_src.initialize()
 
 	all_steps = [
