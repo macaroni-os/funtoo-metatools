@@ -13,7 +13,7 @@ class MinimalConfig(SubPopModel):
 	This class contains configuration settings common to all the metatools plugins and tools.
 	"""
 
-	logger_name = "metatools"
+	logger_name = "metatools.merge"
 
 	def __init__(self):
 		super().__init__()
@@ -86,6 +86,15 @@ class MinimalConfig(SubPopModel):
 		"""
 
 		return os.path.join(self.work_path, "fastpull")
+
+	@property
+	def metadata_cache(self):
+		return os.path.join(self.work_path, "metadata-cache")
+
+	@property
+	def dest_trees(self):
+		return os.path.join(self.work_path, "dest-trees")
+
 
 
 

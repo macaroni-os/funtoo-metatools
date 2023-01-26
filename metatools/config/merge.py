@@ -101,15 +101,6 @@ class MergeConfig(MinimalConfig):
 			self.git_kwargs = {"checkout_all_branches": True}
 		self.log.debug("Model initialization complete.")
 
-	@property
-	def metadata_cache(self):
-		return os.path.join(self.work_path, "metadata-cache")
-
-	@property
-	def dest_trees(self):
-		return os.path.join(self.work_path, "dest-trees")
-
-
 class SourceRepository:
 	"""
 	This SourceRepository represents a single source repository referenced in the YAML. This source repository
