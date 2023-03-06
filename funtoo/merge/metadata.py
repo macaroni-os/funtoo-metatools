@@ -786,7 +786,10 @@ def do_package_use_line(pkg, def_python, bk_python, imps):
 
 def get_outpath(repo_obj):
 	os.makedirs(os.path.join(merge.model.MERGE_CONFIG.temp_path, "kit_cache"), exist_ok=True)
-	return os.path.join(merge.model.MERGE_CONFIG.temp_path, "kit_cache", f"{repo_obj.name}-{repo_obj.branch}")
+	# Using / in branch name breaks reposcan. I replace all / with -.
+	branch = repo_obj.branch.replace("/", "-")
+
+	return os.path.join(merge.model.MERGE_CONFIG.temp_path, "kit_cache", f"{repo_obj.name}-{branch}")
 
 
 def load_json(fn, validate=True):
