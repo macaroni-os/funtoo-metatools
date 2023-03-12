@@ -38,6 +38,9 @@ class FetchRequest:
 		self.username = username
 		self.password = password
 
+	def __repr__(self):
+		return f"metatools.fastpull.spider.FetchRequest<{self.url}>"
+
 
 class FetchResponse:
 
