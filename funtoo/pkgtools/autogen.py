@@ -129,6 +129,7 @@ def recursive_merge(dict1, dict2, depth="", overwrite=True):
 def recursive_merge_many(*dicts, overwrite=True):
 	"""
 	This function applies `recursive_merge` to multiple `dicts`, going from left to right.
+	TODO: upgrade pkginfo to an attrdict, because attrs are nicer to use.
 	"""
 	result = {}
 	for current_dict in dicts:

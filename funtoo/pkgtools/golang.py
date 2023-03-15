@@ -1,6 +1,10 @@
 import glob
+import hashlib
 import os
+import shutil
 import subprocess
+
+from subpop.util import AttrDict
 
 
 def escape_module_str(version):
@@ -19,14 +23,51 @@ def escape_module_str(version):
 	return ''.join([escape_character(c) for c in version])
 
 
-async def get_gosum_artifacts(gosum_path):
+async def create_gosum_archive(hub, pkginfo):
 	"""
-	This method will extract package data from ``go.sum`` and generate Artifacts for all packages it finds.
+	This is a helper function which interfaces with metatools' dynamic archives functionality and grabs
+	a reference to an existing go module bundle if it exists locally, and if it doesn't, it gets it
+	created. It does this by ensuring that all go modules are downloaded using our spider and then creates
+	an archive and copies all the go modules inside.
+
+	Note: autogen writers typically don't need to call this. Use ``add_gosum_archive`` instead.
+
+	:param hub: your hub (local variable)
+	:param pkginfo: your pkginfo
+	:return: an ``Archive``, suitable to be added to ``SRC_URI``.
 	"""
-	with open(gosum_path, "r") as f:
-		gosum_lines = f.readlines()
+	gosum_bundle = pkginfo["gosum_bundle"]
+	my_archive = hub.Archive(gosum_bundle.final_name)
+	my_archive.initialize(f"funtoo-go-bundle-{pkginfo['name']}")
+	module_artifacts = []
+	for mod_attrs in gosum_bundle.mod_attrs_list:
+		module_artifacts.append(hub.pkgtools.ebuild.Artifact(**mod_attrs))
+
+	for artifact in module_artifacts:
+		await artifact.ensure_fetched()
+		shutil.copy(artifact.blos_object.blob.path, os.path.join(my_archive.top_path, artifact.final_name))
+
+	my_archive.store(key=gosum_bundle["key"])
+	return my_archive
+
+
+def gen_gosum(gosum_path=None, data=None):
+	"""
+	This function generates gosum data for EGO_SUM variable used in ebuilds, and also returns a list of
+	attributes to use to create new Artifacts for all go modules that needs to be downloaded based on the
+	gosum.
+	:param gosum_path: If provided, open this go.sum file and read its contents (string)
+	:param data: If provided, this is a string containing the go.sum.
+	:return: a tuple containing a string to use in EGO_SUM, plus a list of attributes to use to create
+	         Artifacts.
+	"""
+	if not data:
+		with open(gosum_path, "r") as f:
+			gosum_lines = f.readlines()
+	else:
+		gosum_lines = data.split("\n")
 	gosum = ""
-	gosum_artifacts = []
+	mod_attrs_list = []
 	for line in gosum_lines:
 		module = escape_module_str(line).split()
 		if not len(module):
@@ -39,10 +80,76 @@ async def get_gosum_artifacts(gosum_path):
 			module_ext = "mod"
 		module_uri = module_path + "/@v/" + module_ver[0] + "." + module_ext
 		module_file = module_uri.replace("/", "%2F")
+		mod_attrs_list.append(dict(url=f"https://proxy.golang.org/{module_uri}", final_name=module_file))
+	return gosum, mod_attrs_list
+
+
+async def get_gosum_artifacts(gosum_path):
+	"""
+	IMPORTANT: It's now preferred to use ``add_gosum_archive`` instead, which uses dynamic archives and avoids
+	having hundreds of files in SRC_URI.
+
+	This method will extract package data from ``go.sum`` and generate Artifacts for all packages it finds.
+	You must add ``${EGO_SUM_SRC_URI}`` to your ebuild which will result in a lot of downloads which happen
+	one at a time.
+
+	Note: There is an undefined reference to "hub." in this module. This is left because it doesn't actually
+	break anything in autogens and fixing this would require an API change.
+	"""
+	gosum_artifacts = []
+	gosum, mod_attrs_list = gen_gosum(gosum_path=gosum_path)
+	for mod_attrs in mod_attrs_list:
 		gosum_artifacts.append(
-			hub.pkgtools.ebuild.Artifact(url="https://proxy.golang.org/" + module_uri, final_name=module_file)
+			hub.pkgtools.ebuild.Artifact(**mod_attrs)
 		)
 	return dict(gosum=gosum, gosum_artifacts=gosum_artifacts)
+
+
+async def add_gosum_archive(hub, data, pkginfo) -> None:
+	"""
+	BETA: API may change slightly before official release.
+
+	This is the new, preferred way to support go modules in Funtoo. You pass it the contents of a go.sum file,
+	and it will parse the file, generate an archive containing all necessary go modules, and then this archive
+	can be used by your ebuild and Funtoo's updated go-module.eclass transparently. This solves the problem of
+	having to download hundreds of individual go modules when you emerge something -- instead, you just
+	download the bundle from our CDN, in one HTTP request rather than zillions of them.
+
+	To use this function, you will want to call it from your autogen, and pass it the following arguments:
+
+	:param hub: The hub, defined in your autogen.
+	:param data: This is the literal string containing the go.sum.
+	:param pkginfo: This is your pkginfo dictionary. You are expected to have 'version' already set to the
+	                actual version of the package you are generating.
+	:return: None
+
+	Upon completion, you will have an archive that bundles all of the go modules, and this will be added
+	to ``pkginfo["artifacts"]``, which will be created if it doesn't exist. If ``pkginfo["artifacts"]`` is
+	a dict, your bundle will be reachable at ``pkginfo["artifacts"]["go_bundle"]``. Otherwise it will be
+	tacked on the end of the artifacts list.
+
+	To use this in a template, simply include all your artifacts in ``SRC_URI`` but leave out the
+	traditional ``${EGO_SUM_SRC_URI}`` which will remove hundreds of emerge downloads from your ebuild.
+	The ``go-module.eclass`` in Funtoo will use this bundle automatically if it's included in ``SRC_URI``.
+	"""
+	pkginfo["gosum_bundle"] = AttrDict()
+	gosum, pkginfo["gosum_bundle"].mod_attrs_list = gen_gosum(data=data)
+	pkginfo["gosum"] = gosum
+	# Create a hash of the list of go modules for brevity
+	master_gosum = hashlib.sha512(gosum.encode("utf-8")).hexdigest()
+	pkginfo["gosum_bundle"].key = AttrDict({"catpkg": f"{pkginfo['cat']}/{pkginfo['name']}", "version": pkginfo["version"], "gosum_hash": master_gosum})
+	pkginfo["gosum_bundle"].final_name = f"{pkginfo['name']}-{pkginfo['version']}-funtoo-go-bundle-{pkginfo['gosum_bundle'].key.gosum_hash}.tar.gz"
+	my_archive, metadata = hub.Archive.find(key=pkginfo["gosum_bundle"].key, final_name=pkginfo["gosum_bundle"].final_name)
+	if my_archive is None:
+		my_archive = await create_gosum_archive(hub, pkginfo)
+	if "artifacts" not in pkginfo:
+		pkginfo["artifacts"] = []
+	if isinstance(pkginfo["artifacts"], list):
+		pkginfo["artifacts"].append(my_archive)
+	elif isinstance(pkginfo["artifacts"], dict):
+		pkginfo["artifacts"]["go_bundle"] = my_archive
+	else:
+		raise ValueError(f"Unrecognized type for pkginfo['artifacts']: {type(pkginfo['artifacts'])}")
 
 
 async def generate_gosum_from_artifact(src_artifact, src_dir_glob="*"):

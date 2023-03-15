@@ -135,10 +135,12 @@ class Archive:
 
 		if self.final_name.endswith(".tar.xz"):
 			cmd = f"tar -C {self.extract_path} -cJf {temp_archive} ."
+		elif self.final_name.endswith(".tar.gz"):
+			cmd = f"tar -C {self.extract_path} -czf {temp_archive} ."
 		elif self.final_name.endswith(".tar.zst"):
 			cmd = f"tar -C {self.extract_path} -c --zstd -f {temp_archive} ."
 		else:
-			raise ValueError(f"Unrecognized archive format: {self.final_name}. Supported formats: tar.xz, tar.zst")
+			raise ValueError(f"Unrecognized archive format: {self.final_name}. Supported formats: tar.gz, tar.xz, tar.zst")
 		log.debug(f"store: command: {cmd}")
 		s, o = getstatusoutput(cmd)
 		if s != 0:
