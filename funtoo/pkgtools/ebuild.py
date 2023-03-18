@@ -467,6 +467,13 @@ class BreezyBuild:
 		else:
 			raise TypeError("Invalid type for artifacts passed to BreezyBuild -- should be list or dict.")
 
+	@property
+	def src_uri(self):
+		out = ""
+		for artifact in self.iter_artifacts():
+			out += f"{artifact.src_uri}\n"
+		return out.rstrip()
+
 	async def setup(self):
 		"""
 		This method performs some special setup steps. We tend to treat Artifacts as stand-alone objects -- and they
@@ -629,7 +636,8 @@ class BreezyBuild:
 				raise BreezyError(f"Template file not found: {template_file}")
 		else:
 			template = jinja2.Template(self.template_text)
-
+		# allow "src_uri" to be used inside all templates to print out official src_uri of all artifacts.
+		template.globals.update({"src_uri": self.src_uri})
 		with open(self.output_ebuild_path, "wb") as myf:
 			try:
 				myf.write(template.render(**self.template_args).encode("utf-8"))
