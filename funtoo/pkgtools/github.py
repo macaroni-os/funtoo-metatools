@@ -337,8 +337,10 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 
 	else:
 		version, release = versions_and_release_elements[0]
+
 		# We want to grab the default tarball for the associated tag:
 		desired_tag = release['tag_name']
+		hub.pkgtools.model.log.debug(f"github:release_gen: selected release version: {version}, desired tag {desired_tag}")
 		tag_data = await fetch_tag_data(hub, github_user, github_repo)
 		sha = None
 		for tag_ent in tag_data:
