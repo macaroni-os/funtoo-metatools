@@ -331,7 +331,7 @@ async def execute_generator(
 			filtered_pkginfo_list = []
 			for item in pkginfo_list:
 				catpkg = item['cat'] if 'cat' in item else "(None)"
-				catpkg += item['name'] if 'name' in item else "(None)"
+				catpkg += '/' + item['name'] if 'name' in item else "(None)"
 				if pkgtools.model.filter_cat:
 					if 'cat' not in item or item['cat'] != pkgtools.model.filter_cat:
 						pkgtools.model.log.debug(f"Filtered due to cat: {catpkg}")
