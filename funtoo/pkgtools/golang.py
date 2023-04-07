@@ -3,6 +3,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+import asyncio
 
 from subpop.util import AttrDict
 
@@ -43,8 +44,10 @@ async def create_gosum_archive(hub, pkginfo):
 	for mod_attrs in gosum_bundle.mod_attrs_list:
 		module_artifacts.append(hub.pkgtools.ebuild.Artifact(**mod_attrs))
 
+	# Fetch dependencies in parallel
+	await asyncio.gather(*[artifact.fetch() for artifact in module_artifacts])
+
 	for artifact in module_artifacts:
-		await artifact.ensure_fetched()
 		shutil.copy(artifact.blos_object.blob.path, os.path.join(my_archive.top_path, artifact.final_name))
 
 	my_archive.store(key=gosum_bundle["key"])
