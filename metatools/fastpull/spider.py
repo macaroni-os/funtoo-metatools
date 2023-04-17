@@ -142,13 +142,10 @@ class Download:
 								else:
 									retry = True
 								raise FetchError(self.request, f"HTTP fetch_stream Error {response.status_code}: {response.reason_phrase[:120]}", retry=retry)
-							async for chunk in response.aiter_bytes():
+							async for chunk in response.aiter_raw():
 								rec_bytes += len(chunk)
-								if not chunk:
-									completed = True
-									break
-								else:
-									on_chunk(chunk)
+								on_chunk(chunk)
+							completed = True
 				except httpx.RequestError as e:
 					log.error(f"Download failure for {self.request.url}: {str(e)}")
 					if attempts + 1 < max_attempts:
