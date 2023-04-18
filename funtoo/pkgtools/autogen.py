@@ -7,7 +7,6 @@ import threading
 import subprocess
 from asyncio import FIRST_EXCEPTION, Task
 from collections import defaultdict
-from concurrent.futures.thread import ThreadPoolExecutor
 from typing import Tuple, List
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
@@ -590,26 +589,25 @@ def queue_all_yaml_autogens(files=None):
 
 async def execute_all_queued_generators():
 	futures = []
-	loop = asyncio.get_running_loop()
 	all_failures = []
-	with ThreadPoolExecutor(max_workers=16) as executor:
-		while len(PENDING_QUE):
-			task_args = PENDING_QUE.pop(0)
+	while len(PENDING_QUE):
+		task_args = PENDING_QUE.pop(0)
 
-			# The "autogen_id" entry here is going to be used like an ID for distfile integrity Artifacts that aren't
-			# attached to a specific BreezyBuild.
+		# The "autogen_id" entry here is going to be used like an ID for distfile integrity Artifacts that aren't
+		# attached to a specific BreezyBuild.
 
-			base = os.path.commonprefix([task_args["gen_path"], pkgtools.model.locator.root])
-			task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base) + 1:]}"
-			async_func, pkginfo_list = await execute_generator(**task_args)
-			future = loop.run_in_executor(executor, hub.run_async_adapter, async_func, pkginfo_list)
-			futures.append(future)
+		base = os.path.commonprefix([task_args["gen_path"], pkgtools.model.locator.root])
+		task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base) + 1:]}"
+		async_func, pkginfo_list = await execute_generator(**task_args)
+		future = async_func(pkginfo_list)
+		futures.append(future)
 
-		results, failures = await gather_pending_tasks("generator", futures)
-		# All the "results" of the async_func are lists of failures -- so we should aggregate all of these:
-		all_fails = pkgtools.ebuild.aggregate(results)
-		all_fails += pkgtools.ebuild.aggregate(failures)
-		all_failures += all_fails
+	results, failures = await gather_pending_tasks("generator", futures)
+	# All the "results" of the async_func are lists of failures -- so we should aggregate all of these:
+	all_fails = pkgtools.ebuild.aggregate(results)
+	all_fails += pkgtools.ebuild.aggregate(failures)
+	all_failures += all_fails
+
 	return all_failures
 
 
@@ -656,14 +654,22 @@ async def start():
 		pkgtools.model.log.error(f"Autogen failed (count: {len(fail_list)}).")
 		extra_info = []
 		if len(fail_list):
+
 			for fail in fail_list:
 				fail_info = getattr(fail, 'info', None)
 				if fail_info:
 					extra_info.append(fail_info)
 		if len(extra_info):
+			# This will remove all duplicates
+			extra_info_dedup = sorted(list(set(extra_info)))
+			if len(extra_info_dedup) != len(extra_info):
+				# TODO: this duplicate failure issue is an ongoing, unresolved bug.
+				pkgtools.model.log.error(
+					f"Number of failures ({len(extra_info)}) had duplicates {len(extra_info) - len(extra_info_dedup)})")
 			pkgtools.model.log.error(f"Errors were encountered when processing the following autogens:")
 			for fail in extra_info:
 				pkgtools.model.log.error(f" * {fail}")
+			pkgtools.model.log.error(f"End of report.")
 		return False
 
 # vim: ts=4 sw=4 noet

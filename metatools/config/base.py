@@ -1,11 +1,14 @@
 #!/usr/bin/python3
-
+import atexit
 import logging
 import os
 
 from metatools.model import set_model
 from metatools.pretty_logging import TornadoPrettyLogFormatter
 from subpop.config import SubPopModel
+
+import logging
+from rich.logging import RichHandler
 
 
 class MinimalConfig(SubPopModel):
@@ -26,9 +29,9 @@ class MinimalConfig(SubPopModel):
 			self.log.setLevel(logging.DEBUG)
 		else:
 			self.log.setLevel(logging.INFO)
-		channel = logging.StreamHandler()
-		channel.setFormatter(TornadoPrettyLogFormatter())
-		self.log.addHandler(channel)
+		handler = RichHandler(show_path=False)
+		self.log.addHandler(handler)
+		atexit.register(lambda: print("\x1b[?25h"))
 		if debug:
 			self.log.warning("DEBUG enabled")
 		set_model(self.logger_name, self)

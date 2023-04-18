@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import asyncio
 import re
+from datetime import timedelta
 
 from metatools.fastpull.spider import FetchError
 from metatools.fetch_cache import CacheMiss
@@ -43,6 +44,8 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, 
 			# by default unless overridden by the doit --immediate option, or if there was an explicit refresh interval passed
 			# to this function.
 			refresh_interval = pkgtools.model.fetch_cache_interval
+		else:
+			refresh_interval = timedelta(minutes=15)
 
 	# This may have "is_json", "encoding":
 	key_dict = kwargs.copy()
@@ -79,6 +82,7 @@ async def fetch_harness(fetch_method, url, max_age=None, refresh_interval=None, 
 			if e.retry and attempts + 1 < pkgtools.model.fetch_attempts:
 				pkgtools.model.log.error(f"Fetch method {fetch_method.__name__}: {e.msg}; retrying...")
 				continue
+			# TODO: I need a lot more info here -- if something failed -- why? this is important for IPv6 debug
 			# if we got here, we are on our LAST retry attempt or retry is False:
 			pkgtools.model.log.warning(f"Unable to retrieve {url}... trying to used cached version instead...")
 			# TODO: these should be logged persistently so they can be investigated.
