@@ -7,7 +7,7 @@ import string
 import threading
 from collections import defaultdict
 from contextlib import asynccontextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from json import JSONDecodeError
 from urllib.parse import urlparse
 
@@ -156,19 +156,21 @@ class Download:
 						else:
 							retry = True
 						raise FetchError(self.request, f"HTTP fetch_stream Error {response.status_code}: {response.reason_phrase[:120]}", retry=retry)
+					if "Content-Length" in response.headers:
+						self.total = int(response.headers["Content-Length"])
+					else:
+						self.total = 0
+					# download_task can legitimately be zero, so check explicitly against None (our "null"):
 					if self.download_task is None:
-						#and datetime.utcnow() - start_time > timedelta(seconds=2):
 						# Only start download progress display if the download takes a minimum # of seconds...
-						if "Content-Length" in response.headers:
-							self.total = int(response.headers["Content-Length"])
-							self.download_task = self.spider.progress.add_task("Download", filename=self.request.filename, total=self.total)
-						else:
-							self.total = None
-							self.download_task = self.spider.progress.add_task("Download", filename=self.request.filename, total=0)
+						filename = self.request.filename
+						if self.total == 0:
+							filename = f"(stream) {filename}"
+						self.download_task = self.spider.progress.add_task("Download", filename=filename, total=self.total)
+						log.debug(f"Added download task {self.download_task}, total {self.total}")
 					# DO NOT USE aiter_raw(), below!! It will result in invalid downloads from some sites!
 					async for chunk in response.aiter_bytes():
 						on_chunk(chunk, response)
-
 					completed = True
 			except httpx.RequestError as e:
 				log.error(f"Download failure for {self.request.url}: {str(e)}")
@@ -179,7 +181,7 @@ class Download:
 				else:
 					break
 			finally:
-				if self.download_task:
+				if self.download_task is not None:
 					self.spider.progress.remove_task(self.download_task)
 					self.download_task = None
 
@@ -207,11 +209,12 @@ class Download:
 		for hash in self.hashes:
 			self.hash_calc_dict[hash].update(chunk)
 		self.filesize += len(chunk)
-		if self.download_task:
+		log.debug(f"chunk! {self.download_task} {self.request.filename}: total {self.total, type(self.total)}: {response.num_bytes_downloaded}/{self.total}")
+		if self.download_task is not None:
 			if self.total:
 				self.spider.progress.update(self.download_task, completed=response.num_bytes_downloaded)
 			else:
-				self.spider.progress.update(self.download_task, completed=response.num_bytes_downloaded)
+				self.spider.progress.update(self.download_task, completed=response.num_bytes_downloaded, total=response.num_bytes_downloaded)
 
 	async def launch(self) -> None:
 		"""
@@ -463,7 +466,7 @@ class WebSpider:
 				pass
 
 	async def acquire_http_client(self, request):
-		log.info(f"acquire_http_client: count: {len(self.http_clients)} (request for {request.hostname}) count: {self.fetch_count}")
+		log.debug(f"acquire_http_client: count: {len(self.http_clients)} (request for {request.hostname}) count: {self.fetch_count}")
 		if request.hostname not in self.http_clients:
 			headers, auth = self.get_headers_and_auth(request)
 			client = self.http_clients[request.hostname] = httpx.AsyncClient(transport=self.transport, http2=True, base_url=request.hostname, headers=headers, auth=auth, follow_redirects=True, timeout=8)
@@ -543,7 +546,7 @@ class WebSpider:
 			headers, auth = self.get_headers_and_auth(request)
 			# TODO: add code to explicitly close all clients, above:
 			try:
-				log.debug(f'Fetching data from {request.url}')
+				log.debug(f'http_fetch: GET {request.url}')
 				response = await http_client.get(request.url, headers=headers, auth=auth, follow_redirects=True, timeout=15)
 				if response.status_code != 200:
 					if response.status_code in [400, 404, 410]:
