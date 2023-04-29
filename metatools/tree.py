@@ -22,7 +22,7 @@ def run_shell(cmd_list, abort_on_failure=True, chdir=None, logger=None):
 	else:
 		cmd_str = cmd_list
 	if logger:
-		logger.debug(f"executing: {cmd_str}")
+		logger.info(f"executing: {cmd_str}")
 
 	if chdir:
 		cmd_str = f"( cd {chdir}; {cmd_str})"
@@ -59,7 +59,7 @@ class Tree:
 		else:
 			logging.basicConfig(level=logging.INFO)
 			self.log = logging.getLogger()
-
+	
 	def find_license(self, license):
 		lic_path = f"{self.root}/licenses/{license}"
 		if os.path.exists(lic_path):
@@ -236,7 +236,7 @@ class AutoCreatedGitTree(Tree):
 			os.makedirs(self.root)
 			self.run_shell("( cd %s && git init )" % self.root)
 			self.run_shell("echo 'created by merge-kits.' > %s/README" % self.root)
-			self.run_shell("( cd %s &&  git add README; git commit -a -m 'initial commit by merge-kits' )" % self.root)
+			self.run_shell("( cd %s &&	git add README; git commit -a -m 'initial commit by merge-kits' )" % self.root)
 
 		if not self.localBranchExists(self.branch):
 			self._create_branch()
@@ -308,7 +308,7 @@ class GitTree(Tree):
 			self.branch = "master"
 		else:
 			self.branch = branch
-
+		self.log.info(f"GitTree(): {self.name} {self.url} {self.branch} {self.commit_sha1}")
 	def _create_branches(self):
 		self.run_shell(f"git checkout master; git checkout -b {self.branch}", chdir=self.root)
 		self.run_shell(f"git push --set-upstream origin {self.branch}", chdir=self.root)
@@ -407,16 +407,14 @@ class GitTree(Tree):
 
 		if self.keep_branch and self.branch is None and cur_branch is not None:
 			self.gitCheckout(cur_branch, from_init=True)
-		else:
-			self.gitCheckout(self.branch, from_init=True)
-
-		# point to specified sha1:
-
-		if self.commit_sha1:
+		elif self.commit_sha1:
 			self.run_shell("(cd %s && git checkout %s )" % (self.root, self.commit_sha1))
 			if self.head() != self.commit_sha1:
 				raise GitTreeError("%s: Was not able to check out specified SHA1: %s." % (self.root, self.commit_sha1))
-		self.do_pull()
+		else:
+			self.gitCheckout(self.branch, from_init=True)
+
+			self.do_pull()
 		self.initialized = True
 
 	def do_pull(self):
@@ -483,8 +481,9 @@ class GitTree(Tree):
 		:param from_init:
 		:return:
 		"""
+		self.model.log.info(f"gitCheckout: br: {branch} sha1: {sha1} init: {from_init}")
 		if branch is None and sha1 is None:
-			raise GitTreeError("Please specify at least a branch or a sha1.")
+			raise GitTreeError(f"Please specify at least a branch or a sha1. {self.name} {self.root}")
 
 		if not from_init:
 			self.initialize()
@@ -522,6 +521,7 @@ class GitTree(Tree):
 				"%s: On branch %s. not able to check out branch %s." % (self.root, self.currentLocalBranch, branch)
 			)
 		self.branch = branch
+		self.commit_sha1 = sha1
 
 
 class RsyncTree(Tree):
