@@ -56,7 +56,7 @@ class MergeConfig(MinimalConfig):
 	logger_name = "metatools.merge"
 
 	async def initialize(self, prod=False, push=False, release=None, create_branches=False, fixups_url=None,
-						 fixups_branch=None, debug=False):
+	                     fixups_branch=None, debug=False):
 		await super().initialize(debug=debug)
 		self.prod = prod
 		self.push = push
@@ -109,7 +109,52 @@ class SourceRepository:
 	"""
 
 	def __init__(self, yaml=None, name=None, copyright=None, url=None, eclasses=None, src_sha1=None, branch=None,
-				 notes=None):
+	             notes=None):
+		self.yaml = yaml
+		assert yaml is not None
+		self.name = name
+		self.copyright = copyright
+		self.url = url
+		self.eclasses = eclasses
+		self.notes = notes
+		# This can be used to track a GitTree associated with the source repository.
+		self.tree = None
+		self.src_sha1 = src_sha1
+		self.branch = branch
+		self.yaml.model.log.info(f"Initializing: Source Repository {self.name} branch: {branch} SHA1: {src_sha1} {self.url}")
+		self.tree = GitTree(
+			self.name,
+			url=self.url,
+			root="%s/%s" % (self.yaml.model.source_trees, self.name),
+			branch=branch,
+			commit_sha1=src_sha1,
+			origin_check=False,
+			reclone=False,
+			model=self.yaml.model
+		)
+
+	def find_license(self, license):
+		try:
+			return self.tree.find_license(license)
+		except FileNotFoundError:
+			self.yaml.model.log.error(f"No license named '{license}' found in SourceRepository {self.name}")
+
+
+class SharedSourceRepository(SourceRepository):
+	"""
+	SharedSourceRepository is a source repository referenced by a source collection. Source collections can be shared.
+
+	Different kits can use different snapshots of the same source repository, so special care needs to be given to
+	allowing a re-initialization of the tree so it is on the proper SHA1/branch. This is done by the initialize() call
+	rather than the constructor.
+
+	There is special code in here to attempt to not unnecessarily re-initialize git repositories that are already ready
+	for use. SharedSourceRepository objects can be used by multiple SourceCollections. There is a 1:1 mapping between
+	SharedSourceRepository and the underlying GitTree() object. So we only have one GitTree() for a particular repo,
+	such as a gentoo-staging repo, even if different source collections leverage different SHA1 snapshots.
+	"""
+
+	def __init__(self, yaml=None, name=None, copyright=None, url=None, eclasses=None, notes=None):
 		self.yaml = yaml
 		assert yaml is not None
 		self.name = name
@@ -122,7 +167,7 @@ class SourceRepository:
 
 	def initialize(self, branch=None, src_sha1=None):
 		if self.tree:
-			if (branch == None or self.tree.branch == branch) and src_sha1 == self.tree.commit_sha1:
+			if (branch is None or self.tree.branch == branch) and src_sha1 == self.tree.commit_sha1:
 				self.yaml.model.log.info(f"Keeping existing source repository {self.name} branch: {self.tree.branch} SHA1: {self.tree.commit_sha1} {self.url}")
 				return
 			else:
@@ -143,17 +188,12 @@ class SourceRepository:
 			)
 			self.tree.initialize()
 
-	def find_license(self, license):
-		try:
-			return self.tree.find_license(license)
-		except FileNotFoundError:
-			self.yaml.model.log.error(f"No license named '{license}' found in SourceRepository {self.name}")
-
 
 class SourceCollection:
 	"""
-	A SourceCollection in the YAML is, as the name says, a collection of source repositories. Each kit can reference
-	one SourceCollection and copy ebuilds and eclasses from the SourceRepositories defined in each collection.
+	A SourceCollection in the YAML is, as the name says, a collection of source repositories, and it's worth
+	noting that SourceCollections aren't used by sourced kits at all. So this logic all assumes we are dealing
+	with auto-generated kits that can reference multiple repos in their packages.yaml.
 	"""
 
 	def __init__(self, name=None, yaml=None, repo_defs=None):
@@ -190,7 +230,12 @@ class SourceCollection:
 				if repo_name in self.yaml.all_repo_objs:
 					self.repositories[repo_name] = self.yaml.all_repo_objs[repo_name]
 				else:
-					self.yaml.all_repo_objs[repo_name] = self.repositories[repo_name] = SourceRepository(**repo_def, yaml=self.yaml, name=repo_name)
+					# note that src_sha1 and branch get passed as keyword arguments to initialize() in the next loop.
+					kwargs = repo_def.copy()
+					for arg in ["src_sha1", "branch"]:
+						if arg in kwargs:
+							del kwargs[arg]
+					self.yaml.all_repo_objs[repo_name] = self.repositories[repo_name] = SharedSourceRepository(**kwargs, yaml=self.yaml, name=repo_name)
 			for repo_name, repo in self.repositories.items():
 				branch = None
 				src_sha1 = None
@@ -220,7 +265,7 @@ class Kit:
 	source = None
 
 	def __init__(self, locator, release=None, name=None, stability=None, branch=None, eclasses=None, priority=None,
-				 aliases=None, masters=None, sync_url=None, settings=None):
+	             aliases=None, masters=None, sync_url=None, settings=None):
 		self.kit_fixups: GitRepositoryLocator = locator
 		assert self.kit_fixups is not None
 		self.release = release
@@ -236,7 +281,7 @@ class Kit:
 		self.settings = settings if settings is not None else {}
 
 	def initialize_sources(self):
-		self.source.initialize()
+		pass
 
 	def get_copyright_rst(self):
 		cur_year = str(datetime.now().year)
@@ -262,7 +307,11 @@ class SourcedKit(Kit):
 		self.source = source
 
 	def initialize_sources(self):
-		self.source.initialize(self.branch)
+		"""
+		For a SourcedKit, the underlying source repository is already initialized and doesn't need to be potentially
+		reset to the proper branch or SHA1.
+		"""
+		pass
 
 
 class AutoGeneratedKit(Kit):
@@ -280,6 +329,13 @@ class AutoGeneratedKit(Kit):
 		return self._package_data
 
 	def initialize_sources(self):
+		"""
+		This method is used to get the SourceCollection's SharedSourceRepository objects initialized so we are ready to copy ebuilds/eclasses from
+		the right branch/SHA1.
+
+		The use of repo_names exists to inform the initialize() call of what repos we are actually going to use. There is no point in performing
+		significant IO to initialize repos that we are not actually using.
+		"""
 		repo_names = []
 		for repo_name, extra in self.get_kit_items():
 			repo_names.append(repo_name)
@@ -465,9 +521,9 @@ class ReleaseYAML(YAMLReader):
 		that should be copied into the kit when it is generated. This group of source repositories is called a
 		'source collection', and is  represented by a SourceCollection object.
 
-		One source collection is mapped to each kit in a release, in the release.yaml file 'source' YAML element.
-		A source collection has one or more repositories defined. Each source repository is represented by a
-		SourceRepository object.
+		One source collection is mapped to each auto-generated kit in a release, in the release.yaml file
+		'source' YAML element. A source collection has one or more repositories defined. Each source repository
+		is represented by a SourceRepository object.
 
 		This method returns an OrderedDict() of all SourceCollections defined in the YAML, which is indexed by
 		the YAML name of the source collection. Each kit defined in the YAML can reference one of these source
@@ -528,6 +584,9 @@ class ReleaseYAML(YAMLReader):
 				kit_name = list(kit_el.keys())[0]
 				kit_insides.update(kit_el[kit_name])
 
+			# This part of the code handles parsing the YAML, and creating Kit objects, which contain the proper info
+			# within to reference the proper source repositories or source repository (in the case of sourced kits.)
+
 			kind = KitKind.AUTOGENERATED if "kind" not in kit_insides else KitKind(kit_insides["kind"])
 			if "kind" in kit_insides:
 				del kit_insides["kind"]
@@ -560,8 +619,8 @@ class ReleaseYAML(YAMLReader):
 				s_branch = kit_insides["source"].get("branch", None)
 				s_src_sha1 = kit_insides["source"].get("src_sha1", None)
 				kit_insides['source'] = SourceRepository(yaml=self, name=f"{kit_name}-sources",
-														 url=kit_insides['source']['url'], branch=s_branch,
-														 src_sha1=s_src_sha1)
+				                                         url=kit_insides['source']['url'], branch=s_branch,
+				                                         src_sha1=s_src_sha1)
 				kits[kit_name].append(
 					SourcedKit(locator=self.model.locator, release=self, name=kit_name, **kit_insides))
 			else:
