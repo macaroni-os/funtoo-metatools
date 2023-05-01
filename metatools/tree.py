@@ -141,10 +141,6 @@ class Tree:
 		else:
 			return branch
 
-	def initialize(self):
-		if not self.initialized:
-			self._initialize_tree()
-
 	def gitCheckout(self, branch=None, from_init=False):
 		if not from_init:
 			self.initialize()
@@ -319,6 +315,10 @@ class GitTree(Tree):
 		result = run(f"(cd {self.root} && git status --porcelain)")
 		out = result.stdout.strip()
 		return len(out) > 0
+
+	def initialize(self):
+		if not self.initialized:
+			self._initialize_tree()
 
 	def _initialize_tree(self):
 		if self.root is None:
