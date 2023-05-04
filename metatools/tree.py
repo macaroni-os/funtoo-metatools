@@ -54,12 +54,20 @@ class Tree:
 		self.forcepush = "--no-force"
 		self.url = None
 		self.model = model
+		self.initialized = False
 		if self.model:
 			self.log = self.model.log
 		else:
 			logging.basicConfig(level=logging.INFO)
 			self.log = logging.getLogger()
-	
+
+	def initialize(self):
+		if not self.initialized:
+			self._initialize_tree()
+
+	def _initialize_tree(self):
+		self.initialized = True
+
 	def find_license(self, license):
 		lic_path = f"{self.root}/licenses/{license}"
 		if os.path.exists(lic_path):
@@ -220,7 +228,6 @@ class AutoCreatedGitTree(Tree):
 		super().__init__(root=root, model=model)
 		self.branch = branch
 		self.name = self.reponame = name
-		self.initialized = False
 		self.commit_sha1 = commit_sha1
 		self.merged = []
 
@@ -290,7 +297,6 @@ class GitTree(Tree):
 		self.pulled = False
 		self.reponame = reponame
 		self.has_cleaned = False
-		self.initialized = False
 		self.mirrors = mirrors if mirrors else []
 		self.origin_check = origin_check
 		self.create_branches = create_branches
@@ -305,6 +311,7 @@ class GitTree(Tree):
 		else:
 			self.branch = branch
 		self.log.info(f"GitTree(): {self.name} {self.url} {self.branch} {self.commit_sha1}")
+
 	def _create_branches(self):
 		self.run_shell(f"git checkout master; git checkout -b {self.branch}", chdir=self.root)
 		self.run_shell(f"git push --set-upstream origin {self.branch}", chdir=self.root)
@@ -315,10 +322,6 @@ class GitTree(Tree):
 		result = run(f"(cd {self.root} && git status --porcelain)")
 		out = result.stdout.strip()
 		return len(out) > 0
-
-	def initialize(self):
-		if not self.initialized:
-			self._initialize_tree()
 
 	def _initialize_tree(self):
 		if self.root is None:
