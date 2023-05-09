@@ -1,5 +1,6 @@
 import os
 from collections import defaultdict
+from datetime import timedelta
 
 import yaml
 
@@ -10,6 +11,8 @@ from metatools.fastpull.core import IntegrityDatabase
 from metatools.fastpull.spider import WebSpider
 from metatools.fetch_cache import FileStoreFetchCache
 from metatools.tree import GitTree
+from metatools.zmq.app_core import DealerConnection
+from metatools.zmq.zmq_msg_breezyops import BreezyMessage, MessageType
 
 
 class StoreConfig(MinimalConfig):
@@ -44,8 +47,6 @@ class StoreConfig(MinimalConfig):
 
 
 class StoreSpiderConfig(StoreConfig):
-
-
 	logger_name = 'metatools.spider'
 
 	async def initialize(self, fastpull_scope=None, debug=False):
@@ -81,7 +82,7 @@ class AutogenConfig(StoreSpiderConfig):
 	def kit_spy(self):
 		"""
 		kit_spy is used for creating an autogen ID::
-		 	task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base)+1:]}"
+			task_args["autogen_id"] = f"{pkgtools.model.kit_spy}:{task_args['gen_path'][len(base)+1:]}"
 		The autogen_id is intended to be used in the distfile integrity database, to tell use which autogen
 		referenced the artifact, in the situation where we don't have a specific BreezyBuild. This was a recent
 		add and may not be fully implemented or make sense based on our current architecture -- needs review
@@ -89,9 +90,32 @@ class AutogenConfig(StoreSpiderConfig):
 		"""
 		return "/".join(self.locator.root.split("/")[-2:])
 
-	async def initialize(self, fetch_cache_interval=None, fastpull_scope=None, debug=False, fixups_url=None, prod=False, force_dynamic=False, fixups_branch=None, fast=None, cat=None, pkg=None, autogens=None):
-		await super().initialize(fastpull_scope=fastpull_scope, debug=debug)
+	def moonbeam_msg(self, json_dict):
+		if not self.moonbeam:
+			return
+		msg_obj = BreezyMessage(msg_type=MessageType.INFO, service="doit", action="info", json_dict=json_dict)
+		msg_obj.send(self.moonbeam_client.client)
+		self.log.debug(f"Moonbeam: sent: {json_dict}")
 
+	async def initialize(self,
+						 immediate=False,
+						 fetch_cache_interval=None,
+						 fastpull_scope=None,
+						 debug=False,
+						 fixups_url=None,
+						 prod=False,
+						 force_dynamic=False,
+						 fixups_branch=None,
+						 fast=None,
+						 cat=None,
+						 pkg=None,
+						 autogens=None,
+						 moonbeam=False):
+		await super().initialize(fastpull_scope=fastpull_scope, debug=debug)
+		self.immediate = immediate
+		self.moonbeam = moonbeam
+		if self.moonbeam:
+			self.moonbeam_client = DealerConnection("moonbeam", endpoint=f"ipc://{self.moonbeam_socket}")
 		self.fetch_cache = FileStoreFetchCache(db_base_path=self.store_path)
 
 		# Process specified autogens instead of recursing:
@@ -138,6 +162,8 @@ class AutogenConfig(StoreSpiderConfig):
 		if fetch_cache_interval is not None:
 			# use our default unless another timedelta specified:
 			self.fetch_cache_interval = fetch_cache_interval
+		else:
+			self.fetch_cache_interval = timedelta(minutes=15)
 
 		repo_name = None
 		repo_name_path = os.path.join(self.locator.root, "profiles/repo_name")

@@ -394,6 +394,7 @@ async def get_python_use_lines(kit_gen, catpkg, cpv_list, cur_tree, def_python, 
 	ebs = {}
 	for cpv in cpv_list:
 		if "metadata" not in kit_gen.kit_cache[cpv]:
+			logging.warning(f"NO METADATA FOR {cpv}")
 			continue
 		metadata = kit_gen.kit_cache[cpv]["metadata"]
 		if not metadata:
@@ -427,28 +428,30 @@ async def get_python_use_lines(kit_gen, catpkg, cpv_list, cur_tree, def_python, 
 		if len(imps):
 			ebs[cpv] = imps
 
-	# ebs now is a dict containing catpkg -> PYTHON_COMPAT settings for each ebuild in the catpkg. We want to see if they are identical
+	# ebs now is a dict containing catpkgversion -> PYTHON_COMPAT settings for each ebuild in the catpkg. We want to see if they are identical
 	# if split == False, then we will do one global setting for the catpkg. If split == True, we will do individual settings for each version
 	# of the catpkg, since there are differences. This saves space in our python-use file while keeping everything correct.
 
-	oldval = None
+	all_imps = None
 	split = False
-	for key, val in ebs.items():
-		if oldval is None:
-			oldval = val
+	for key, imps in ebs.items():
+		if all_imps is None:
+			all_imps = imps
 		else:
-			if oldval != val:
+			if all_imps != imps:
 				split = True
 				break
 	lines = []
 	if len(ebs.keys()):
 		if not split:
-			line = do_package_use_line(catpkg, def_python, bk_python, oldval)
+			logging.debug(f"package.use line: {catpkg}: def/bk: {def_python} {bk_python} imps: {all_imps} (NOT SPLIT)")
+			line = do_package_use_line(catpkg, def_python, bk_python, all_imps)
 			if line is not None:
 				lines.append(line)
 		else:
-			for key, val in ebs.items():
-				line = do_package_use_line("=%s" % key, def_python, bk_python, val)
+			for key, imps in ebs.items():
+				logging.debug(f"package.use line: {catpkg}: def/bk: {def_python} {bk_python} imps: {imps} (SPLIT)")
+				line = do_package_use_line("=%s" % key, def_python, bk_python, imps)
 				if line is not None:
 					lines.append(line)
 	return lines
@@ -460,7 +463,18 @@ def do_package_use_line(pkg, def_python, bk_python, imps):
 		if bk_python and bk_python in imps:
 			out = "%s python_single_target_%s" % (pkg, bk_python)
 		else:
-			out = "%s python_single_target_%s python_targets_%s" % (pkg, imps[0], imps[0])
+			# This is a non-deterministic race condition as to what single implementation we choose, since imps is a
+			# list and we use imps[0]. So let's try to enforce an order. First, we will try to remove all "pypy" imps
+			# if possible, and then sort the list and use the first non-pypi implementation. This will give us
+			# consistent results regen to regen.
+			non_pypy_imps = []
+			for imp in imps:
+				if not imp.startswith("pypy"):
+					non_pypy_imps.append(imp)
+			if not len(non_pypy_imps):
+				non_pypy_imps = imps
+			non_pypy_imps = sorted(non_pypy_imps)
+			out = "%s python_single_target_%s python_targets_%s" % (pkg, non_pypy_imps[0], non_pypy_imps[0])
 	return out
 
 # vim: ts=4 sw=4 noet

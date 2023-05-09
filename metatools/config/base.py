@@ -3,12 +3,10 @@ import atexit
 import logging
 import os
 
-from metatools.model import set_model
-from metatools.pretty_logging import TornadoPrettyLogFormatter
+from rich.logging import RichHandler
 from subpop.config import SubPopModel
 
-import logging
-from rich.logging import RichHandler
+from metatools.model import set_model
 
 
 class MinimalConfig(SubPopModel):
@@ -29,7 +27,7 @@ class MinimalConfig(SubPopModel):
 			self.log.setLevel(logging.DEBUG)
 		else:
 			self.log.setLevel(logging.INFO)
-		handler = RichHandler(show_path=False)
+		handler = RichHandler(show_path=False, show_time=False)
 		self.log.addHandler(handler)
 		atexit.register(lambda: print("\x1b[?25h"))
 		if debug:
@@ -43,6 +41,10 @@ class MinimalConfig(SubPopModel):
 			return os.path.join(home, "repo_tmp")
 		else:
 			return "/var/tmp/repo_tmp"
+
+	@property
+	def moonbeam_socket(self):
+		return os.path.join(self.temp_path, "moonbeam_socket")
 
 	@property
 	def source_trees(self):

@@ -21,53 +21,29 @@ actual file format.
 """
 
 
-class MergeConfig(MinimalConfig):
+class MinimalMergeConfig(MinimalConfig):
 	"""
-	This configuration is used for tree regen, also known as 'merge-kits'.
+	This configuration is for minimal tools that use merge-related data, like deepdive, for example.
+	Deepdive can use this to access the release YAML without worrying about more complex data.
 	"""
 
 	# Configuration bits:
 
 	release_yaml = None
+	release = None
 	context = None
 	locator = None
-	meta_repo = None
-	prod = False
-	release = None
-	push = False
-	create_branches = False
-	mirror_repos = False
-	nest_kits = True
-	git_class = AutoCreatedGitTree
-	git_kwargs = {}
 	fixups_url = None
 	fixups_branch = None
-
 	# Things used during runtime processing:
 	kit_fixups: GitTree = None
-	# TODO: should probably review the error/warning stats variables here:
-	metadata_error_stats = []
-	processing_warning_stats = []
-	processing_error_stats = []
-	start_time: datetime = None
-	current_source_def = None
+	logger_name = "metatools.merge"
 	log = None
 	debug = False
-	logger_name = "metatools.merge"
 
-	async def initialize(self, prod=False, push=False, release=None, create_branches=False, fixups_url=None,
-	                     fixups_branch=None, debug=False):
+	async def initialize(self, release=None, fixups_url=None, fixups_branch=None, debug=False):
 		await super().initialize(debug=debug)
-		self.prod = prod
-		self.push = push
-		self.release = release
-		self.create_branches = create_branches
-		self.fixups_url = fixups_url
-		self.fixups_branch = fixups_branch
-		self.debug = debug
-
 		self.log.debug("Trying to find kit-fixups")
-
 		# TODO: refuse to use any source repository that has local changes (use git status --porcelain | wc -l)
 		self.context = os.path.join(self.source_trees, "kit-fixups")
 		self.kit_fixups = GitTree(
@@ -79,10 +55,41 @@ class MergeConfig(MinimalConfig):
 			keep_branch=True
 		)
 		self.log.debug("Initializing kit-fixups repository in model init")
-		self.kit_fixups.initialize()
+		await self.kit_fixups.initialize()
 		self.locator = GitRepositoryLocator(start_path=self.kit_fixups.root)
-
+		self.release = release
 		self.release_yaml = ReleaseYAML(self)
+
+
+class MergeConfig(MinimalMergeConfig):
+	"""
+	This configuration is used for tree regen, also known as 'merge-kits'.
+	"""
+
+	meta_repo = None
+	prod = False
+	push = False
+	create_branches = False
+	mirror_repos = False
+	nest_kits = True
+	git_class = AutoCreatedGitTree
+	git_kwargs = {}
+	howdy = False
+
+	# TODO: should probably review the error/warning stats variables here:
+	metadata_error_stats = []
+	processing_warning_stats = []
+	processing_error_stats = []
+	start_time: datetime = None
+	current_source_def = None
+
+	async def initialize(self, prod=False, push=False, release=None, create_branches=False, fixups_url=None,
+						 fixups_branch=None, debug=False, howdy=False):
+
+		self.prod = prod
+		self.push = push
+		self.create_branches = create_branches
+		self.howdy = howdy
 
 		# TODO: add a means to override the remotes in the release.yaml using a local config file.
 
@@ -90,7 +97,6 @@ class MergeConfig(MinimalConfig):
 			# The ``push`` keyword argument only makes sense in prod mode. If not in prod mode, we don't push.
 			self.push = False
 		else:
-
 			# In this mode, we're actually wanting to update real kits, and likely are going to push our updates to remotes (unless
 			# --nopush is specified as an arg.) This might be used by people generating their own custom kits for use on other systems,
 			# or by Funtoo itself for updating official kits and meta-repo.
@@ -99,6 +105,8 @@ class MergeConfig(MinimalConfig):
 			self.mirror_repos = push
 			self.git_class = GitTree
 			self.git_kwargs = {"checkout_all_branches": True}
+
+		await super().initialize(release=release, fixups_url=fixups_url, fixups_branch=fixups_branch, debug=debug)
 		self.log.debug("Model initialization complete.")
 
 
@@ -109,7 +117,7 @@ class SourceRepository:
 	"""
 
 	def __init__(self, yaml=None, name=None, copyright=None, url=None, eclasses=None, src_sha1=None, branch=None,
-	             notes=None):
+				 notes=None):
 		self.yaml = yaml
 		assert yaml is not None
 		self.name = name
@@ -121,18 +129,26 @@ class SourceRepository:
 		self.tree = None
 		self.src_sha1 = src_sha1
 		self.branch = branch
-		self.yaml.model.log.info(f"Initializing: Source Repository {self.name} branch: {branch} SHA1: {src_sha1} {self.url}")
+		self.initialized = False
+
+	async def initialize(self):
+		# This is a simple source repository -- we only want to initialize it once:
+		if self.initialized:
+			return
+		self.yaml.model.log.info(
+			f"Initializing: Source Repository {self.name} branch: {self.branch} SHA1: {self.src_sha1} {self.url}")
 		self.tree = GitTree(
 			self.name,
 			url=self.url,
 			root="%s/%s" % (self.yaml.model.source_trees, self.name),
-			branch=branch,
-			commit_sha1=src_sha1,
+			branch=self.branch,
+			commit_sha1=self.src_sha1,
 			origin_check=False,
 			reclone=False,
 			model=self.yaml.model
 		)
-		self.tree.initialize()
+		await self.tree.initialize()
+		self.initialized = True
 
 	def find_license(self, license):
 		try:
@@ -166,17 +182,21 @@ class SharedSourceRepository(SourceRepository):
 		# This can be used to track a GitTree associated with the source repository.
 		self.tree = None
 
-	def initialize(self, branch=None, src_sha1=None):
+	async def initialize(self, branch=None, src_sha1=None):
 		if self.tree:
 			if (branch is None or self.tree.branch == branch) and src_sha1 == self.tree.commit_sha1:
-				self.yaml.model.log.info(f"Keeping existing source repository {self.name} branch: {self.tree.branch} SHA1: {self.tree.commit_sha1} {self.url}")
+				self.yaml.model.log.info(
+					f"Keeping existing source repository {self.name} branch: {self.tree.branch} SHA1: {self.tree.commit_sha1} {self.url}")
 				return
 			else:
-				self.yaml.model.log.info(f"src repo {self.name}: initialize: {self.tree.branch}/{self.tree.commit_sha1} -> {branch}/{src_sha1}")
-				self.yaml.model.log.info(f"Checkout: Source Repository {self.name} branch: {branch} SHA1: {src_sha1} {self.url}")
-				self.tree.gitCheckout(branch=branch, sha1=src_sha1)
+				self.yaml.model.log.info(
+					f"src repo {self.name}: initialize: {self.tree.branch}/{self.tree.commit_sha1} -> {branch}/{src_sha1}")
+				self.yaml.model.log.info(
+					f"Checkout: Source Repository {self.name} branch: {branch} SHA1: {src_sha1} {self.url}")
+				await self.tree.git_checkout(branch=branch, sha1=src_sha1)
 		else:
-			self.yaml.model.log.info(f"Initializing: Source Repository {self.name} branch: {branch} SHA1: {src_sha1} {self.url}")
+			self.yaml.model.log.info(
+				f"Initializing: Source Repository {self.name} branch: {branch} SHA1: {src_sha1} {self.url}")
 			self.tree = GitTree(
 				self.name,
 				url=self.url,
@@ -187,7 +207,7 @@ class SharedSourceRepository(SourceRepository):
 				reclone=False,
 				model=self.yaml.model
 			)
-			self.tree.initialize()
+			await self.tree.initialize()
 
 
 class SourceCollection:
@@ -213,44 +233,40 @@ class SourceCollection:
 			return license
 		self.yaml.model.log.error(f"No license named '{license}' found in SourceCollection {self.name}")
 
-	def initialize(self, repo_names=None):
+	async def initialize(self, repo_names=None):
 
 		"""
 		This method initializes the source repositories referenced by the kit to ensure that they are all initialized to the
 		proper branch and/or SHA1. Some internal checking is done to avoid re-initializing repositories unnecessarily, so if
 		they are already set up properly then no action will be taken.
+
+		Note: Due to the nature of what we're doing, these repositories are all SharedSourceRepositories.
 		"""
 
-		repo_futures = []
-		with ThreadPoolExecutor(max_workers=2) as executor:
-			for repo_name, repo_def in self.repo_defs.items():
-				# Skip any repos that we aren't using right now....
-				if repo_names is not None and repo_name not in repo_names:
-					continue
-				# If repo already exists, don't create it from scratch. Should be faster:
-				if repo_name in self.yaml.all_repo_objs:
-					self.repositories[repo_name] = self.yaml.all_repo_objs[repo_name]
-				else:
-					# note that src_sha1 and branch get passed as keyword arguments to initialize() in the next loop.
-					kwargs = repo_def.copy()
-					for arg in ["src_sha1", "branch"]:
-						if arg in kwargs:
-							del kwargs[arg]
-					self.yaml.all_repo_objs[repo_name] = self.repositories[repo_name] = SharedSourceRepository(**kwargs, yaml=self.yaml, name=repo_name)
-			for repo_name, repo in self.repositories.items():
-				branch = None
-				src_sha1 = None
-				if "src_sha1" in self.repo_defs[repo_name]:
-					src_sha1 = self.repo_defs[repo_name]["src_sha1"]
-				if "branch" in self.repo_defs[repo_name]:
-					branch = self.repo_defs[repo_name]["branch"]
-				fut = executor.submit(repo.initialize, branch=branch, src_sha1=src_sha1)
-				repo_futures.append(fut)
-			for repo_fut in as_completed(repo_futures):
-				# Getting .result() will also cause any exception to be thrown:
-				repo_dict = repo_fut.result()
+		for repo_name, repo_def in self.repo_defs.items():
+			# Skip any repos that we aren't using right now....
+			if repo_names is not None and repo_name not in repo_names:
 				continue
-
+			# If repo already exists, don't create it from scratch. Should be faster:
+			if repo_name in self.yaml.all_repo_objs:
+				self.repositories[repo_name] = self.yaml.all_repo_objs[repo_name]
+			else:
+				# note that src_sha1 and branch get passed as keyword arguments to initialize() in the next loop.
+				kwargs = repo_def.copy()
+				for arg in ["src_sha1", "branch"]:
+					if arg in kwargs:
+						del kwargs[arg]
+				self.yaml.all_repo_objs[repo_name] = self.repositories[repo_name] = SharedSourceRepository(**kwargs,
+																										   yaml=self.yaml,
+																										   name=repo_name)
+		for repo_name, repo in self.repositories.items():
+			branch = None
+			src_sha1 = None
+			if "src_sha1" in self.repo_defs[repo_name]:
+				src_sha1 = self.repo_defs[repo_name]["src_sha1"]
+			if "branch" in self.repo_defs[repo_name]:
+				branch = self.repo_defs[repo_name]["branch"]
+			await repo.initialize(branch=branch, src_sha1=src_sha1)
 		self.yaml.model.current_source_def = self
 
 
@@ -266,7 +282,7 @@ class Kit:
 	source = None
 
 	def __init__(self, locator, release=None, name=None, stability=None, branch=None, eclasses=None, priority=None,
-	             aliases=None, masters=None, sync_url=None, settings=None):
+				 aliases=None, masters=None, sync_url=None, settings=None):
 		self.kit_fixups: GitRepositoryLocator = locator
 		assert self.kit_fixups is not None
 		self.release = release
@@ -281,7 +297,7 @@ class Kit:
 		self.sync_url = sync_url.format(kit_name=name) if sync_url else None
 		self.settings = settings if settings is not None else {}
 
-	def initialize_sources(self):
+	async def initialize_sources(self):
 		pass
 
 	def get_copyright_rst(self):
@@ -307,12 +323,8 @@ class SourcedKit(Kit):
 		super().__init__(**kwargs)
 		self.source = source
 
-	def initialize_sources(self):
-		"""
-		For a SourcedKit, the underlying source repository is already initialized and doesn't need to be potentially
-		reset to the proper branch or SHA1.
-		"""
-		pass
+	async def initialize_sources(self):
+		await self.source.initialize()
 
 
 class AutoGeneratedKit(Kit):
@@ -329,7 +341,7 @@ class AutoGeneratedKit(Kit):
 			self._package_data = self._get_package_data()
 		return self._package_data
 
-	def initialize_sources(self):
+	async def initialize_sources(self):
 		"""
 		This method is used to get the SourceCollection's SharedSourceRepository objects initialized so we are ready to copy ebuilds/eclasses from
 		the right branch/SHA1.
@@ -344,19 +356,26 @@ class AutoGeneratedKit(Kit):
 			repo_names.append(repo_name)
 		for repo_name, extra in self.get_kit_items(section="eclasses"):
 			repo_names.append(repo_name)
-		self.source.initialize(repo_names=repo_names)
+		await self.source.initialize(repo_names=repo_names)
 
-	def _get_package_data(self):
-
+	@property
+	def packages_yaml(self):
 		# Look for branch-specific packages.yaml:
-		fn = f"{self.kit_fixups.root}/{self.name}/{self.branch}/packages.yaml"
+		fn = self.specific_packages_yaml
 		# Fallback to curated packages.yaml:
 		if not os.path.exists(fn):
 			fn = f"{self.kit_fixups.root}/{self.name}/curated/packages.yaml"
 		# Fallback to kit-wide packages.yaml:
 		if not os.path.exists(fn):
 			fn = f"{self.kit_fixups.root}/{self.name}/packages.yaml"
-		with open(fn, "r") as f:
+		return fn
+
+	@property
+	def specific_packages_yaml(self):
+		return f"{self.kit_fixups.root}/{self.name}/{self.branch}/packages.yaml"
+
+	def _get_package_data(self):
+		with open(self.packages_yaml, "r") as f:
 			return yaml.safe_load(f)
 
 	def yaml_walk(self, yaml_dict):
@@ -465,9 +484,10 @@ class ReleaseYAML(YAMLReader):
 	masters = None
 	all_repo_objs = dict()
 
-	def __init__(self, model: MergeConfig):
+	def __init__(self, model: MinimalMergeConfig):
 		self.model = model
-		self.mode = "prod" if self.model.prod is True else "dev"
+		if isinstance(model, MergeConfig):
+			self.mode = "prod" if self.model.prod is True else "dev"
 		filename = f'{self.model.locator.root}/releases/{self.model.release}/repositories.yaml'
 		if not os.path.exists(filename):
 			raise ConfigurationError(f"Cannot find expected {filename}")
@@ -489,10 +509,14 @@ class ReleaseYAML(YAMLReader):
 		"""
 		Given a repo/kit named ``repo_name``, determine its remote based on whether we are running in dev or prod mode.
 		"""
+		if self.mode is None:
+			raise NotImplementedError("To use ReleaseYAML.get_repo_config(), use a MergeConfig() rather than MinimalMergeConfig()")
+
 		if self.mode not in self.remotes:
 			raise ConfigurationError(f"No remotes defined for '{self.mode}' in {self.filename}.")
 		if 'url' not in self.remotes[self.mode]:
 			raise ConfigurationError(f"No URL defined for '{self.mode}' in {self.filename}.")
+		self.model.log.debug(f"get_repo_config: self.mode {self.mode} url: {self.remotes[self.mode]}")
 		mirrs = []
 		if 'mirrors' in self.remotes[self.mode]:
 			for mirr in self.remotes[self.mode]['mirrors']:
@@ -536,7 +560,6 @@ class ReleaseYAML(YAMLReader):
 		source_collections = OrderedDict()
 		repositories = self._repositories()
 		for collection_name, collection_items in self.iter_groups("release/source-collections"):
-			collection_objs = []
 			names = set()
 			repo_defs = OrderedDict()
 			for repo_def in collection_items:
@@ -620,23 +643,29 @@ class ReleaseYAML(YAMLReader):
 				s_branch = kit_insides["source"].get("branch", None)
 				s_src_sha1 = kit_insides["source"].get("src_sha1", None)
 				kit_insides['source'] = SourceRepository(yaml=self, name=f"{kit_name}-sources",
-				                                         url=kit_insides['source']['url'], branch=s_branch,
-				                                         src_sha1=s_src_sha1)
+														 url=kit_insides['source']['url'], branch=s_branch,
+														 src_sha1=s_src_sha1)
 				kits[kit_name].append(
 					SourcedKit(locator=self.model.locator, release=self, name=kit_name, **kit_insides))
 			else:
 				raise KeyError(f"Unknown kit kind '{kind}'")
 		return kits
 
-	def iter_kits(self, name=None):
+	def iter_kits(self, name=None, primary=None):
 		"""
-		This is a handy way to iterate over all kits that meet certain criteria (currently supporting kit
-		name.) This is used to get all python-kit kits for auto-USE-flag generation.
+		This is a handy way to iterate over all kits that meet certain criteria. By default, this will yield
+		individual kits, with the primary kit listed first (if there are multiple kits of the same name)
+
+		If 'name' is specified, then only yield those kits with matching name.
+		If 'primary' is True, then yield only primary kits (first kit in YAML).
 		"""
 		for kit_name, kit_list in self.kits.items():
 			if name is not None and kit_name != name:
 				continue
-			for kit in kit_list:
-				yield kit
+			if primary:
+				yield kit_list[0]
+			else:
+				for kit in kit_list:
+					yield kit
 
 # vim: ts=4 sw=4 noet

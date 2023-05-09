@@ -14,7 +14,7 @@ from typing import Optional, Tuple
 
 import jinja2
 
-from metatools.steps import run_bg
+from metatools.tree import run_bg
 from metatools.store import StoreObject
 from metatools.fastpull.spider import FetchError, FetchRequest
 
@@ -347,6 +347,9 @@ class Artifact(Archive):
 			# TODO: this used to be indexed by catpkg, and by final_name. So we are now indexing by source URL.
 			# TODO: what exceptions are we interested in here?
 			self.blos_object = await pkgtools.model.fastpull_session.get_file_by_url(req)
+			# This above call takes some IO, so if we are being hammered with ensure_fetched() calls, this allows
+			# downloads to stay responsive, hopefully.
+			await asyncio.sleep(0)
 		except FetchError as fe:
 			# We encountered some error retrieving the resource.
 			if throw:
