@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 from collections import OrderedDict
 from typing import Mapping, Optional
@@ -6,6 +7,10 @@ from typing import Mapping, Optional
 from bson import UuidRepresentation
 from bson.codec_options import TypeRegistry
 from bson.json_util import dumps, JSONOptions, loads
+
+from metatools.model import get_model
+
+model = get_model("metatools")
 
 # Notes:
 #
@@ -243,7 +248,11 @@ class FileStorageBackend(StorageBackend):
 	def decode_data(self, path) -> OrderedDict:
 		with open(path, "rb") as f:
 			in_string = f.read().decode("utf-8")
-			return loads(in_string, json_options=JSON_OPTIONS)
+			try:
+				return loads(in_string, json_options=JSON_OPTIONS)
+			except json.decoder.JSONDecodeError as je:
+				model.log.error("!!! Invalid JSON in FileStorageBackend (will be ignored so it can be repaired)", exc_info=je)
+				raise NotFoundError()
 
 	def write(self, data, blob_path=None) -> Optional[StoreObject]:
 		sha = self.store.key_spec.data_as_hash(data)
@@ -285,7 +294,11 @@ class FileStorageBackend(StorageBackend):
 		if not os.path.exists(in_path):
 			return None
 		blob_path = in_path + ".blob"
-		return StoreObject(data=self.decode_data(in_path), blob_path=blob_path if os.path.exists(blob_path) else None)
+		try:
+			data = self.decode_data(in_path)
+		except json.decoder.JSONDecodeError as je:
+			return None
+		return StoreObject(data=data, blob_path=blob_path if os.path.exists(blob_path) else None)
 
 	def delete(self, spec_dict) -> None:
 		sha = self.store.key_spec.specdict_as_hash(spec_dict)
