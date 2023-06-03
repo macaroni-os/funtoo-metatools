@@ -1,3 +1,12 @@
+metatools-1.3.1
+===============
+
+Released on June 3, 2023.
+
+This is a bugfix release. It simply adds a missing __init__.py to
+``metatools/zmq`` so that these source files get included in the
+distribution. This fixes a traceback due to these missing files.
+
 metatools 1.3.0
 ===============
 
