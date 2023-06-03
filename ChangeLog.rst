@@ -18,7 +18,7 @@ This is a bugfix release.
   So a fix was added so that any corrupt entries in
   ``FileStorageBackend`` will be treated as if they don't exist
   (returning a ``CacheMiss()``) which will allow ``doit`` to
-  overwite these corrupt entries with new, corrected entries.
+  overwrite these corrupt entries with new, corrected entries.
 
 metatools 1.3.0
 ===============
