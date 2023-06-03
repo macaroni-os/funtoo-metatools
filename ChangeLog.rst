@@ -1,11 +1,24 @@
-metatools-1.3.1
+metatools 1.3.1
 ===============
 
 Released on June 3, 2023.
 
-This is a bugfix release. It simply adds a missing __init__.py to
-``metatools/zmq`` so that these source files get included in the
-distribution. This fixes a traceback due to these missing files.
+This is a bugfix release.
+
+* Add a missing __init__.py to ``metatools/zmq`` so that these
+  source files get included in the distribution. This fixes a
+  traceback due to these missing files which prevented the 
+  distributed PyPi source from working.
+* If ``doit`` was interrupted, it could write incomplete JSON
+  to disk using ``FileStorageBackend``. In this case, the JSON
+  will be corrupt and the retrieved data will be invalid, and
+  there was no obvious way to clear out this corrupt data.
+  This would result in cached JSON data from ``get_page()``
+  being invalid and re-running ``doit`` would not fix this.
+  So a fix was added so that any corrupt entries in
+  ``FileStorageBackend`` will be treated as if they don't exist
+  (returning a ``CacheMiss()``) which will allow ``doit`` to
+  overwite these corrupt entries with new, corrected entries.
 
 metatools 1.3.0
 ===============
