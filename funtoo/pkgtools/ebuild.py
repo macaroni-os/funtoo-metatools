@@ -323,13 +323,13 @@ class Artifact(Archive):
 	def exists(self):
 		return self.is_fetched()
 
-	async def ensure_fetched(self, throw=False) -> bool:
+	async def ensure_fetched(self, throw=True) -> bool:
 		"""
 		This function ensures that the artifact is 'fetched' -- in other words, it exists locally. This means we can
 		calculate its hashes or extract it.
 
-		Returns a boolean with True indicating success and False failure in the default behavior with ``throw=False``,
-		otherwise the original exception will be raised.
+		Returns a boolean with True indicating success and False failure when ``throw=False``. By default, the
+		original fetch exception will be raised on error.
 		"""
 
 		if self.blos_object is not None:
