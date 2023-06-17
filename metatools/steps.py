@@ -648,7 +648,7 @@ class GenPythonUse(MergeStep):
 		pydata = kit.settings
 		out_subpath = f"funtoo/kits/python-kit/{kit.branch}"
 		self.def_python = pydata["primary"]
-		self.bk_python = pydata["alternate"]
+		self.bk_python = pydata["alternate"] if "alternate" in pydata else None
 		self.mask = pydata["mask"]
 		self.out_subpath = out_subpath
 
