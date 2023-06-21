@@ -150,7 +150,7 @@ async def verify_callback(download: Download) -> Download:
 			raise FileIntegrityError(f"File {download.temp_path} downloaded from {download.request.url} does not appear to be a valid {arc_desc} archive!")
 		log.info(f"Download from {download.request.url} verified as valid {arc_desc} archive.")
 	else:
-		log.warning("NO RUN CMD!")
+		log.debug(f"NO RUN CMD for verifying {download.temp_path}")
 	return download
 
 
