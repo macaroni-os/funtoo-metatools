@@ -159,8 +159,13 @@ async def main_thread():
 
 
 					#shas.add(file['hashes']['sha512'])
-	await asyncio.gather(*tasks)
-
+	baddes = False
+	results = await asyncio.gather(*tasks, return_exceptions=True)
+	for result in results:
+		if isinstance(result, Exception):
+			pkgtools.model.log.error("Exception encountered: ", exc_info=result)
+			baddies = True
+	return not baddies
 # if shas:
 #	print(atom)
 #	for sha in shas:
