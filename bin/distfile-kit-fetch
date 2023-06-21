@@ -159,7 +159,7 @@ async def main_thread():
 
 
 					#shas.add(file['hashes']['sha512'])
-	baddes = False
+	baddies = False
 	results = await asyncio.gather(*tasks, return_exceptions=True)
 	for result in results:
 		if isinstance(result, Exception):
