@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+
+import argparse
+import sys
+
+from subpop.hub import Hub
+
+from metatools.config.autogen import StoreConfig
+
+hub = Hub()
+
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
+
+CLI_CONFIG = {
+	"fastpull_scope": {"default": "local", "action": "store", "help": "Default index into fastpull for collecting artifacts."},
+	"debug": {"default": False, "action": "store_true"},
+}
+
+
+def parse_args():
+	ap = argparse.ArgumentParser()
+	for arg, kwargs in CLI_CONFIG.items():
+		if "positional" in kwargs and kwargs["positional"]:
+			new_kwargs = kwargs.copy()
+			del new_kwargs["positional"]
+			ap.add_argument(arg, **new_kwargs)
+		else:
+			if "os" in kwargs:
+				del kwargs["os"]
+			ap.add_argument("--" + arg, **kwargs)
+	return ap.parse_args()
+
+
+async def main_thread():
+	hub.OPT = parse_args()
+	await pkgtools.launch(StoreConfig)
+	scope = pkgtools.model.fpos.get_scope(hub.OPT.fastpull_scope)
+	count = 0
+	missing_in_blos = 0
+	for store_obj in scope.store.backend.scan():
+		count += 1
+		#print(store_obj.json_path, store_obj.data)
+		blos_entry = pkgtools.model.blos.read({"hashes.sha512": store_obj.data['sha512']})
+		if blos_entry is None:
+			missing_in_blos += 1
+			print(f"Integrity store {store_obj.json_path} missing associated BLOS entry.")
+	print(f"{count} integrity items scanned; {missing_in_blos} missing.")
+	if missing_in_blos:
+		return False
+	else:
+		return True
+
+if __name__ == "__main__":
+	success = hub.LOOP.run_until_complete(main_thread())
+	if not success:
+		sys.exit(1)
+
+# vim: ts=4 sw=4 noet

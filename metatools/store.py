@@ -187,10 +187,12 @@ class BLOBDiskReference(BLOBReference):
 
 class StoreObject:
 
-	def __init__(self, data, blob_path=None):
+	def __init__(self, data, blob_path=None, **kwargs):
 		self.data = data
 		if blob_path:
 			self.blob = BLOBDiskReference(path=blob_path)
+		for kw_key, kw_val in kwargs.items():
+			setattr(self, kw_key, kw_val)
 
 
 class StorageBackend:
@@ -285,7 +287,7 @@ class FileStorageBackend(StorageBackend):
 				pass
 		else:
 			blob_outpath = None
-		return StoreObject(data=data, blob_path=blob_outpath)
+		return StoreObject(data=data, blob_path=blob_outpath, json_path=out_path)
 
 	def read(self, spec_dict) -> Optional[StoreObject]:
 		sha = self.store.key_spec.specdict_as_hash(spec_dict)
@@ -298,7 +300,7 @@ class FileStorageBackend(StorageBackend):
 			data = self.decode_data(in_path)
 		except json.decoder.JSONDecodeError as je:
 			return None
-		return StoreObject(data=data, blob_path=blob_path if os.path.exists(blob_path) else None)
+		return StoreObject(data=data, blob_path=blob_path if os.path.exists(blob_path) else None, json_path=in_path)
 
 	def delete(self, spec_dict) -> None:
 		sha = self.store.key_spec.specdict_as_hash(spec_dict)
@@ -315,6 +317,23 @@ class FileStorageBackend(StorageBackend):
 		if common != self.root:
 			return None
 		return disk_path[len(common):].lstrip("/")
+
+	def scan(self):
+		"""
+		Scan all entries in the FileStorageBackend. This assumes that all files not ending in .blob are database
+		entries. Yields ``StoreObject``s.
+		"""
+		for w_path, w_dirs, w_files in os.walk(self.root):
+			for file in w_files:
+				if file.endswith(".blob"):
+					continue
+				in_path = os.path.join(w_path, file)
+				blob_path = in_path + ".blob"
+				try:
+					data = self.decode_data(in_path)
+				except json.decoder.JSONDecodeError as je:
+					continue
+				yield StoreObject(data=data, blob_path=blob_path if os.path.exists(blob_path) else None, json_path=in_path)
 
 
 class Store:
@@ -355,3 +374,4 @@ class Store:
 
 	def delete(self, key_spec: dict) -> None:
 		return self.backend.delete(key_spec)
+
