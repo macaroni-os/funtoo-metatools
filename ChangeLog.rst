@@ -16,7 +16,7 @@ This is a maintenance/general update release.
   ``If-None-Match`` or ``If-Modified-Since``.
 * Small fix to allow Funtoo to only have one Python implementation as
   up until now it has had two (2.7 and 3.7 in 1.4-release, and 3.7
-  and 3.9 in next-release. We are now moving to just 3.9 in next.
+  and 3.9 in next-release. We are now moving to just 3.9 in next.)
 * Add a ``blos-check`` tool to scan the Integrity Database (this is the
   thing that maps a distfile name to a specific binary object in the
   Base Layer Object Store, or BLOS) to look for any missing binary
