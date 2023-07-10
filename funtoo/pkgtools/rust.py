@@ -9,7 +9,7 @@ import shutil
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 from subpop.util import AttrDict
 
-from metatools.tree import run_shell
+from metatools.cmd import run_shell
 
 
 async def add_crates_bundle(
