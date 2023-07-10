@@ -145,7 +145,7 @@ async def verify_callback(download: Download) -> Download:
 		run_cmd = "xz -dc {archive} > /dev/null"
 		arc_desc = "xz"
 	if run_cmd:
-		proc, out = await run_bg(run_cmd.format(archive=download.temp_path))
+		proc, out = await capture_bg(run_cmd.format(archive=download.temp_path))
 		if proc.returncode != 0:
 			raise FileIntegrityError(f"File {download.temp_path} downloaded from {download.request.url} does not appear to be a valid {arc_desc} archive!")
 		log.info(f"Download from {download.request.url} verified as valid {arc_desc} archive.")
@@ -188,38 +188,6 @@ class IntegrityDatabase:
 			self.scopes[scope_id] = IntegrityScope(self, scope_id)
 		log.debug(f"FastPull Integrity Scope: {scope_id}")
 		return self.scopes[scope_id]
-
-	async def verify_callback(self, download: Download) -> Download:
-		fn = download.request.filename
-		run_cmd = None
-		arc_desc = None
-		if fn.endswith(".tar.gz"):
-			run_cmd = "tar tzf {archive}"
-			arc_desc = "tar.gz"
-		elif fn.endswith(".tar.bz2"):
-			run_cmd = "tar tjf {archive}"
-			arc_desc = "tar.bz2"
-		elif fn.endswith(".tar.xz"):
-			run_cmd = "tar tJf {archive}"
-			arc_desc = "tar.xz"
-		elif fn.endswith(".tar.zst"):
-			run_cmd = "tar -t --zstd -f {archive}"
-			arc_desc = "tar.xz"
-		elif fn.endswith(".gz"):
-			run_cmd = "gzip -dc {archive} > /dev/null"
-			arc_desc = "gzip"
-		elif fn.endswith(".bz2"):
-			run_cmd = "bzip2 -dc {archive} > /dev/null"
-			arc_desc = "bzip2"
-		elif fn.endswith(".xz"):
-			run_cmd = "xz -dc {archive} > /dev/null"
-			arc_desc = "xz"
-		if run_cmd:
-			proc, out = await capture_bg(run_cmd.format(archive=download.temp_path))
-			if proc.returncode != 0:
-				raise FileIntegrityError(f"File {download.temp_path} downloaded from {download.request.url} does not appear to be a valid {arc_desc} archive!")
-			log.info(f"Download from {download.request.url} verified as valid {arc_desc} archive.")
-		return download
 
 	async def fetch_completion_callback(self, download: Download) -> StoreObject:
 		"""
