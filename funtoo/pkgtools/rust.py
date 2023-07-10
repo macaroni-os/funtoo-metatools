@@ -6,7 +6,6 @@ import asyncio
 import hashlib
 import shutil
 
-import dyne.org.funtoo.metatools.pkgtools as pkgtools
 from subpop.util import AttrDict
 
 from metatools.cmd import run_shell
@@ -138,7 +137,7 @@ async def create_crates_archive(hub, pkginfo):
 		return crates_archive
 
 	crates_archive = hub.Archive(crates_bundle.final_name)
-	crates_archive.initialize(f"funtoo-crates-bundle-{pkginfo['name']}")
+	await crates_archive.initialize(f"funtoo-crates-bundle-{pkginfo['name']}")
 
 	crates_artifacts = [
 		hub.pkgtools.ebuild.Artifact(**crate_attrs)
