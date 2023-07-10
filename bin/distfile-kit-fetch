@@ -1,28 +1,33 @@
 #!/usr/bin/env python3
 
 import argparse
+import asyncio
+import os
 import ssl
 import sys
 
-from metatools.fastpull.spider import FetchRequest, FetchError, Download
-from metatools.kit_cache import KitCache
-from metatools.store import StoreObject
 from subpop.hub import Hub
 
 from metatools.config.autogen import StoreSpiderConfig
+from metatools.fastpull.core import verify_callback
+from metatools.fastpull.spider import FetchRequest, FetchError, Download
+from metatools.kit_cache import KitCache
+from metatools.store import StoreObject
+from metatools.tree import GitTree
 
 hub = Hub()
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 CLI_CONFIG = {
+	"release": {"default": None, "action": "store", "positional": True, "help": "Release to process"},
 	"kit": {"default": None, "action": "store", "positional": True, "help": "Kit to process"},
 	"branch": {"default": None, "action": "store", "positional": True, "help": "Kit branch to process"},
 	"debug": {"default": False, "action": "store_true"},
 }
 
 
-def fetch_completion_callback(download: Download) -> StoreObject:
+async def fetch_completion_callback(download: Download) -> StoreObject:
 	"""
 	This method is intended to be called *once* when an actual in-progress download of a tarball (by
 	the Spider) has completed. It performs several important finalization actions upon successful
@@ -40,7 +45,8 @@ def fetch_completion_callback(download: Download) -> StoreObject:
 	"""
 
 	store_obj: StoreObject = pkgtools.model.blos.insert_download(download)
-	pkgtools.model.spider.cleanup(download)
+	if pkgtools.model.spider:
+		pkgtools.model.spider.cleanup(download)
 	return store_obj
 
 
@@ -69,21 +75,56 @@ mirr_map = {
 }
 
 
-def mini_mirror_expander(url):
+def mini_mirror_expander(mirr_dict, url):
 	url = url[len("mirror://"):]
 	mirr_name = url.split("/")[0]
 	path = "/".join(url.split("/")[1:])
-	if mirr_name in mirr_map:
-		return mirr_map[mirr_name] + "/" + path
+	if mirr_name in mirr_dict:
+		return mirr_dict[mirr_name] + "/" + path
 	else:
 		return None
+
+
+async def fetch_task(file, url):
+	pkgtools.model.log.info(f"Fetching {url}")
+	freq = FetchRequest(url=url, expected_hashes={'sha512': file['hashes']['sha512']})
+	try:
+		fresp = await pkgtools.model.spider.download(freq, completion_pipeline=[verify_callback, fetch_completion_callback])
+	except ssl.SSLError as ssle:
+		pkgtools.model.log.warning(f"SSL error for {url}: {ssle}")
+		return
+	except FetchError as fe:
+		pkgtools.model.log.warning(f"Fetch error for {url}: {fe}")
+		return
+	if fresp is not None:
+		pkgtools.model.log.info(f"Fetch OK: {url}")
+	else:
+		pkgtools.model.log.error(f"Fetch FAIL: {url}")
 
 
 async def main_thread():
 	hub.OPT = parse_args()
 	await pkgtools.launch(StoreSpiderConfig)
-	kit_cache = KitCache(name=hub.OPT.kit, branch=hub.OPT.branch)
+
+	kit_fixups_root = os.path.join(pkgtools.model.source_trees, "kit-fixups")
+	pkgtools.model.log.info("Cloning/updating kit-fixups to access thirdpartymirrors (--fast to use as-is)")
+	kit_fixups = GitTree(
+		name='kit-fixups',
+		root=kit_fixups_root,
+		model=pkgtools.model,
+		keep_branch=True
+	)
+	await kit_fixups.initialize()
+
+	mirr_dict = {}
+	with open(os.path.join(kit_fixups_root, "core-kit/curated/profiles/thirdpartymirrors"), "r") as f:
+		for line in f.readlines():
+			ls = line.split()
+			mirr_dict[ls[0]] = ls[1]
+
+	kit_cache = KitCache(name=hub.OPT.kit, branch=hub.OPT.branch, release=hub.OPT.release)
 	kit_cache.load()
+	tasks = []
 	for atom, pkg_dict in kit_cache.items():
 
 		# Filter out duplicate SHAs. Yes, this can and does happen with golang having multiple different filenames that are the same file.
@@ -104,7 +145,7 @@ async def main_thread():
 						continue
 					url = file['src_uri'][0]
 					if url.startswith("mirror://"):
-						new_url = mini_mirror_expander(url)
+						new_url = mini_mirror_expander(mirr_dict, url)
 						if new_url is None:
 							pkgtools.model.log.warning(f"Skipping mirror: {url}")
 							continue
@@ -113,24 +154,18 @@ async def main_thread():
 					elif not url.startswith("http://") or not url.startswith("https://") or not url.startswith("ftp://"):
 						# likely a fetch-restricted file with just the filename
 						continue
-					pkgtools.model.log.info(f"Fetching {url}")
-					freq = FetchRequest(url=url, expected_hashes={'sha512': file['hashes']['sha512']})
-					try:
-						fresp = await pkgtools.model.spider.download(freq, completion_pipeline=[fetch_completion_callback])
-					except ssl.SSLError as ssle:
-						pkgtools.model.log.warning(f"SSL error for {url}: {ssle}")
-						continue
-					except FetchError as fe:
-						pkgtools.model.log.warning(f"Fetch error for {url}: {fe}")
-						continue
-					if fresp is not None:
-						pkgtools.model.log.info(f"Fetch OK: {url}")
-					else:
-						pkgtools.model.log.error(f"Fetch FAIL: {url}")
-
-					shas.add(file['hashes']['sha512'])
+					tasks.append(asyncio.create_task(fetch_task(file, url)))
+					await asyncio.sleep(0)
 
 
+					#shas.add(file['hashes']['sha512'])
+	baddies = False
+	results = await asyncio.gather(*tasks, return_exceptions=True)
+	for result in results:
+		if isinstance(result, Exception):
+			pkgtools.model.log.error("Exception encountered: ", exc_info=result)
+			baddies = True
+	return not baddies
 # if shas:
 #	print(atom)
 #	for sha in shas:

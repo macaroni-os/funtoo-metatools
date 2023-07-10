@@ -47,7 +47,7 @@ class StoreConfig(MinimalConfig):
 
 
 class StoreSpiderConfig(StoreConfig):
-	logger_name = 'metatools.spider'
+	logger_name = 'metatools.autogen'
 
 	async def initialize(self, fastpull_scope=None, debug=False):
 		self.spider = WebSpider(os.path.join(self.temp_path, "spider"), hashes=self.hashes)
@@ -154,7 +154,7 @@ class AutogenConfig(StoreSpiderConfig):
 					branch=fixups_branch,
 					keep_branch=True
 				)
-				self.kit_fixups.initialize()
+				await self.kit_fixups.initialize()
 			else:
 				self.log.info(f"Generators will be sourced from {kit_fixups_root}")
 			self.kit_fixups_repo = GitRepositoryLocator(start_path=kit_fixups_root)

@@ -1,3 +1,51 @@
+metatools 1.3.2
+===============
+
+Released on June 29, 2023.
+
+This is a maintenance/general update release.
+
+* FL-11382: For ``Artifact``, throw exceptions when ``fetch()``,
+  ``ensure_fetched()``, ``ensure_completed()`` fail. If ``throw=False``
+  specified for ``ensure_fetched()`` then this behavior is disabled and
+  ``None`` is returned on fetch failure.
+* Add additional debugging for ``http_fetch`` if we get a 304 response
+  and are not expecting it. In this case, log detailed header information
+  so we can troubleshoot it. This may be an infrequently-occurring bug
+  that still needs to be fixed. We should only get a 304 if we specify
+  ``If-None-Match`` or ``If-Modified-Since``.
+* Small fix to allow Funtoo to only have one Python implementation as
+  up until now it has had two (2.7 and 3.7 in 1.4-release, and 3.7
+  and 3.9 in next-release. We are now moving to just 3.9 in next.)
+* Add a ``blos-check`` tool to scan the Integrity Database (this is the
+  thing that maps a distfile name to a specific binary object in the
+  Base Layer Object Store, or BLOS) to look for any missing binary
+  objects. This is not really needed but sometimes when I am debugging
+  our stores, I need to run this for due diligence. It hasn't found
+  any issues yet.
+* Add ``distfile-kit-fetch`` tool which you would run on the system
+  you ran ``merge-kits`` on. It will try to grab all the non-autogenned
+  distfiles and download all it can, ultra-fast-spider style, and store
+  them locally in the BLOS. It is used like this:
+  ``distfile-kit-fetch <release> <kit> <branch-of-kit>``
+  It will use the kit-cache data from a previous ``merge-kits`` run.
+  This kit-cache data is stored in ``~/repo_tmp/tmp/kit_cache``.
+  This tool also will make sure it has a locally-checked out
+  ``kit-fixups`` repo in ``~/repo_tmp/source-trees/kit-fixups`` and
+  will utilize the ``thirdpartymirrors`` file located at
+  ``core-kit/curated/profiles/thirdpartymirrors`` to expand any
+  ``mirror://`` prefixes in ebuild ``SRC_URI`` strings. Additional
+  work has been done on this tool to make it production-quality. For
+  example, it won't stop running when it encounters a file download
+  that errors out -- instead it will be greedy and try to keep
+  downloading as many distfiles as it can.
+* Support for archive verification of ``.tar`` files (no compression,
+  and we do see these sometimes.)
+* Add missing ``await`` for initializing ``kit-fixups`` repo in
+  ``AutogenConfig`` initialization which should fix a potential
+  race condition.
+
+
 metatools 1.3.1
 ===============
 
@@ -19,6 +67,7 @@ This is a bugfix release.
   ``FileStorageBackend`` will be treated as if they don't exist
   (returning a ``CacheMiss()``) which will allow ``doit`` to
   overwrite these corrupt entries with new, corrected entries.
+
 
 metatools 1.3.0
 ===============

@@ -90,7 +90,7 @@ class IntegrityScope:
 				return obj
 		new_ref = await self.parent.spider.download(request,
 		                                            completion_pipeline=[
-														self.parent.verify_callback,
+														verify_callback,
 														self.parent.fetch_completion_callback])
 		assert isinstance(new_ref, StoreObject)
 		self.store.write(
@@ -114,6 +114,44 @@ class IntegrityScope:
 	def store_file_dynamic(self, key_dict: dict, obj_path, metadata: dict = None):
 		store_obj = self.parent.blos.insert_blob(obj_path)
 		self.dynamic.write({"key": key_dict, "hashes": store_obj.data["hashes"], "metadata": metadata if metadata else {}})
+
+
+async def verify_callback(download: Download) -> Download:
+	fn = download.request.filename
+	run_cmd = None
+	arc_desc = None
+	if fn.endswith(".tar.gz"):
+		run_cmd = "tar tzf {archive}"
+		arc_desc = "tar.gz"
+	elif fn.endswith(".tar.bz2"):
+		run_cmd = "tar tjf {archive}"
+		arc_desc = "tar.bz2"
+	elif fn.endswith(".tar.xz"):
+		run_cmd = "tar tJf {archive}"
+		arc_desc = "tar.xz"
+	elif fn.endswith(".tar.zst"):
+		run_cmd = "tar -t --zstd -f {archive}"
+		arc_desc = "tar.xz"
+	elif fn.endswith(".tar"):
+		run_cmd = "tar -t -f {archive}"
+		arc_desc = "tar"
+	elif fn.endswith(".gz"):
+		run_cmd = "gzip -dc {archive} > /dev/null"
+		arc_desc = "gzip"
+	elif fn.endswith(".bz2"):
+		run_cmd = "bzip2 -dc {archive} > /dev/null"
+		arc_desc = "bzip2"
+	elif fn.endswith(".xz"):
+		run_cmd = "xz -dc {archive} > /dev/null"
+		arc_desc = "xz"
+	if run_cmd:
+		proc, out = await run_bg(run_cmd.format(archive=download.temp_path))
+		if proc.returncode != 0:
+			raise FileIntegrityError(f"File {download.temp_path} downloaded from {download.request.url} does not appear to be a valid {arc_desc} archive!")
+		log.info(f"Download from {download.request.url} verified as valid {arc_desc} archive.")
+	else:
+		log.debug(f"NO RUN CMD for verifying {download.temp_path}")
+	return download
 
 
 class IntegrityDatabase:
