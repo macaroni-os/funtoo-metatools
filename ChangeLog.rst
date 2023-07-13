@@ -1,3 +1,50 @@
+metatools 1.3.3
+===============
+
+Released on July 13, 2023.
+
+This is a maintenance/general update release.
+
+* Fix an bug for where we could receive an HTTP 304 response
+  and not call the proper handling code later, causing a
+  traceback.
+
+* IMPORTANT breaking API change for dynamic archives:
+  myarchive.initialize() is now async and needs to be awaited.
+  This now uses a higher-performance async function (see
+  below for more info.)
+
+* Hub now has a higher-performance hub.cmd.run_bg() function which
+  can be used to run a command in the background and get its
+  exit code as a return value, without pausing the metatools
+  event loop. This should be used instead of ``os.system()``
+  in your autogens.
+
+* Hub now has a hub.cmd.capture_bg() command which is similar to
+  hub.cmd.run_bg() except that it don't emit any output, but
+  instead captures stdout and err into a combined string.
+  It returns a tuple containing the process object (which can
+  be inspected for error code, etc.) and the combined string of
+  stdout and stderr.
+
+* For dynamic archives: ``Archive`` now has a ``work_path`` and
+  an async ``create_work_path`` method. This can be used as a
+  'scratch area' for temporary work. Do an::
+
+   await myarchive.create_work_path()
+
+  ``myarchive.work_path`` is now empty and ready for use.
+
+  ``Archive`` ``.store()`` and ``.store_by_name()`` now accept
+  an ``existing=`` keyword argument which can be used to point
+  to an archive/file that already exists. This will allow you
+  to basically say "THIS is the archive I wish to store -- I
+  have it already". Without using ``existing=``, the default
+  behavior is to tar up the contents of the archive's
+  ``temp_archive_dir`` to create the archive dynamically.
+
+* Convert golang and rust dynamic archive code to use async.
+
 metatools 1.3.2
 ===============
 
