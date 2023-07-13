@@ -31,7 +31,7 @@ This is a maintenance/general update release.
   an async ``create_work_path`` method. This can be used as a
   'scratch area' for temporary work. Do an::
 
-   await myarchive.create_work_path()
+    await myarchive.create_work_path()
 
   ``myarchive.work_path`` is now empty and ready for use.
 
