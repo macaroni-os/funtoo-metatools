@@ -8,6 +8,7 @@ import shutil
 import threading
 from asyncio import Task
 from collections import OrderedDict
+from collections.abc import Mapping
 from datetime import datetime
 from subprocess import getstatusoutput
 from typing import Optional, Tuple
@@ -518,8 +519,7 @@ class BreezyBuild:
 		fetch_tasks_dict = {}
 
 		for artifact in self.iter_artifacts():
-			art_type = type(artifact)
-			if art_type not in [Artifact, Archive]:
+			if isinstance(artifact, Mapping):
 				artifact = Artifact(**artifact)
 
 			# This records that the artifact is used by this catpkg, because an Artifact can be shared among multiple
@@ -528,7 +528,7 @@ class BreezyBuild:
 			if self not in artifact.breezybuilds:
 				artifact.breezybuilds.append(self)
 
-			if art_type is Artifact:
+			if artifact.__class__.__name__ == "Artifact":
 				async def lil_coroutine(a):
 					try:
 						status = await a.ensure_completed()
