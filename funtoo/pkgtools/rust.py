@@ -11,7 +11,11 @@ from collections import defaultdict
 from subpop.util import AttrDict
 
 from metatools.cmd import run_shell
-from funtoo.pkgtools.ebuild import Artifact, Archive
+
+# TODO: although this is currently working, it's not recommended.
+#       we should look into using non-dyne references to these classes more.
+# from funtoo.pkgtools.ebuild import Artifact, Archive
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
 async def add_crates_bundle(
@@ -169,9 +173,11 @@ async def fetch_git_dependency(url, crates):
 	archive_name = f"{repo_name}-{ref}.tar.xz"
 	archive_key = AttrDict({"git_url": repo_url, "ref": ref})
 
-	archive, _ = Archive.find(key=archive_key, final_name=archive_name)
+	# archive, _ = Archive.find(key=archive_key, final_name=archive_name)
+	archive, _ = pkgtools.ebuild.Archive.find(key=archive_key, final_name=archive_name)
 	if archive is None:
-		archive = Archive(final_name=archive_name)
+		# archive = Archive(final_name=archive_name)
+		archive = pkgtools.ebuild.Archive(final_name=archive_name)
 
 		dir_name = f"{repo_name}-{ref}"
 		await archive.initialize(dir_name)
@@ -279,7 +285,8 @@ async def generate_crates_metadata(lock_path=None, lock_data=None):
 			final_name = f"{name}-{version}.crate"
 
 			crates_artifacts.append(
-				Artifact(
+				# Artifact(
+				pkgtools.ebuild.Artifact(
 					url=(
 							"https://crates.io/api/v1/crates/"
 							+ name
