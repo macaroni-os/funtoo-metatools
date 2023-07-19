@@ -3,6 +3,7 @@ import hashlib
 import logging
 import os
 import random
+import ssl
 import string
 import threading
 from collections import defaultdict
@@ -575,7 +576,7 @@ class WebSpider:
 				else:
 					result = response.headers, response.text
 				return result
-			except httpx.RequestError as re:
+			except (httpx.RequestError, ssl.SSLError) as re:
 				raise FetchError(request, f"Could not connect to {request.url}: {repr(re)}", retry=False)
 
 	@asynccontextmanager
