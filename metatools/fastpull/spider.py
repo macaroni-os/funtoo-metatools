@@ -542,9 +542,12 @@ class WebSpider:
 			# TODO: add code to explicitly close all clients, above:
 			try:
 				if extra_headers:
-					if "If-None-Match" in extra_headers or "If-Modified-Since" in headers:
-						accept_304 = True
 					headers.update(extra_headers)
+
+				for key_304 in [ "If-None-Match", "If-Modified-Since" ]:
+					if key_304 in http_client.headers or key_304 in headers:
+						accept_304 = True
+						break
 
 				response = await http_client.get(request.url, headers=headers, auth=auth, follow_redirects=True, timeout=15)
 				log.debug(f'http_fetch: GET {response.status_code} {request.url}')
