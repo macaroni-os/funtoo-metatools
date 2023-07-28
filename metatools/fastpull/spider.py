@@ -564,7 +564,8 @@ class WebSpider:
 						f"Fetch failure for {request.url}: {response.status_code} {response.reason_phrase} {err_response}")
 					if response.status_code == 304:
 						log.error("We should not get status 304 (not modified) but we did.")
-						log.error(f"Original request headers: {repr(http_client.headers)}")
+						log.error(f"  client request headers: {repr(http_client.headers)}")
+						log.error(f"headers passed to client: {repr(headers)} with auth: {repr(auth)}")
 						log.error(f"Extra headers:            {repr(extra_headers)}")
 					raise FetchError(request,
 									 f"HTTP fetch Error: {request.url}: {response.status_code}: {response.reason_phrase} {err_response}",
