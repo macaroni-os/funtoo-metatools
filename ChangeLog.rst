@@ -1,3 +1,27 @@
+metatools 1.3.4
+===============
+
+Released on July 28, 2023.
+
+This is a maintenance/general update release.
+
+* A hopefully (and I believe) "final fix" for HTTP 304
+  responses not being properly handled. For some reason,
+  I was not reading this code correctly and it should
+  now be totally fixed.
+
+* Adding of a ``ROADMAP.rst`` to remind me of things to
+  work on.
+
+* Catch ``ssl.SSLError`` as it appears httpx doesn't
+  catch this exception, so we must catch it and handle
+  it. This fixes an issue where invalid/expired SSL
+  certs would cause a traceback rather than a "fallback"
+  behavior.
+
+* FL-11447: merge invakid404's improvements to support
+  git-sourced rust crates.
+
 metatools 1.3.3
 ===============
 
