@@ -1,2 +1,2 @@
 #!/bin/bash
-rsync -av ~/repo_tmp/stores/blos/ cdn@direct.funtoo.org:repo_tmp/stores/blos/
+rsync -ave "ssh -p 1022" ~/repo_tmp/stores/blos/ cdn@direct.funtoo.org:repo_tmp/stores/blos/
