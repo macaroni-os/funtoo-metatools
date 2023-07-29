@@ -574,13 +574,18 @@ class WebSpider:
 									 f"HTTP fetch Error: {request.url}: {response.status_code}: {response.reason_phrase} {err_response}",
 									 retry=retry)
 				if is_json:
-					return response.headers, response.json()
+					try:
+						return response.headers, response.json()
+					except JSONDecodeError as jde:
+						# TODO: report this via moonbeam
+						raise FetchError(request, f"Error decoding JSON: {repr(jde)}", retry=False)
 				if encoding:
 					result = response.headers, response.content.decode(encoding)
 				else:
 					result = response.headers, response.text
 				return result
 			except (httpx.RequestError, ssl.SSLError) as re:
+				# TODO: report this via moonbeam
 				raise FetchError(request, f"Could not connect to {request.url}: {repr(re)}", retry=False)
 
 	@asynccontextmanager
