@@ -5,7 +5,7 @@ import asyncio
 import os
 import ssl
 import sys
-
+from collections import defaultdict
 from subpop.hub import Hub
 
 from metatools.config.autogen import StoreSpiderConfig
@@ -84,25 +84,30 @@ def mini_mirror_expander(mirr_dict, url):
 	else:
 		return None
 
-
 async def fetch_task(file, url):
+	stats = defaultdict(int)
 	pkgtools.model.log.info(f"Fetching {url}")
 	freq = FetchRequest(url=url, expected_hashes={'sha512': file['hashes']['sha512']})
 	try:
 		fresp = await pkgtools.model.spider.download(freq, completion_pipeline=[verify_callback, fetch_completion_callback])
 	except ssl.SSLError as ssle:
+		stats['ssl_errors'] += 1
 		pkgtools.model.log.warning(f"SSL error for {url}: {ssle}")
-		return
+		return stats
 	except FetchError as fe:
+		stats['fetch_errors'] += 1
 		pkgtools.model.log.warning(f"Fetch error for {url}: {fe}")
-		return
+		return stats
 	if fresp is not None:
+		stats['fetch_ok'] += 1
 		pkgtools.model.log.info(f"Fetch OK: {url}")
 	else:
+		stats['fetch_errors'] += 1
 		pkgtools.model.log.error(f"Fetch FAIL: {url}")
-
+	return stats
 
 async def main_thread():
+	main_stats = defaultdict(int)
 	hub.OPT = parse_args()
 	await pkgtools.launch(StoreSpiderConfig)
 
@@ -126,17 +131,20 @@ async def main_thread():
 	kit_cache.load()
 	tasks = []
 	for atom, pkg_dict in kit_cache.items():
-
+		main_stats['atom_count'] += 1
 		# Filter out duplicate SHAs. Yes, this can and does happen with golang having multiple different filenames that are the same file.
-		shas = set()
 		if "files" in pkg_dict:
 			for file in pkg_dict["files"]:
 				if "hashes" not in file:
 					pkgtools.model.log.warning(f"No hashes for {file}")
+
+					main_stats["no_hashes"] += 1
 					continue
 				elif "sha512" not in file['hashes']:
 					pkgtools.model.log.warning(f"No sha512 for {file}")
+					main_stats["no_sha512"] += 1
 					continue
+				main_stats['file_count'] += 1
 				obj = pkgtools.model.blos.read({"hashes.sha512": file['hashes']['sha512']})
 				if obj is None:
 					pkgtools.model.log.debug(f"DICT {pkg_dict}")
@@ -156,21 +164,22 @@ async def main_thread():
 						continue
 					tasks.append(asyncio.create_task(fetch_task(file, url)))
 					await asyncio.sleep(0)
-
-
-					#shas.add(file['hashes']['sha512'])
 	baddies = False
 	results = await asyncio.gather(*tasks, return_exceptions=True)
 	for result in results:
 		if isinstance(result, Exception):
 			pkgtools.model.log.error("Exception encountered: ", exc_info=result)
 			baddies = True
+		else:
+			main_stats.update(result)
+	pkgtools.model.log.info(f"Processed {main_stats['atom_count']} ebuilds; {main_stats['file_count']} distfiles.") 
+	if main_stats['fetch_ok']:
+		pkgtools.model.log.info(f"{main_stats['fetch_ok']} new fetches.")
+	if main_stats['no_hashes'] or main_stats['no_sha512']:
+		pkgtools.model.log.warning(f"{main_stats['no_hashes']} missing hashes and {main_stats['no_sha512']} missing SHA512 in Manifest.")
+	if baddies:
+		pkgtools.model.log.warning(f"{main_stats['fetch_errors']} fetch errors and {main_stats['ssl_errors']} SSL errors.")
 	return not baddies
-# if shas:
-#	print(atom)
-#	for sha in shas:
-#		print(">>>", sha)
-#	print()
 
 
 if __name__ == "__main__":
