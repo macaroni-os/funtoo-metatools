@@ -388,8 +388,18 @@ class GitTree(Tree):
 	async def do_pull(self):
 		if self.pull and not self.pulled:
 			# we are on the right branch, but we want to make sure we have the latest updates
-			await self.run_shell("(cd %s && git pull --ff-only)" % self.root)
-			self.pulled = True
+			try:
+				await self.run_shell("(cd %s && git pull --ff-only)" % self.root)
+				self.pulled = True
+			except ShellError as se:
+				self.log.error(f"git pull of {self.name} failed -- do you want to force pull? (Type \"yes\"): ")
+				self.log.error("DON'T DO THIS UNLESS YOU HAVE INVESTIGATED THE TREE AND KNOW EXACTLY WHAT YOU ARE DOING!")
+				yesno = input(" force pull? > ")
+				if yesno == "yes":
+					await self.run_shell("(cd %s && git pull --force)" % self.root)
+					self.pulled = True
+				else:
+					raise se
 
 	def get_remote_url(self, remote):
 		s, o = subprocess.getstatusoutput("( cd %s && git remote get-url %s )" % (self.root, remote))
