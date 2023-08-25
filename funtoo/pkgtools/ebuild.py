@@ -516,8 +516,8 @@ class BreezyBuild:
 						status = await a.ensure_completed()
 						return a, status
 					except Exception as e:
-						pkgtools.model.log.error(e, exc_info=True)
-						raise e
+						pkgtools.model.log.error(e, exc_info=False)
+						#raise e
 
 				fetch_task = asyncio.Task(lil_coroutine(artifact))
 				fetch_tasks_dict[artifact] = fetch_task

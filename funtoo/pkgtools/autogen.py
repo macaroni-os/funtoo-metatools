@@ -3,16 +3,15 @@
 import asyncio
 import inspect
 import os
-import threading
 import subprocess
-from asyncio import FIRST_EXCEPTION, Task
+import threading
+from asyncio import Task, ALL_COMPLETED
 from collections import defaultdict
 from typing import Tuple, List
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
-from yaml import safe_load
-
 from subpop.util import load_plugin
+from yaml import safe_load
 
 """
 The `PENDING_QUE` will be built up to contain a full list of all the catpkgs we want to autogen in the full run
@@ -188,7 +187,7 @@ async def gather_pending_tasks(name, task_list) -> Tuple[List, List]:
 	if not len(cur_tasks):
 		return [], []
 	while True:
-		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
+		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=ALL_COMPLETED)
 		for done_item in done_list:
 			try:
 				results.append(done_item.result())
