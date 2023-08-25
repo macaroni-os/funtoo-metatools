@@ -1,18 +1,16 @@
 import os
 from collections import OrderedDict, defaultdict
-from concurrent.futures import as_completed
-from concurrent.futures.thread import ThreadPoolExecutor
 from datetime import datetime
 from enum import Enum
 
 import yaml
+from subpop.config import ConfigurationError
 
 from metatools.config.base import MinimalConfig
 from metatools.context import GitRepositoryLocator
 from metatools.tree import AutoCreatedGitTree
 from metatools.tree import GitTree
 from metatools.yaml_util import YAMLReader
-from subpop.config import ConfigurationError
 
 """
 This file contains classes used to create an object model for the contents of a releases/<release>.yaml file,

@@ -13,6 +13,8 @@ import dyne.org.funtoo.metatools.pkgtools as pkgtools
 from subpop.util import load_plugin
 from yaml import safe_load
 
+import metatools.cmd
+
 """
 The `PENDING_QUE` will be built up to contain a full list of all the catpkgs we want to autogen in the full run
 of 'doit'. We queue up everything first so that we have the ability to add QA checks, such as for catpkgs that
@@ -389,6 +391,7 @@ async def execute_generator(
 					THREAD_CTX = hub.THREAD_CTX
 					get_page = pkgtools.fetch.get_page
 					temp_path = pkgtools.model.temp_path
+					cmd = metatools.cmd
 
 					def __init__(self, autogen_id, pkgtools):
 						self.autogen_id = autogen_id

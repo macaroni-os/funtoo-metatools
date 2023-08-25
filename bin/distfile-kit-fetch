@@ -5,15 +5,16 @@ import asyncio
 import os
 import ssl
 import sys
+from collections import defaultdict
 
 from subpop.hub import Hub
 
 from metatools.config.autogen import StoreSpiderConfig
+from metatools.config.merge import MinimalMergeConfig
 from metatools.fastpull.core import verify_callback
 from metatools.fastpull.spider import FetchRequest, FetchError, Download
 from metatools.kit_cache import KitCache
 from metatools.store import StoreObject
-from metatools.tree import GitTree
 
 hub = Hub()
 
@@ -22,7 +23,6 @@ import dyne.org.funtoo.metatools.pkgtools as pkgtools
 CLI_CONFIG = {
 	"release": {"default": None, "action": "store", "positional": True, "help": "Release to process"},
 	"kit": {"default": None, "action": "store", "positional": True, "help": "Kit to process"},
-	"branch": {"default": None, "action": "store", "positional": True, "help": "Kit branch to process"},
 	"debug": {"default": False, "action": "store_true"},
 }
 
@@ -86,91 +86,117 @@ def mini_mirror_expander(mirr_dict, url):
 
 
 async def fetch_task(file, url):
+
 	pkgtools.model.log.info(f"Fetching {url}")
 	freq = FetchRequest(url=url, expected_hashes={'sha512': file['hashes']['sha512']})
+	# A stub, so we have something defined if the download fails and throws exception:
+
+	class Stub:
+		stats = defaultdict(int)
+		pass
+	dl = Stub()
 	try:
-		fresp = await pkgtools.model.spider.download(freq, completion_pipeline=[verify_callback, fetch_completion_callback])
+		dl = await pkgtools.model.spider.download(freq, completion_pipeline=[verify_callback, fetch_completion_callback])
+		dl.stats = defaultdict(int)
+		if dl is not None:
+			dl.stats['fetch_ok'] += 1
+			pkgtools.model.log.info(f"Fetch OK: {url}")
+		else:
+			dl.stats['fetch_errors'] += 1
+			pkgtools.model.log.error(f"Fetch FAIL: {url}")
+		if dl.hashes['sha512'] != file['hashes']['sha512']:
+			dl.stats['wrong_sha512'] += 1
+			pkgtools.model.log.error(f"Wrong SHA512: {url} {dl.hashes['sha512']} != {file['hashes']['sha512']}")
 	except ssl.SSLError as ssle:
+		dl.stats['ssl_errors'] += 1
 		pkgtools.model.log.warning(f"SSL error for {url}: {ssle}")
-		return
 	except FetchError as fe:
+		dl.stats['fetch_errors'] += 1
 		pkgtools.model.log.warning(f"Fetch error for {url}: {fe}")
-		return
-	if fresp is not None:
-		pkgtools.model.log.info(f"Fetch OK: {url}")
-	else:
-		pkgtools.model.log.error(f"Fetch FAIL: {url}")
+	finally:
+		return dl
 
 
 async def main_thread():
+	main_stats = defaultdict(int)
 	hub.OPT = parse_args()
+
+	merge_model = MinimalMergeConfig()
+	await merge_model.initialize(
+		release=hub.OPT.release,
+	)
+
 	await pkgtools.launch(StoreSpiderConfig)
 
-	kit_fixups_root = os.path.join(pkgtools.model.source_trees, "kit-fixups")
-	pkgtools.model.log.info("Cloning/updating kit-fixups to access thirdpartymirrors (--fast to use as-is)")
-	kit_fixups = GitTree(
-		name='kit-fixups',
-		root=kit_fixups_root,
-		model=pkgtools.model,
-		keep_branch=True
-	)
-	await kit_fixups.initialize()
-
 	mirr_dict = {}
-	with open(os.path.join(kit_fixups_root, "core-kit/curated/profiles/thirdpartymirrors"), "r") as f:
+	with open(os.path.join(merge_model.kit_fixups.root, "core-kit/curated/profiles/thirdpartymirrors"), "r") as f:
 		for line in f.readlines():
 			ls = line.split()
 			mirr_dict[ls[0]] = ls[1]
 
-	kit_cache = KitCache(name=hub.OPT.kit, branch=hub.OPT.branch, release=hub.OPT.release)
-	kit_cache.load()
-	tasks = []
-	for atom, pkg_dict in kit_cache.items():
+	for kit in merge_model.release_yaml.kits[hub.OPT.kit]:
+		branch = kit.branch
+		kit_cache = KitCache(name=hub.OPT.kit, branch=branch, release=hub.OPT.release)
+		kit_cache.load()
+		tasks = []
+		for atom, pkg_dict in kit_cache.items():
+			main_stats['atom_count'] += 1
+			# Filter out duplicate SHAs. Yes, this can and does happen with golang having multiple different filenames that are the same file.
+			if "files" in pkg_dict:
+				for file in pkg_dict["files"]:
+					if "hashes" not in file:
+						pkgtools.model.log.warning(f"No hashes for {file}")
 
-		# Filter out duplicate SHAs. Yes, this can and does happen with golang having multiple different filenames that are the same file.
-		shas = set()
-		if "files" in pkg_dict:
-			for file in pkg_dict["files"]:
-				if "hashes" not in file:
-					pkgtools.model.log.warning(f"No hashes for {file}")
-					continue
-				elif "sha512" not in file['hashes']:
-					pkgtools.model.log.warning(f"No sha512 for {file}")
-					continue
-				obj = pkgtools.model.blos.read({"hashes.sha512": file['hashes']['sha512']})
-				if obj is None:
-					pkgtools.model.log.debug(f"DICT {pkg_dict}")
-					if "src_uri" not in file:
-						pkgtools.model.log.warning(f"No src_uri for file: {file}")
+						main_stats["no_hashes"] += 1
 						continue
-					url = file['src_uri'][0]
-					if url.startswith("mirror://"):
-						new_url = mini_mirror_expander(mirr_dict, url)
-						if new_url is None:
-							pkgtools.model.log.warning(f"Skipping mirror: {url}")
+					elif "sha512" not in file['hashes']:
+						pkgtools.model.log.warning(f"No sha512 for {file}")
+						main_stats["no_sha512"] += 1
+						continue
+					main_stats['file_count'] += 1
+					obj = pkgtools.model.blos.read({"hashes.sha512": file['hashes']['sha512']})
+					if obj is None:
+						pkgtools.model.log.debug(f"DICT {pkg_dict}")
+						if "src_uri" not in file:
+							pkgtools.model.log.warning(f"No src_uri for file: {file}")
 							continue
-						else:
-							url = new_url
-					elif not url.startswith("http://") or not url.startswith("https://") or not url.startswith("ftp://"):
-						# likely a fetch-restricted file with just the filename
-						continue
-					tasks.append(asyncio.create_task(fetch_task(file, url)))
-					await asyncio.sleep(0)
-
-
-					#shas.add(file['hashes']['sha512'])
-	baddies = False
-	results = await asyncio.gather(*tasks, return_exceptions=True)
-	for result in results:
-		if isinstance(result, Exception):
-			pkgtools.model.log.error("Exception encountered: ", exc_info=result)
-			baddies = True
-	return not baddies
-# if shas:
-#	print(atom)
-#	for sha in shas:
-#		print(">>>", sha)
-#	print()
+						url = file['src_uri'][0]
+						if url.startswith("mirror://"):
+							new_url = mini_mirror_expander(mirr_dict, url)
+							if new_url is None:
+								pkgtools.model.log.warning(f"Skipping mirror: {url}")
+								continue
+							else:
+								url = new_url
+						elif not url.startswith("http://") or not url.startswith("https://") or not url.startswith("ftp://"):
+							# likely a fetch-restricted file with just the filename
+							continue
+						tasks.append(asyncio.create_task(fetch_task(file, url)))
+						await asyncio.sleep(0)
+		results = await asyncio.gather(*tasks, return_exceptions=True)
+		for result in results:
+			if isinstance(result, Exception):
+				pkgtools.model.log.error("Exception encountered: ", exc_info=result)
+			else:
+				download = result
+				stats = getattr(download, "stats", None)
+				if stats:
+					for key, val in stats.items():
+						main_stats[key] += val
+	pkgtools.model.log.info(f"Processed {main_stats['atom_count']} ebuilds; {main_stats['file_count']} distfiles.")
+	if main_stats['fetch_ok']:
+		pkgtools.model.log.info(f"{main_stats['fetch_ok']} new fetches.")
+	if main_stats['no_hashes'] or main_stats['no_sha512']:
+		pkgtools.model.log.warning(f"{main_stats['no_hashes']} missing hashes and {main_stats['no_sha512']} missing SHA512 in Manifest.")
+	if main_stats['fetch_errors'] or main_stats['ssl_errors']:
+		pkgtools.model.log.warning(f"{main_stats['fetch_errors']} fetch errors and {main_stats['ssl_errors']} SSL errors.")
+	if main_stats['wrong_sha512']:
+		pkgtools.model.log.warning(f"{main_stats['wrong_sha512']} downloads had sha512sum mismatch (downloaded != expected)")
+	# Return False for any failures:
+	for baddies in ['no_hashes', 'no_sha512', 'fetch_errors', 'ssl_errors', 'wrong_sha512']:
+		if main_stats[baddies]:
+			return False
+	return True
 
 
 if __name__ == "__main__":

@@ -39,7 +39,7 @@ async def create_gosum_archive(hub, pkginfo):
 	"""
 	gosum_bundle = pkginfo["gosum_bundle"]
 	my_archive = hub.Archive(gosum_bundle.final_name)
-	my_archive.initialize(f"funtoo-go-bundle-{pkginfo['name']}")
+	await my_archive.initialize(f"funtoo-go-bundle-{pkginfo['name']}")
 	module_artifacts = []
 	for mod_attrs in gosum_bundle.mod_attrs_list:
 		module_artifacts.append(hub.pkgtools.ebuild.Artifact(**mod_attrs))

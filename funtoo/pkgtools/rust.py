@@ -5,11 +5,17 @@ import toml
 import asyncio
 import hashlib
 import shutil
+import urllib
+from collections import defaultdict
 
-import dyne.org.funtoo.metatools.pkgtools as pkgtools
 from subpop.util import AttrDict
 
-from metatools.tree import run_shell
+from metatools.cmd import run_shell
+
+# TODO: although this is currently working, it's not recommended.
+#       we should look into using non-dyne references to these classes more.
+# from funtoo.pkgtools.ebuild import Artifact, Archive
+import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
 
 async def add_crates_bundle(
@@ -71,17 +77,17 @@ async def add_crates_bundle(
 		if not os.path.exists(cargo_lock_path):
 			cargo_cmd = subprocess.Popen(["cargo", "update"], cwd=src_dir).wait()
 
-		crates, pkginfo["crates_bundle"].crates_attrs = generate_crates_metadata(
+		crates, pkginfo["crates_bundle"].crates_artifacts = await generate_crates_metadata(
 			lock_path=cargo_lock_path
 		)
 
 		src_artifact.cleanup()
 	elif cargo_lock_data:
-		crates, pkginfo["crates_bundle"].crates_attrs = generate_crates_metadata(
+		crates, pkginfo["crates_bundle"].crates_artifacts = await generate_crates_metadata(
 			lock_data=cargo_lock_data
 		)
 	elif cargo_lock_path:
-		crates, pkginfo["crates_bundle"].crates_attrs = generate_crates_metadata(
+		crates, pkginfo["crates_bundle"].crates_artifacts = await generate_crates_metadata(
 			lock_path=cargo_lock_path
 		)
 	else:
@@ -138,15 +144,12 @@ async def create_crates_archive(hub, pkginfo):
 		return crates_archive
 
 	crates_archive = hub.Archive(crates_bundle.final_name)
-	crates_archive.initialize(f"funtoo-crates-bundle-{pkginfo['name']}")
+	await crates_archive.initialize(f"funtoo-crates-bundle-{pkginfo['name']}")
 
-	crates_artifacts = [
-		hub.pkgtools.ebuild.Artifact(**crate_attrs)
-		for crate_attrs in crates_bundle.crates_attrs
-	]
+	crates_artifacts = crates_bundle.crates_artifacts
 
 	# Fetch crates in parallel
-	await asyncio.gather(*[artifact.fetch() for artifact in crates_artifacts])
+	await asyncio.gather(*[artifact.ensure_completed() for artifact in crates_artifacts])
 
 	for artifact in crates_artifacts:
 		shutil.copy(
@@ -159,7 +162,72 @@ async def create_crates_archive(hub, pkginfo):
 	return crates_archive
 
 
-def generate_crates_metadata(lock_path=None, lock_data=None):
+async def fetch_git_dependency(url, crates):
+	parsed_url = urllib.parse.urlparse(url)
+
+	ref = parsed_url.fragment
+	repo_url = parsed_url._replace(fragment="", query="").geturl()
+
+	repo_name = urllib.parse.quote(repo_url, safe="")
+
+	archive_name = f"{repo_name}-{ref}.tar.xz"
+	archive_key = AttrDict({"git_url": repo_url, "ref": ref})
+
+	# archive, _ = Archive.find(key=archive_key, final_name=archive_name)
+	archive, _ = pkgtools.ebuild.Archive.find(key=archive_key, final_name=archive_name)
+	if archive is None:
+		# archive = Archive(final_name=archive_name)
+		archive = pkgtools.ebuild.Archive(final_name=archive_name)
+
+		dir_name = f"{repo_name}-{ref}"
+		await archive.initialize(dir_name)
+
+		await run_shell(f"git clone --depth=1 {repo_url} {archive.top_path}")
+		await run_shell(
+			f"(cd {archive.top_path} && git fetch origin {ref} && git reset --hard {ref})"
+		)
+		await run_shell(
+			f"(cd {archive.top_path} && git submodule update --init --recursive)"
+		)
+
+		crate_locations = {}
+		for cargo_path in glob.glob(
+				os.path.join(archive.top_path, "**/Cargo.toml"), recursive=True
+		):
+			with open(cargo_path, "r") as cargo_file:
+				cargo_data = cargo_file.read()
+
+			cargo_data = toml.loads(cargo_data)
+
+			cargo_package_data = cargo_data.get("package", None)
+			if cargo_package_data is None:
+				continue
+
+			cargo_package_name = cargo_package_data.get("name", None)
+			if cargo_package_name is None:
+				continue
+
+			crate_locations[cargo_package_name] = os.path.relpath(
+				os.path.dirname(cargo_path), os.path.dirname(archive.top_path)
+			)
+
+		cargo_config_content = f"[patch.'{repo_url}']\n"
+		for crate in crates:
+			crate_location = crate_locations[crate]
+
+			cargo_config_content += f"{crate} = {{ path = \"{os.path.join('%CRATES_DIR%', crate_location)}\" }}\n"
+
+		with open(
+				os.path.join(archive.top_path, "funtoo_config.toml"), "w"
+		) as config_file:
+			config_file.write(cargo_config_content)
+
+		await archive.store(key=archive_key)
+
+	return archive
+
+
+async def generate_crates_metadata(lock_path=None, lock_data=None):
 	"""
 	This function generates crates data for the CRATES variable used in ebuilds, and also returns a
 	list of attributes to use to create new Artifacts for all crates that need to be downloaded to
@@ -181,39 +249,61 @@ def generate_crates_metadata(lock_path=None, lock_data=None):
 	crates_dict = toml.loads(lock_data)
 
 	crates = ""
-	crates_attrs = []
+	crates_artifacts = []
+
+	git_crates = defaultdict(list)
 
 	for package in crates_dict["package"]:
 		if "source" not in package:
 			continue
 
-		crates = crates + package["name"] + "-" + package["version"] + "\n"
+		name = package["name"]
+		version = package["version"]
+		source = package["source"]
 
-		crates_url = (
-			"https://crates.io/api/v1/crates/"
-			+ package["name"]
-			+ "/"
-			+ package["version"]
-			+ "/download"
-		)
-		crates_file = package["name"] + "-" + package["version"] + ".crate"
+		source_origin = "crates"
 
-		crates_attrs.append(dict(url=crates_url, final_name=crates_file))
+		if source.startswith("git+"):
+			source_origin = "git"
 
-	return crates, crates_attrs
+			url = source.lstrip("git+")
 
+			# Append ref to version so that ref changes reflect in the hash.
+			#
+			# Note that this breaks the legacy CRATES approach, which should
+			# be fine, as it doesn't support git crates either way. We do this
+			# instead of altering the hash computation to avoid recreating all
+			# existing cached archives.
+			ref = url.rsplit("#", 2)[-1]
+			version += f"-{ref}"
 
-async def get_crates_artifacts(lock_path):
-	"""
-	This method will extract package data from ``Cargo.lock`` and generate Artifacts for all packages it finds.
-	"""
-	crates, crates_attrs = generate_crates_metadata(lock_path=lock_path)
+			git_crates[url].append(name)
 
-	crates_artifacts = [
-		hub.pkgtools.ebuild.Artifact(**crate_attrs) for crate_attrs in crates_attrs
-	]
+		crates = crates + name + "-" + version + "\n"
 
-	return dict(crates=crates, crates_artifacts=crates_artifacts)
+		if source_origin == "crates":
+			final_name = f"{name}-{version}.crate"
+
+			crates_artifacts.append(
+				# Artifact(
+				pkgtools.ebuild.Artifact(
+					url=(
+							"https://crates.io/api/v1/crates/"
+							+ name
+							+ "/"
+							+ version
+							+ "/download"
+					),
+					final_name=final_name,
+				)
+			)
+
+	for url, contained_crates in git_crates.items():
+		git_archive = await fetch_git_dependency(url, contained_crates)
+
+		crates_artifacts.append(git_archive)
+
+	return crates, crates_artifacts
 
 
 async def generate_crates_from_artifact(src_artifact, src_dir_glob="*"):
@@ -235,10 +325,10 @@ async def generate_crates_from_artifact(src_artifact, src_dir_glob="*"):
 
 	cargo_lock_path = os.path.join(src_dir, "Cargo.lock")
 	if not os.path.exists(cargo_lock_path):
-		result = await run_shell(["cargo", "update"], chdir=src_dir)
+		await run_shell(["cargo", "update"], chdir=src_dir)
 
-	artifacts = await get_crates_artifacts(cargo_lock_path)
+	crates, crates_artifacts = await generate_crates_metadata(lock_path=cargo_lock_path)
 
 	src_artifact.cleanup()
 
-	return artifacts
+	return dict(crates=crates, crates_artifacts=crates_artifacts)

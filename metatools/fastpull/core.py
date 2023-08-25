@@ -7,7 +7,7 @@ from typing import Tuple
 
 from metatools.blos import BaseLayerObjectStore
 from metatools.fastpull.spider import FetchRequest, Download
-from metatools.tree import run_bg
+from metatools.cmd import capture_bg
 from metatools.store import Store, FileStorageBackend, DerivedKey, StoreObject
 
 log = logging.getLogger('metatools.autogen')
@@ -145,7 +145,7 @@ async def verify_callback(download: Download) -> Download:
 		run_cmd = "xz -dc {archive} > /dev/null"
 		arc_desc = "xz"
 	if run_cmd:
-		proc, out = await run_bg(run_cmd.format(archive=download.temp_path))
+		proc, out = await capture_bg(run_cmd.format(archive=download.temp_path))
 		if proc.returncode != 0:
 			raise FileIntegrityError(f"File {download.temp_path} downloaded from {download.request.url} does not appear to be a valid {arc_desc} archive!")
 		log.info(f"Download from {download.request.url} verified as valid {arc_desc} archive.")

@@ -8,13 +8,14 @@ import shutil
 import threading
 from asyncio import Task
 from collections import OrderedDict
+from collections.abc import Mapping
 from datetime import datetime
 from subprocess import getstatusoutput
 from typing import Optional, Tuple
 
 import jinja2
 
-from metatools.tree import run_bg
+from metatools.cmd import capture_bg
 from metatools.store import StoreObject
 from metatools.fastpull.spider import FetchError, FetchRequest
 
@@ -76,6 +77,15 @@ class Archive:
 		return os.path.join(pkgtools.model.temp_path, "archive_create", self.final_name)
 
 	@property
+	def work_path(self):
+		return os.path.join(pkgtools.model.temp_path, "archive_work", self.final_name)
+
+	async def create_work_path(self):
+		if os.path.exists(self.work_path):
+			await capture_bg(f"rm -rf {self.work_path}")
+		os.makedirs(self.work_path, exist_ok=True)
+
+	@property
 	def final_path(self):
 		return self.blos_object.blob.path
 
@@ -90,7 +100,7 @@ class Archive:
 		else:
 			return os.path.join(self.extract_path)
 
-	def initialize(self, top_directory=None):
+	async def initialize(self, top_directory=None):
 		"""
 		This method is supposed to create an empty extract_path so we can fill the archive with
 		things we want. top_directory is optional and specifies the directory to create which will
@@ -99,15 +109,18 @@ class Archive:
 		"""
 		self._top_directory = top_directory
 		if os.path.exists(self.extract_path):
-			shutil.rmtree(self.extract_path)
+			await capture_bg(f"rm -rf {self.extract_path}")
 		os.makedirs(self.top_path, exist_ok=False)
 
-
-	async def store(self, key: dict = None, metadata: dict = None):
+	async def store(self, key: dict = None, metadata: dict = None, existing=None):
 		"""
-		This method will store an archive as a dynamic archive, indexed by ``key``. If you want
-		to store a dynamic archive for later retrieval *by name*, then use the ``Archive.store_by_name``
-		method instead.
+		This method will store an archive as a dynamic archive, indexed by ``key``. By default, it
+		will use the contents of ```self.temp_archive_path``` to grab the contents; if instead you
+		already have a created archive you want to store, you can simply pass the path in the
+		``existing`` argument, and this exact file will be used instead.
+
+		If you want to store a dynamic archive for later retrieval *by name*, then use the
+		``Archive.store_by_name`` method instead.
 
 		An optional ``metadata`` dictionary can be provided, which will also be stored with the
 		dynamic archive. A datestamp will automatically be stored in ``metadata['created_on']`` for
@@ -123,36 +136,39 @@ class Archive:
 			metadata = {}
 		metadata["created_on"] = datetime.utcnow()
 
-		temp_archive = self.temp_archive_path
+		if not existing:
 
-		# Ensure we have a clean location for creating a new temporary archive:
+			temp_archive = self.temp_archive_path
 
-		if not os.path.exists(os.path.dirname(temp_archive)):
-			os.makedirs(os.path.dirname(temp_archive), exist_ok=True)
+			# Ensure we have a clean location for creating a new temporary archive:
 
-		if os.path.exists(temp_archive):
-			os.unlink(temp_archive)
+			if not os.path.exists(os.path.dirname(temp_archive)):
+				os.makedirs(os.path.dirname(temp_archive), exist_ok=True)
 
-		# Create the archive:
+			if os.path.exists(temp_archive):
+				os.unlink(temp_archive)
 
-		if self.final_name.endswith(".tar.xz"):
-			cmd = f"tar -C {self.extract_path} -cJf {temp_archive} ."
-		elif self.final_name.endswith(".tar.gz"):
-			cmd = f"tar -C {self.extract_path} -czf {temp_archive} ."
-		elif self.final_name.endswith(".tar.zst"):
-			cmd = f"tar -C {self.extract_path} -c --zstd -f {temp_archive} ."
-		else:
-			raise ValueError(f"Unrecognized archive format: {self.final_name}. Supported formats: tar.gz, tar.xz, tar.zst")
-		log.debug(f"store: command: {cmd}")
+			# Create the archive:
 
-		proc, out = await run_bg(cmd)
-		if proc.returncode != 0:
-			raise pkgtools.ebuild.BreezyError(f"Couldn't execute {cmd}. Output: {out.decode()}")
+			if self.final_name.endswith(".tar.xz"):
+				cmd = f"tar -C {self.extract_path} -cJf {temp_archive} ."
+			elif self.final_name.endswith(".tar.gz"):
+				cmd = f"tar -C {self.extract_path} -czf {temp_archive} ."
+			elif self.final_name.endswith(".tar.zst"):
+				cmd = f"tar -C {self.extract_path} -c --zstd -f {temp_archive} ."
+			else:
+				raise ValueError(f"Unrecognized archive format: {self.final_name}. Supported formats: tar.gz, tar.xz, tar.zst")
+			log.debug(f"store: command: {cmd}")
 
-		# Store in BLOS and create integrity database reference:
+			proc, out = await capture_bg(cmd)
+			if proc.returncode != 0:
+				raise pkgtools.ebuild.BreezyError(f"Couldn't execute {cmd}. Output: {out.decode()}")
 
-		self.blos_object = pkgtools.model.blos.insert_blob(temp_archive)
-		pkgtools.model.fastpull_session.store_file_dynamic(key, temp_archive, metadata=metadata)
+			# Store in BLOS and create integrity database reference:
+			existing = temp_archive
+
+		self.blos_object = pkgtools.model.blos.insert_blob(existing)
+		pkgtools.model.fastpull_session.store_file_dynamic(key, existing, metadata=metadata)
 
 		# If we are running in non-production mode, then attempt to copy the generated distfile into
 		# /var/cache/portage/distfiles so it is "already fetched" as it will not exist on the CDN yet.
@@ -168,18 +184,21 @@ class Archive:
 			except PermissionError:
 				log.warning(f"Unable to copy dynamic archive to {dist_path}. Make sure you are in the portage group.")
 
-	async def store_by_name(self, key: dict = None, metadata: dict = None):
+	async def store_by_name(self, key: dict = None, metadata: dict = None, existing=None):
 		"""
-		This method will store the current archive as a dynamic archive, and will be indexed by name, and with
-		an optional provided key, so that it can be retrieved by name using the ``Archive.find_by_name``
+		This method will store the contents of ``self.temp_archive_path`` as a dynamic archive, and will be indexed by
+		name, and with an optional provided key, so that it can be retrieved by name using the ``Archive.find_by_name``
 		classmethod.
+
+		This method now has an optional ``existing=`` keyword argument if you already have an archive that exists.
+		If you provide a path to this archive, its exact contents will be used instead of tarring up whatever is in
+		``self.temp_archive_path``.
 		"""
 		if key is None:
 			key = {}
 		# We must make final_name part of the key used to find the archive:
 		key["final_name"] = self.final_name
-		return await self.store(key, metadata)
-
+		return await self.store(key, metadata, existing=existing)
 
 	@classmethod
 	def find(cls, key: dict = None, final_name: str = None) -> Tuple[Archive, dict] | Tuple[None, None]:
@@ -500,8 +519,7 @@ class BreezyBuild:
 		fetch_tasks_dict = {}
 
 		for artifact in self.iter_artifacts():
-			art_type = type(artifact)
-			if art_type not in [Artifact, Archive]:
+			if isinstance(artifact, Mapping):
 				artifact = Artifact(**artifact)
 
 			# This records that the artifact is used by this catpkg, because an Artifact can be shared among multiple
@@ -510,7 +528,7 @@ class BreezyBuild:
 			if self not in artifact.breezybuilds:
 				artifact.breezybuilds.append(self)
 
-			if art_type is Artifact:
+			if artifact.__class__.__name__ == "Artifact":
 				async def lil_coroutine(a):
 					try:
 						status = await a.ensure_completed()

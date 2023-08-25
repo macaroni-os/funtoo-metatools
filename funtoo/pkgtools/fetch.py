@@ -124,9 +124,10 @@ async def really_get_page(url, encoding=None, is_json=False, cached_result=None)
 	request = FetchRequest(url=url)
 	set_basic_auth(request)
 
-	# Pass existing ETag or Last-Modified (If-Modified-Since) to request if available:
+	# Pass existing ETag or Last-Modified (If-Modified-Since) to request if available, via extra_headers= kwarg:
 
 	extra_headers = {}
+
 	if cached_result:
 		if "headers" in cached_result:
 			if "ETag" in cached_result["headers"]:
