@@ -176,7 +176,7 @@ def queue_all_indy_autogens(files=None):
 async def gather_pending_tasks(name, task_list) -> Tuple[List, List]:
 	"""
 	This function collects completed asyncio coroutines, catches any exceptions recorded during their execution,
-	and will any tasks that returned execptions to the returned list.
+	and will any tasks that returned exceptions to the failed list.
 
 	This function returns a tuple: a list of results from each successful tasks that weren't just None, and a
 	list of tasks that failed (threw exceptions) -- so you can inspect them further.
@@ -192,7 +192,9 @@ async def gather_pending_tasks(name, task_list) -> Tuple[List, List]:
 		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=ALL_COMPLETED)
 		for done_item in done_list:
 			try:
-				results.append(done_item.result())
+				result = done_item.result()
+				if result is not None:
+					results.append(result)
 			except Exception:
 				failures.append(done_item)
 		if not len(cur_tasks):
