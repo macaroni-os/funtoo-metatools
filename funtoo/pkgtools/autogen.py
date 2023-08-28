@@ -55,7 +55,7 @@ BREEZYBUILD_SUB_INDEX_HANDOFF = {}
 def generate_manifests():
 	"""
 	Once auto-generation is complete, this function will write all stored Manifest data to disk. We do this after
-	autogen completes so we can ensure that all necessary ebuilds have been created and we can ensure that these are
+	autogen completes, so we can ensure that all necessary ebuilds have been created and we can ensure that these are
 	written once for each catpkg, rather than written as each individual ebuild is autogenned (which would create a
 	race condition writing to each Manifest file.)
 	"""
