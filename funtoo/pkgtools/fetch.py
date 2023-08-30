@@ -128,19 +128,23 @@ async def really_get_page(url, encoding=None, is_json=False, cached_result=None)
 
 	extra_headers = {}
 
+
+	allow_304 = False
 	if cached_result:
 		if "headers" in cached_result:
 			if "ETag" in cached_result["headers"]:
 				extra_headers["If-None-Match"] = cached_result["headers"]["ETag"]
+				allow_304 = True
 			if "Last-Modified" in cached_result["headers"]:
 				extra_headers["If-Modified-Since"] = cached_result["headers"]["Last-Modified"]
+				allow_304 = True
 
 	attempts = 0
 	while attempts < pkgtools.model.fetch_attempts:
 		attempts += 1
 		try:
 			try:
-				headers, result = await pkgtools.model.spider.http_fetch(request, encoding=encoding, is_json=is_json, extra_headers=extra_headers)
+				headers, result = await pkgtools.model.spider.http_fetch(request, encoding=encoding, is_json=is_json, extra_headers=extra_headers, allow_304=allow_304)
 			except ContentNotModified:
 				result = cached_result["body"]
 				headers = cached_result["headers"] if "headers" in cached_result else {}
