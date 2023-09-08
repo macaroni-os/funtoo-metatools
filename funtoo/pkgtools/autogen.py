@@ -3,16 +3,15 @@
 import asyncio
 import inspect
 import os
-import threading
 import subprocess
-from asyncio import FIRST_EXCEPTION, Task
+import threading
+from asyncio import Task, ALL_COMPLETED
 from collections import defaultdict
 from typing import Tuple, List
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
-from yaml import safe_load
-
 from subpop.util import load_plugin
+from yaml import safe_load
 
 import metatools.cmd
 
@@ -56,7 +55,7 @@ BREEZYBUILD_SUB_INDEX_HANDOFF = {}
 def generate_manifests():
 	"""
 	Once auto-generation is complete, this function will write all stored Manifest data to disk. We do this after
-	autogen completes so we can ensure that all necessary ebuilds have been created and we can ensure that these are
+	autogen completes, so we can ensure that all necessary ebuilds have been created and we can ensure that these are
 	written once for each catpkg, rather than written as each individual ebuild is autogenned (which would create a
 	race condition writing to each Manifest file.)
 	"""
@@ -177,7 +176,7 @@ def queue_all_indy_autogens(files=None):
 async def gather_pending_tasks(name, task_list) -> Tuple[List, List]:
 	"""
 	This function collects completed asyncio coroutines, catches any exceptions recorded during their execution,
-	and will any tasks that returned execptions to the returned list.
+	and will any tasks that returned exceptions to the failed list.
 
 	This function returns a tuple: a list of results from each successful tasks that weren't just None, and a
 	list of tasks that failed (threw exceptions) -- so you can inspect them further.
@@ -190,10 +189,12 @@ async def gather_pending_tasks(name, task_list) -> Tuple[List, List]:
 	if not len(cur_tasks):
 		return [], []
 	while True:
-		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=FIRST_EXCEPTION)
+		done_list, cur_tasks = await asyncio.wait(cur_tasks, return_when=ALL_COMPLETED)
 		for done_item in done_list:
 			try:
-				results.append(done_item.result())
+				result = done_item.result()
+				if result is not None:
+					results.append(result)
 			except Exception:
 				failures.append(done_item)
 		if not len(cur_tasks):

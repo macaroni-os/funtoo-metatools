@@ -533,9 +533,10 @@ class BreezyBuild:
 					try:
 						status = await a.ensure_completed()
 						return a, status
+					except FetchError as fe:
+						pkgtools.model.log.error(fe, exc_info=False)
 					except Exception as e:
 						pkgtools.model.log.error(e, exc_info=True)
-						raise e
 
 				fetch_task = asyncio.Task(lil_coroutine(artifact))
 				fetch_tasks_dict[artifact] = fetch_task
@@ -569,6 +570,9 @@ class BreezyBuild:
 			try:
 				await self.generate()
 				return True
+			except FetchError as fe:
+				pkgtools.model.log.error(fe, exc_info=False)
+				raise fe
 			except Exception as e:
 				pkgtools.model.log.error(e, exc_info=True)
 				raise e

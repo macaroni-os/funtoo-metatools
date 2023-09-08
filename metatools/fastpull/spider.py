@@ -501,7 +501,7 @@ class WebSpider:
 			auth = None
 		return headers, auth
 
-	async def http_fetch(self, request: FetchRequest, is_json=False, encoding=None, extra_headers=None) -> Tuple[Dict, str]:
+	async def http_fetch(self, request: FetchRequest, is_json=False, encoding=None, extra_headers=None, allow_304=False) -> Tuple[Dict, str]:
 		"""
 UBER-NOTE:
 
@@ -538,8 +538,8 @@ tree regen, we would not see these unless we had a way to create a report that r
 I have a bug open to try to fix this.
 
 New logic:"""
-		accept_304 = False
 		async with self.acquire_fetch_slot(request):
+			accept_304 = False
 			http_client = await self.acquire_http_client(request)
 			headers, auth = self.get_headers_and_auth(request)
 			# TODO: add code to explicitly close all clients, above:
@@ -553,8 +553,10 @@ New logic:"""
 						# Safeguard: We don't want these stuck in the HTTP client's headers because they will apply to all requests
 						del http_client.headers[key_304]
 					if key_304 in headers:
-						accept_304 = True
-						break
+						if allow_304:
+							accept_304 = True
+						else:
+							del headers[key_304]
 
 				response = await http_client.get(request.url, headers=headers, auth=auth, follow_redirects=True, timeout=15)
 				log.debug(f'http_fetch: GET {response.status_code} {request.url}')
