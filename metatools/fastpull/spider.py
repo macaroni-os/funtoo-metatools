@@ -151,6 +151,9 @@ class Download:
 				self.reset()
 				async with client.stream("GET", url=self.request.url, headers=headers, auth=auth,
 				                         follow_redirects=True) as response:
+					# We do not want to do 304. This should prevent it....
+					for bad_key in ["If-None-Match", "If-Modified-Since"]:
+						assert bad_key not in client.headers
 					if response.status_code not in [200, 206]:
 						if response.status_code in [400, 404, 410]:
 							# These are legitimate responses that indicate that the file does not exist. Therefore, we
@@ -482,7 +485,7 @@ class WebSpider:
 			                                                                 auth=auth, follow_redirects=True,
 			                                                                 timeout=8)
 			# httpx seems to cache these, which is bad. We don't want these from a previous client:
-			for strip_header in [ "If-None-Match", "If-Modified-Since" ]:
+			for strip_header in ["If-None-Match", "If-Modified-Since"]:
 				if strip_header in client.headers:
 					del client.headers[strip_header]
 			return client
@@ -490,8 +493,8 @@ class WebSpider:
 			return self.http_clients[request.hostname]
 
 	def get_headers_and_auth(self, request):
-		headers = self.fetch_headers.copy()
 		if request.extra_headers:
+			headers = self.fetch_headers.copy()
 			headers.update(request.extra_headers)
 		else:
 			headers = self.fetch_headers
@@ -501,7 +504,8 @@ class WebSpider:
 			auth = None
 		return headers, auth
 
-	async def http_fetch(self, request: FetchRequest, is_json=False, encoding=None, extra_headers=None, allow_304=False) -> Tuple[Dict, str]:
+	async def http_fetch(self, request: FetchRequest, is_json=False, encoding=None, extra_headers=None, allow_304=False) -> Tuple[
+		Dict, str]:
 		"""
 UBER-NOTE:
 
