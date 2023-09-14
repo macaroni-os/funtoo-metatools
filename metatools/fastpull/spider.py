@@ -481,6 +481,10 @@ class WebSpider:
 			                                                                 base_url=request.hostname, headers=headers,
 			                                                                 auth=auth, follow_redirects=True,
 			                                                                 timeout=8)
+			# httpx seems to cache these, which is bad. We don't want these from a previous client:
+			for strip_header in [ "If-None-Match", "If-Modified-Since" ]:
+				if strip_header in client.headers:
+					del client.headers[strip_header]
 			return client
 		else:
 			return self.http_clients[request.hostname]
