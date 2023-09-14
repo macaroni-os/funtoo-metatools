@@ -355,7 +355,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 			else:
 				sha = tag_ent['commit']['sha']
 		if sha is None:
-			raise ValueError(f"Could not retrieve SHA1 for tag {desired_tag}.")
+			raise ValueError(f"github:release_gen: Could not retrieve SHA1 for tag {desired_tag} in github repo {github_user}/{github_repo}.")
 
 		########################################################################################################
 		# GitHub does not list this URL in the release's assets list, but it is always available if there is an
