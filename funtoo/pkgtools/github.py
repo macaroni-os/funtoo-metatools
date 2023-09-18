@@ -177,6 +177,14 @@ def fetch_tag_data(hub, github_user, github_repo):
 									   is_json=True)
 
 
+def fetch_ref(hub, github_user, github_repo, ref):
+	return hub.pkgtools.fetch.get_page(f"https://api.github.com/repos/{github_user}/{github_repo}/git/refs/{ref}",
+									   is_json=True)
+
+def fetch_tag(hub, github_user, github_repo, name):
+	return fetch_ref(hub, github_user, github_repo, f"tags/{name}")
+
+
 async def release_gen(hub, github_user, github_repo, release_data=None, tarball=None, assets: dict = None, select=None,
 					  filter=None, matcher=None, transform=None, version=None, include=None,
 					  sort: SortMethod = SortMethod.VERSION, **kwargs):
@@ -347,15 +355,10 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		# We want to grab the default tarball for the associated tag:
 		desired_tag = release['tag_name']
 		hub.pkgtools.model.log.debug(f"github:release_gen: selected release version: {version}, desired tag {desired_tag}")
-		tag_data = await fetch_tag_data(hub, github_user, github_repo)
-		sha = None
-		for tag_ent in tag_data:
-			if tag_ent["name"] != desired_tag:
-				continue
-			else:
-				sha = tag_ent['commit']['sha']
-		if sha is None:
+		tag_data = await fetch_tag(hub, github_user, github_repo, desired_tag)
+		if tag_data is None:
 			raise ValueError(f"github:release_gen: Could not retrieve SHA1 for tag {desired_tag} in github repo {github_user}/{github_repo}.")
+		sha = tag_data["object"]["sha"]
 
 		########################################################################################################
 		# GitHub does not list this URL in the release's assets list, but it is always available if there is an
