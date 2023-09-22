@@ -247,7 +247,7 @@ class Archive:
 		ep = self.extract_path
 		os.makedirs(ep, exist_ok=True)
 		if self.final_name.endswith(".zip"):
-			cmd = f"unzip {ep} -d {self.final_path}"
+			cmd = f"unzip -o {self.final_path} -d {ep}"
 		else:
 			cmd = f"tar -C {ep} -xf {self.final_path}"
 		s, o = getstatusoutput(cmd)
