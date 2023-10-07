@@ -8,3 +8,4 @@ docs/_build
 build/
 doc/ramdisk.8
 doc/manpage.rst
+metatools/version.py
