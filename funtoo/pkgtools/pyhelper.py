@@ -178,7 +178,9 @@ def pypi_get_artifact_url(pkginfo, json_dict, strict=False, has_python=None, req
 		release_versions = []
 		for v_str in json_dict["releases"].keys():
 			try:
-				release_versions.append(Version(v_str))
+				v = Version(v_str)
+				if not (v.is_devrelease or v.is_prerelease):
+					release_versions.append(v)
 			except packaging.version.InvalidVersion:
 				log.warning(f"Invalid version on pypi, skipped: {v_str}")
 		release_versions = list(sorted(release_versions, reverse=True))
