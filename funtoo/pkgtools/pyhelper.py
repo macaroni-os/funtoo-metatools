@@ -2,6 +2,8 @@
 
 import logging
 from collections import defaultdict
+
+import packaging
 from packaging.version import Version
 
 LICENSE_CLASSIFIER_MAP = {
@@ -173,8 +175,13 @@ def pypi_get_artifact_url(pkginfo, json_dict, strict=False, has_python=None, req
 		return sdist_package["url"]
 	else:
 		sdist_package = None
-		release_versions = list(sorted(map(Version, json_dict["releases"].keys()), reverse=True))
-		#release_versions = list(reversed(list(json_dict["releases"].keys())))
+		release_versions = []
+		for v_str in json_dict["releases"].keys():
+			try:
+				release_versions.append(Version(v_str))
+			except packaging.version.InvalidVersion:
+				log.warning(f"Invalid version on pypi, skipped: {v_str}")
+		release_versions = list(sorted(release_versions, reverse=True))
 		log.debug(f"pypi_get_artifact_url: considering these versions, in order: {release_versions}")
 		for version_obj in release_versions:
 			version = str(version_obj)
