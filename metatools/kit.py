@@ -412,7 +412,7 @@ class KitGenerator:
 		await self.run(self.packages_yaml_copy_ebuilds_steps())
 		await self.run([metatools.steps.RemoveFiles(self.kit.get_excludes())])
 
-		self.out_tree.git_add()
+		await self.out_tree.git_add()
 
 		await self.run(self.autogen_and_copy_from_kit_fixups())
 
