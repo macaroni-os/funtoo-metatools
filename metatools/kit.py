@@ -23,7 +23,7 @@ from metatools.tree import GitTreeError, Tree
 from metatools.cmd import run_shell
 from metatools.zmq.app_core import RouterListener
 
-model = get_model("metatools.merge")
+model = get_model("metatools")
 
 
 class EclassHashCollection:
@@ -686,7 +686,7 @@ class KitExecutionPool:
 class MoonBeam(RouterListener):
 
 	def setup(self):
-		if  model.howdy:
+		if model.howdy:
 			asyncio.create_task(self.howdy())
 
 	async def howdy(self):

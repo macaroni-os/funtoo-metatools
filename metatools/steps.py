@@ -10,7 +10,7 @@ from metatools import metadata
 import metatools.tree
 
 from metatools.model import get_model
-model = get_model("metatools.merge")
+model = get_model("metatools")
 
 
 def run_shell(cmd_list, abort_on_failure=True, chdir=None):

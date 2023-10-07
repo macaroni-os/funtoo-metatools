@@ -5,6 +5,7 @@ from datetime import datetime
 from enum import Enum
 
 import yaml
+from metatools.model import get_model
 
 from metatools.context import GitRepositoryLocator
 from metatools.tree import GitTree
@@ -12,7 +13,7 @@ from metatools.yaml_util import YAMLReader
 from subpop.config import ConfigurationError
 
 log = logging.getLogger("metatools")
-
+model = get_model("metatools")
 
 class SourceRepository:
 	"""
@@ -39,17 +40,17 @@ class SourceRepository:
 		# This is a simple source repository -- we only want to initialize it once:
 		if self.initialized:
 			return
-		self.yaml.model.log.info(
+		model.log.info(
 			f"Initializing: Source Repository {self.name} branch: {self.branch} SHA1: {self.src_sha1} {self.url}")
 		self.tree = GitTree(
 			self.name,
 			url=self.url,
-			root="%s/%s" % (self.yaml.model.source_trees, self.name),
+			root="%s/%s" % (model.source_trees, self.name),
 			branch=self.branch,
 			commit_sha1=self.src_sha1,
 			origin_check=False,
 			reclone=False,
-			model=self.yaml.model
+			model=model
 		)
 		await self.tree.initialize()
 		self.initialized = True
@@ -58,7 +59,7 @@ class SourceRepository:
 		try:
 			return self.tree.find_license(license)
 		except FileNotFoundError:
-			self.yaml.model.log.error(f"No license named '{license}' found in SourceRepository {self.name}")
+			model.log.error(f"No license named '{license}' found in SourceRepository {self.name}")
 
 
 class SharedSourceRepository(SourceRepository):
@@ -89,27 +90,27 @@ class SharedSourceRepository(SourceRepository):
 	async def initialize(self, branch=None, src_sha1=None):
 		if self.tree:
 			if (branch is None or self.tree.branch == branch) and src_sha1 == self.tree.commit_sha1:
-				self.yaml.model.log.info(
+				model.log.info(
 					f"Keeping existing source repository {self.name} branch: {self.tree.branch} SHA1: {self.tree.commit_sha1} {self.url}")
 				return
 			else:
-				self.yaml.model.log.info(
+				model.log.info(
 					f"src repo {self.name}: initialize: {self.tree.branch}/{self.tree.commit_sha1} -> {branch}/{src_sha1}")
-				self.yaml.model.log.info(
+				model.log.info(
 					f"Checkout: Source Repository {self.name} branch: {branch} SHA1: {src_sha1} {self.url}")
 				await self.tree.git_checkout(branch=branch, sha1=src_sha1)
 		else:
-			self.yaml.model.log.info(
+			model.log.info(
 				f"Initializing: Source Repository {self.name} branch: {branch} SHA1: {src_sha1} {self.url}")
 			self.tree = GitTree(
 				self.name,
 				url=self.url,
-				root="%s/%s" % (self.yaml.model.source_trees, self.name),
+				root="%s/%s" % (model.source_trees, self.name),
 				branch=branch,
 				commit_sha1=src_sha1,
 				origin_check=False,
 				reclone=False,
-				model=self.yaml.model
+				model=model
 			)
 			await self.tree.initialize()
 
@@ -135,7 +136,7 @@ class SourceCollection:
 			except FileNotFoundError:
 				continue
 			return license
-		self.yaml.model.log.error(f"No license named '{license}' found in SourceCollection {self.name}")
+		model.log.error(f"No license named '{license}' found in SourceCollection {self.name}")
 
 	async def initialize(self, repo_names=None):
 
@@ -171,7 +172,7 @@ class SourceCollection:
 			if "branch" in self.repo_defs[repo_name]:
 				branch = self.repo_defs[repo_name]["branch"]
 			await repo.initialize(branch=branch, src_sha1=src_sha1)
-		self.yaml.model.current_source_def = self
+		model.current_source_def = self
 
 
 class Kit:
