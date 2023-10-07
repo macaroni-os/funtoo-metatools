@@ -413,6 +413,10 @@ async def execute_generator(
 					def BreezyError(self, **kwargs):
 						return pkgtools.ebuild.BreezyError(**kwargs)
 
+					@property
+					def release_yaml(self):
+						return pkgtools.model.release_yaml
+
 					def __getattr__(self, item):
 						if item == "pkgtools":
 							return self.pkgtools

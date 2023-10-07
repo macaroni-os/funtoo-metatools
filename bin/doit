@@ -55,6 +55,7 @@ CLI_CONFIG = {
 			 "help": "Indicate we are doing a production tree regen (default: just being run as a dev)"},
 	"force_dynamic": {"default": False, "action": "store_true", "help": "Force the regeneration of dynamic archives."},
 	"moonbeam": {"default": False, "action": "store_true", "help": "Enable ZeroMQ connection back to parent merge-kits process (for logging, etc.)"},
+	"release": {"default": "next", "action": "store", "help": "The release we are currently auto-generating."}
 }
 
 

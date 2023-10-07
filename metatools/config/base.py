@@ -20,7 +20,7 @@ class MinimalConfig(SubPopModel):
 		super().__init__()
 
 	async def initialize(self, debug=False):
-		self.log = logging.getLogger(self.logger_name)
+		self.log = logging.getLogger("metatools")
 		self.log.propagate = False
 		if debug:
 			self.debug = debug
@@ -32,7 +32,7 @@ class MinimalConfig(SubPopModel):
 		atexit.register(lambda: print("\x1b[?25h"))
 		if debug:
 			self.log.warning("DEBUG enabled")
-		set_model(self.logger_name, self)
+		set_model("metatools", self)
 
 	@property
 	def work_path(self):

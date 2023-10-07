@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
+
 import logging
 from collections import defaultdict
+from packaging.version import Version
 
 LICENSE_CLASSIFIER_MAP = {
 	"License :: OSI Approved :: Apache Software License": "Apache-2.0",
 	"License :: OSI Approved :: BSD License": "BSD",
 	"License :: OSI Approved :: MIT License": "MIT",
 }
+
+log = logging.getLogger('metatools.autogen')
 
 
 def pypi_license_to_gentoo(classifiers):
@@ -45,12 +49,10 @@ def pypi_metadata_init(local_pkginfo, json_dict):
 		local_pkginfo["license"] = pypi_license_to_gentoo(json_dict["info"]["classifiers"])
 
 
-def sdist_artifact_url(releases, version):
-	# Sometimes a version does not have a source tarball. This function lets us know if our version is legit.
-	# Returns artifact_url for version, or None if no sdist release was available.
-	for artifact in releases[version]:
-		if artifact["packagetype"] == "sdist":
-			return artifact["url"]
+def get_sdist_package(release):
+	for package in release:
+		if package["packagetype"] == "sdist":
+			return package
 	return None
 
 
@@ -70,28 +72,123 @@ def pypi_normalize_version(pkginfo):
 	pkginfo["version"] = ebuild_version
 
 
-def pypi_get_artifact_url(pkginfo, json_dict, strict=True):
-	"""
-	A more robust version of ``sdist_artifact_url``.
+def python_version_ok_lt(cur, req):
+	cur_parts = cur.split(".")
+	req_parts = req.split(".")
+	while len(cur_parts) < 3:
+		cur_parts.append("0")
+	while len(req_parts) < 3:
+		req_parts.append("0")
+	cur_parts = list(map(int, cur_parts))
+	req_parts = list(map(int, req_parts))
+	for part in range(0, 3):
+		cur = cur_parts[part]
+		req = req_parts[part]
+		if req > cur:
+			return True
+		elif req < cur:
+			return False
+	return False
 
+
+def python_version_ok_ge(cur, req):
+	cur_parts = cur.split(".")
+	req_parts = req.split(".")
+	while len(cur_parts) < 3:
+		cur_parts.append("0")
+	while len(req_parts) < 3:
+		req_parts.append("0")
+	cur_parts = list(map(int, cur_parts))
+	req_parts = list(map(int, req_parts))
+	for part in range(0,3):
+		cur = cur_parts[part]
+		req = req_parts[part]
+		if req > cur:
+			return False
+		elif cur > req:
+			return True
+	return True
+
+
+def python_version_ok_ne(cur, req):
+	cur_parts = cur.split(".")
+	req_parts = req.split(".")
+	while len(cur_parts) < 3:
+		cur_parts.append("0")
+	while len(req_parts) < 3:
+		req_parts.append("0")
+	for part in range(0,3):
+		cur = cur_parts[part]
+		req = req_parts[part]
+		if req == "*":
+			return False
+		elif req != cur:
+			return True
+	return True
+
+
+def python_version_ok(cur, release, requires_python_override=None):
+	if requires_python_override:
+		requires_python = requires_python_override
+	else:
+		if "requires_python" not in release or not release["requires_python"]:
+			log.debug("No requires_python specified for release.")
+			return True
+		requires_python = release["requires_python"]
+	# cur == "current" == the version we are checking.
+	# req == "required" == the version from the JSON from pypi we're validating against
+	result = False
+	for req in requires_python.replace(" ", "").split(","):
+		if not req:  # trailing comma will cause this
+			continue
+		if req.startswith(">="):
+			result = python_version_ok_ge(cur, req[2:])
+			log.debug(f"python_version_ok_ge {req} {result}")
+		elif req.startswith("!="):
+			result = python_version_ok_ne(cur, req[2:])
+			log.debug(f"python_version_ok_ge {req} {result}")
+		elif req.startswith("<") and req[1] != "=":
+			result = python_version_ok_lt(cur, req[1:])
+			log.debug(f"python_version_ok_ge {req} {result}")
+		else:
+			raise ValueError(f"WUT???? '{req}'")
+	return result
+
+
+def pypi_get_artifact_url(pkginfo, json_dict, strict=False, has_python=None, requires_python_override=None):
+	"""
 	Look in JSON data ``json_dict`` retrieved from pypi for the proper sdist artifact for the package specified in
 	pkginfo. If ``strict`` is True, will insist on the ``version`` defined in ``pkginfo``, otherwise, will be flexible
 	and fall back to most recent sdist.
 	"""
-	artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo["version"])
-	if artifact_url is None:
-		if not strict:
-			# dang, the latest official release doesn't have a source tarball. Let's scan for the most recent release with a source tarball:
-			for version in reversed(list(json_dict["releases"].keys())):
-				artifact_url = sdist_artifact_url(json_dict["releases"], version)
-				if artifact_url is not None:
-					pkginfo["version"] = version
-					break
-		else:
-			raise AssertionError(f"Could not find a source distribution for {pkginfo['name']} version {pkginfo['version']}")
+	if strict:
+		version = pkginfo["version"]
+		if version not in json_dict["releases"]:
+			raise ValueError(f"Package version {version} specified in YAML is not found.")
+		sdist_package = get_sdist_package(json_dict["releases"][version])
+		if not sdist_package:
+			raise ValueError(f"Could not find an 'sdist' release for {pkginfo['name']} version {version} specified in YAML.")
+		if has_python and not python_version_ok(has_python, sdist_package, requires_python_override=requires_python_override):
+			raise ValueError(f"Specified package version {version} is not compatible with Python {has_python}. Please check.")
+		return sdist_package["url"]
 	else:
-		artifact_url = sdist_artifact_url(json_dict["releases"], pkginfo["version"])
-	return artifact_url
+		sdist_package = None
+		release_versions = list(sorted(map(Version, json_dict["releases"].keys()), reverse=True))
+		#release_versions = list(reversed(list(json_dict["releases"].keys())))
+		log.debug(f"pypi_get_artifact_url: considering these versions, in order: {release_versions}")
+		for version_obj in release_versions:
+			version = str(version_obj)
+			log.debug(f"pypi_get_artifact_url: {version}")
+			sdist_package = get_sdist_package(json_dict["releases"][version])
+			if not sdist_package:
+				continue
+			if has_python and not python_version_ok(has_python, sdist_package, requires_python_override=requires_python_override):
+				continue
+			pkginfo["version"] = version
+			break
+		if sdist_package is None:
+			raise ValueError(f"Was unable to find a version of {pkginfo['name']} compatible with Python: {has_python}")
+		return sdist_package["url"]
 
 
 def expand_pydep(pkginfo, pyatom):
@@ -312,3 +409,9 @@ def expand_pydeps(pkginfo, compat_mode=False, compat_ebuild=False):
 		else:
 			pkginfo[dep_type] += "\n" + "\n".join(deps)
 	return None
+
+
+assert python_version_ok_lt("3.7.6", "4.0.0") is True
+assert python_version_ok_lt("4.0.1", "4.0.0") is False
+assert python_version_ok_lt("3.7.7", "3.7.7") is False
+assert python_version_ok_lt("3.7.8", "2.7.18") is False

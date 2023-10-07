@@ -13,6 +13,7 @@ from metatools.fetch_cache import FileStoreFetchCache
 from metatools.tree import GitTree
 from metatools.zmq.app_core import DealerConnection
 from metatools.zmq.zmq_msg_breezyops import BreezyMessage, MessageType
+from metatools.release import ReleaseYAML
 
 
 class StoreConfig(MinimalConfig):
@@ -24,7 +25,6 @@ class StoreConfig(MinimalConfig):
 	fpos = None
 	fastpull_scope = None
 	fastpull_session = None
-
 	hashes = {'sha512', 'size', 'blake2b', 'sha256'}
 	blos = None
 	debug = False
@@ -58,7 +58,7 @@ class AutogenConfig(StoreSpiderConfig):
 	"""
 	This class is used for the autogen workflow -- i.e. the 'doit' command.
 	"""
-
+	release_yaml = None
 	fetch_cache = None
 	fetch_cache_interval = None
 	manifest_lines = defaultdict(set)
@@ -110,8 +110,10 @@ class AutogenConfig(StoreSpiderConfig):
 						 cat=None,
 						 pkg=None,
 						 autogens=None,
-						 moonbeam=False):
+						 moonbeam=False,
+						release="next"):
 		await super().initialize(fastpull_scope=fastpull_scope, debug=debug)
+		self.release = release
 		self.immediate = immediate
 		self.moonbeam = moonbeam
 		if self.moonbeam:
@@ -172,3 +174,6 @@ class AutogenConfig(StoreSpiderConfig):
 				repo_name = repof.read().strip()
 		if repo_name is None:
 			self.log.warning("Unable to find %s." % repo_name_path)
+		self.release_yaml = ReleaseYAML(release=release, prod=prod, kit_fixups=self.kit_fixups_repo)
+
+# vim: ts=4 sw=4 noet

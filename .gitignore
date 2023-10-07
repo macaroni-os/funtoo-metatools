@@ -6,3 +6,5 @@ dist/
 docs/_build
 .vscode
 build/
+doc/ramdisk.8
+doc/manpage.rst
