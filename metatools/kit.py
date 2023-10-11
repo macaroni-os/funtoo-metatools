@@ -906,7 +906,7 @@ class MetaRepoJobController:
 		for mirror in self.meta_repo.mirrors:
 			mirror = mirror.format(repo=self.meta_repo.name)
 			await self.mirror_repository(self.meta_repo, base_path, mirror)
-		print("Mirroring of meta-repo complete.")
+		model.log.info("Mirroring of meta-repo complete.")
 
 
 """

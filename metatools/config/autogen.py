@@ -166,14 +166,6 @@ class AutogenConfig(StoreSpiderConfig):
 			self.fetch_cache_interval = fetch_cache_interval
 		else:
 			self.fetch_cache_interval = timedelta(minutes=15)
-
-		repo_name = None
-		repo_name_path = os.path.join(self.locator.root, "profiles/repo_name")
-		if os.path.exists(repo_name_path):
-			with open(repo_name_path, "r") as repof:
-				repo_name = repof.read().strip()
-		if repo_name is None:
-			self.log.warning("Unable to find %s." % repo_name_path)
 		self.release_yaml = ReleaseYAML(release=release, prod=prod, kit_fixups=self.kit_fixups_repo)
 
 # vim: ts=4 sw=4 noet
