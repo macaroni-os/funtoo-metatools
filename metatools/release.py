@@ -40,7 +40,7 @@ class SourceRepository:
 		# This is a simple source repository -- we only want to initialize it once:
 		if self.initialized:
 			return
-		model.log.info(
+		model.log.debug(
 			f"Initializing: Source Repository {self.name} branch: {self.branch} SHA1: {self.src_sha1} {self.url}")
 		self.tree = GitTree(
 			self.name,
@@ -90,17 +90,17 @@ class SharedSourceRepository(SourceRepository):
 	async def initialize(self, branch=None, src_sha1=None):
 		if self.tree:
 			if (branch is None or self.tree.branch == branch) and src_sha1 == self.tree.commit_sha1:
-				model.log.info(
+				model.log.debug(
 					f"Keeping existing source repository {self.name} branch: {self.tree.branch} SHA1: {self.tree.commit_sha1} {self.url}")
 				return
 			else:
-				model.log.info(
+				model.log.debug(
 					f"src repo {self.name}: initialize: {self.tree.branch}/{self.tree.commit_sha1} -> {branch}/{src_sha1}")
-				model.log.info(
+				model.log.debug(
 					f"Checkout: Source Repository {self.name} branch: {branch} SHA1: {src_sha1} {self.url}")
 				await self.tree.git_checkout(branch=branch, sha1=src_sha1)
 		else:
-			model.log.info(
+			model.log.debug(
 				f"Initializing: Source Repository {self.name} branch: {branch} SHA1: {src_sha1} {self.url}")
 			self.tree = GitTree(
 				self.name,
@@ -485,7 +485,6 @@ class ReleaseYAML(YAMLReader):
 				names.add(repo_name)
 				repo_defs[repo_name] = repo_def
 			source_collections[collection_name] = SourceCollection(yaml=self, name=collection_name, repo_defs=repo_defs)
-			log.info(f"Added to source collection {collection_name}:\n  {repo_defs}")
 		return source_collections
 
 	def _remotes(self):
