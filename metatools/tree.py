@@ -69,10 +69,10 @@ class Tree:
 		if not os.path.exists(autogen_path):
 			self.log.warning(f"Skipping autogen as src_offset {src_offset} (in {autogen_path}) doesn't exist!")
 			return
-		self.log.info(f"Starting autogen in src_offset {src_offset} (in {autogen_path})... (DEBUG={self.model.debug}) (orig_scope={scope})")
+		self.log.debug(f"Starting autogen in src_offset {src_offset} (in {autogen_path})... (DEBUG={self.model.debug}) (orig_scope={scope})")
 		if scope is None:
 			scope = "local"
-		self.log.info(f"Final scope: {scope}")
+		self.log.debug(f"Final scope: {scope}")
 		cmd_str = f"cd {autogen_path} && doit --fast --release {self.model.release} --fastpull_scope={scope} --moonbeam"
 		if self.model.debug:
 			cmd_str += " --debug"
@@ -89,7 +89,7 @@ class Tree:
 		self.autogenned = src_offset
 
 	async def clean_tree(self):
-		self.log.info("Cleaning tree %s" % self.root)
+		self.log.debug("Cleaning tree %s" % self.root)
 		await self.run_shell(f"(cd {self.root} && git reset --hard && git clean -fdx )")
 		self.autogenned = False
 
@@ -274,7 +274,7 @@ class GitTree(Tree):
 			self.branch = "master"
 		else:
 			self.branch = branch
-		self.log.info(f"GitTree(): {self.name} {self.url} {self.branch} {self.commit_sha1}")
+		self.log.debug(f"GitTree(): {self.name} {self.url} {self.branch} {self.commit_sha1}")
 
 	async def _create_branches(self):
 		await self.run_shell(f"git checkout master; git checkout -b {self.branch}", chdir=self.root)
@@ -456,7 +456,7 @@ class GitTree(Tree):
 		New git_checkout method that tries to avoid calling cleanTree() if possible, since that allows us to avoid
 		re-autogenning in the tree.
 		"""
-		self.model.log.info(f"gitCheckout: br: {branch} sha1: {sha1} init: {from_init}")
+		self.model.log.debug(f"gitCheckout: br: {branch} sha1: {sha1} init: {from_init}")
 		if branch is None and sha1 is None:
 			raise GitTreeError(f"Please specify at least a branch or a sha1. {self.name} {self.root}")
 
