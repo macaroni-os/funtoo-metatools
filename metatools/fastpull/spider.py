@@ -210,7 +210,13 @@ class Download:
 						self.filesize += bytes_received
 						if bytes_received:
 							received_data = True
-					if self.total and self.total != self.filesize:
+					content_length_error = False
+					if self.total:
+						if abs(self.total - self.filesize) <= 1024:
+							log.warning(f"Content-Length was {self.total}; actual filesize was {self.filesize}")
+						else:
+							content_length_error=True
+					if content_length_error:
 						raise FetchError(self.request, msg=f"Number of bytes received ({self.filesize}) does not match Content Length ({self.total})", retry=False)
 					completed = True
 			except httpx.RequestError as e:
