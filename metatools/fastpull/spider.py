@@ -161,6 +161,10 @@ class Download:
 					# We do not want to do 304. This should prevent it....
 					for bad_key in ["If-None-Match", "If-Modified-Since"]:
 						assert bad_key not in client.headers
+					if response.status_code == 304:
+						log.error("We received a 304 in http_fetch_stream!")
+						log.error(f"Headers we sent: {headers}")
+						log.error(f"Headers we got back: {response.headers}")
 					if response.status_code not in [200, 206]:
 						if response.status_code in [400, 404, 410]:
 							# These are legitimate responses that indicate that the file does not exist. Therefore, we
