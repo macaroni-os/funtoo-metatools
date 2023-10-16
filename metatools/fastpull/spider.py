@@ -91,8 +91,8 @@ class Download:
 		self.hashes = hashes
 		self.final_data = None
 		self._temp_path = None
-		self.filesize = None
-		self.total = None
+		self.decoded_bytes_received = None
+		self.xfer_bytes_total = None
 		self.fd = None
 		self.hash_calc_dict = None
 		self.download_task = None
@@ -147,14 +147,13 @@ class Download:
 		completed = False
 		received_data = False
 		try_resume = False
-		did_resume = False
 		while not completed and (try_resume or attempts < max_attempts):
 			try:
 				if not try_resume:
 					self.reset()
 					did_resume = False
 				else:
-					headers["Range"] = f"bytes={self.filesize}-"
+					headers["Range"] = f"bytes={self.decoded_bytes_received}-"
 					try_resume = False
 					did_resume = True
 					log.warning(">>>TRYING TO RESUME<<<")
@@ -162,7 +161,6 @@ class Download:
 					# We do not want to do 304. This should prevent it....
 					for bad_key in ["If-None-Match", "If-Modified-Since"]:
 						assert bad_key not in client.headers
-					# TODO: add back partial resume support
 					if response.status_code not in [200, 206]:
 						if response.status_code in [400, 404, 410]:
 							# These are legitimate responses that indicate that the file does not exist. Therefore, we
@@ -178,46 +176,32 @@ class Download:
 						self.reset()
 					if not did_resume:
 						if "Content-Length" in response.headers:
-							self.total = int(response.headers["Content-Length"])
+							self.xfer_bytes_total = int(response.headers["Content-Length"])
 						else:
-							self.total = 0
+							self.xfer_bytes_total = 0
 					else:
 						# sanity check 1:
 						if "Content-Range" in response.headers:
-							log.warning(f"Content-Range {response.headers['Content-Range']}")
+							log.debug(f"Content-Range {response.headers['Content-Range']}")
 							new_tot = int(response.headers["Content-Range"].split("/")[1])
-							if new_tot != self.total:
+							if new_tot != self.xfer_bytes_total:
 								raise FetchError(self.request, "Bad total on resume which did not match expected!", retry=False)
 							else:
 								log.warning(f"Resume total OK {new_tot}")
-						# sanity check 2:
-						if "Content-Length" in response.headers:
-							# Sanity check that we are resuming where we left off --
-							cl = int(response.headers["Content-Length"])
-							if cl + self.filesize != self.total:
-								raise FetchError(self.request, f"On resume, the Content Length given to us ({cl}) plus already-received data ({self.filesize}) does not match anticipated total. {self.total}", retry=False)
 					# download_task can legitimately be zero, so check explicitly against None (our "null"):
 					if self.download_task is None:
 						# Only start download progress display if the download takes a minimum # of seconds...
 						filename = self.request.filename
-						if self.total == 0:
+						if self.xfer_bytes_total == 0:
 							filename = f"(stream) {filename}"
-						self.download_task = self.spider.progress.add_task("Download", filename=filename, total=self.total)
-						log.debug(f"Added download task {self.download_task}, total {self.total}")
+						self.download_task = self.spider.progress.add_task("Download", filename=filename, total=self.xfer_bytes_total)
+						log.debug(f"Added download task {self.download_task}, total {self.xfer_bytes_total}")
 					# DO NOT USE aiter_raw(), below!! It will result in invalid downloads from some sites!
 					async for chunk in response.aiter_bytes():
 						bytes_received = on_chunk(chunk, response)
-						self.filesize += bytes_received
+						self.decoded_bytes_received += bytes_received
 						if bytes_received:
 							received_data = True
-					content_length_error = False
-					if self.total:
-						if abs(self.total - self.filesize) <= 1024:
-							log.warning(f"Content-Length was {self.total}; actual filesize was {self.filesize}")
-						else:
-							content_length_error=True
-					if content_length_error:
-						raise FetchError(self.request, msg=f"Number of bytes received ({self.filesize}) does not match Content Length ({self.total})", retry=False)
 					completed = True
 			except httpx.RequestError as e:
 				if received_data:
@@ -249,8 +233,8 @@ class Download:
 			self.fd.close()
 		self.fd = open(self.temp_path, "wb")
 		self.hash_calc_dict = {}
-		self.filesize = 0
-		self.total = None
+		self.decoded_bytes_received = 0
+		self.xfer_bytes_total = None
 		self.start_time = datetime.utcnow()
 		for h in self.hashes:
 			self.hash_calc_dict[h] = getattr(hashlib, h)()
@@ -263,10 +247,10 @@ class Download:
 		for hash in self.hashes:
 			self.hash_calc_dict[hash].update(chunk)
 		if self.download_task is not None:
-			if self.total:
-				self.spider.progress.update(self.download_task, completed=self.filesize)
+			if self.xfer_bytes_total:
+				self.spider.progress.update(self.download_task, completed=self.decoded_bytes_received)
 			else:
-				self.spider.progress.update(self.download_task, completed=self.filesize, total=self.filesize)
+				self.spider.progress.update(self.download_task, completed=self.decoded_bytes_received, total=self.decoded_bytes_received)
 		return got_bytes
 
 	async def launch(self) -> None:
@@ -295,7 +279,7 @@ class Download:
 		final_data = {}
 		for h in self.hashes:
 			final_data[h] = self.hash_calc_dict[h].hexdigest()
-		final_data['size'] = self.filesize
+		final_data['size'] = self.decoded_bytes_received
 		self.final_data = final_data
 
 		if self.completion_pipeline:
