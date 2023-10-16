@@ -20,6 +20,7 @@ class BaseLayerObjectStore(Store):
 		This is the method used to insert a Download into the BLOS which already has hashes
 		we can use.
 		"""
+		# TODO: make this asyncio so it does not block!
 		return self.write({"hashes": download.final_data}, blob_path=download.temp_path)
 
 	def insert_blob(self, blob_path):
@@ -27,4 +28,5 @@ class BaseLayerObjectStore(Store):
 		This is the method used by utilities to insert an arbitrary file on disk into the
 		BLOS -- we need to calculate hashes in this case.
 		"""
+		# TODO: make this asyncio so it does not block!
 		return self.write({"hashes": calc_hashes(self.hashes, blob_path)}, blob_path=blob_path)

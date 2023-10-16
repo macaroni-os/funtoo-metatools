@@ -2,6 +2,7 @@ import hashlib
 
 
 def calc_hashes(hashes: set, fn):
+	# TODO: convert to async so it does not block!
 	hashes = hashes - {"size"}
 	hash_objs = {}
 	for h in hashes:
