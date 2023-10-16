@@ -162,7 +162,7 @@ class Archive:
 
 			proc, out = await capture_bg(cmd)
 			if proc.returncode != 0:
-				raise pkgtools.ebuild.BreezyError(f"Couldn't execute {cmd}. Output: {out.decode()}")
+				raise pkgtools.ebuild.BreezyError(f"Couldn't execute {cmd}. Output: {out}")
 
 			# Store in BLOS and create integrity database reference:
 			existing = temp_archive
