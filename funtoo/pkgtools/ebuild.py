@@ -512,13 +512,24 @@ class BreezyBuild:
 		out = ""
 		for key, artifact_list in self.artifacts.items():
 			if key == "global":
-				for artifact in artifact_list:
-					out += f"{artifact.src_uri}\n"
+				if isinstance(artifact_list, list):
+					for artifact in artifact_list:
+						out += f"{artifact.src_uri}\n"
+				elif isinstance(artifact_list, Archive) or isinstance(artifact_list, Artifact):
+					out += f"{artifact_list.src_uri}\n"
+				else:
+					ValueError(f"Found {artifact_list} of type {type(artifact_list)} inside artifacts.")
 			else:
-				out += f"{key}? (\n"
-				for artifact in artifact_list:
-					out += f"\t{artifact.src_uri}\n"
-				out += ")\n"
+				if isinstance(artifact_list, list):
+					out += f"{key}? (\n"
+					for artifact in artifact_list:
+						out += f"{artifact.src_uri}\n"
+					out += ")\n"
+				elif isinstance(artifact_list, Archive) or isinstance(artifact_list, Artifact):
+					out += f"{key}? ( {artifact_list.src_uri} )\n"
+				else:
+					ValueError(f"Found {artifact_list} of type {type(artifact_list)} inside artifacts.")
+
 		return out
 
 	async def setup(self):
