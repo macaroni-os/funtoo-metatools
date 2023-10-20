@@ -490,7 +490,11 @@ class BreezyBuild:
 				yield artifact
 		elif type(self.artifacts) in (dict, OrderedDict):
 			for key, artifact in self.artifacts.items():
-				yield artifact
+				if isinstance(artifact, list):
+					for lil_art in artifact:
+						yield lil_art
+				else:
+					yield artifact
 		else:
 			raise TypeError("Invalid type for artifacts passed to BreezyBuild -- should be list or dict.")
 
@@ -500,6 +504,22 @@ class BreezyBuild:
 		for artifact in self.iter_artifacts():
 			out += f"{artifact.src_uri}\n"
 		return out.rstrip()
+
+	@property
+	def src_uri_with_use(self):
+		if not isinstance(self.artifacts, dict):
+			return self.src_uri
+		out = ""
+		for key, artifact_list in self.artifacts.items():
+			if key == "global":
+				for artifact in artifact_list:
+					out += f"{artifact.src_uri}\n"
+			else:
+				out += f"{key}? (\n"
+				for artifact in artifact_list:
+					out += f"\t{artifact.src_uri}\n"
+				out += ")\n"
+		return out
 
 	async def setup(self):
 		"""
@@ -672,6 +692,7 @@ class BreezyBuild:
 			template = jinja2.Template(self.template_text)
 		# allow "src_uri" to be used inside all templates to print out official src_uri of all artifacts.
 		template.globals.update({"src_uri": self.src_uri})
+		template.globals.update({"src_uri_with_use": self.src_uri_with_use})
 		with open(self.output_ebuild_path, "wb") as myf:
 			try:
 				myf.write(template.render(**self.template_args).encode("utf-8"))
