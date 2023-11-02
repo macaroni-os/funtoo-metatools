@@ -872,8 +872,11 @@ def flush_kit(repo_obj, save=True, prune=True):
 
 		# Add summary to hub of error count for this kit, and also write out the error logs:
 
+		# Using / in branch name breaks reposcan. I replace all / with -.
+		branch = repo_obj.branch.replace("/", "-")
+
 		error_outpath = os.path.join(
-			merge.model.MERGE_CONFIG.temp_path, f"metadata-errors-{repo_obj.name}-{repo_obj.branch}.log"
+			merge.model.MERGE_CONFIG.temp_path, f"metadata-errors-{repo_obj.name}-{branch}.log"
 		)
 		if len(repo_obj.METADATA_ERRORS):
 			merge.model.METADATA_ERROR_STATS.append(
@@ -885,7 +888,7 @@ def flush_kit(repo_obj, save=True, prune=True):
 			if os.path.exists(error_outpath):
 				os.unlink(error_outpath)
 
-		error_outpath = os.path.join(merge.model.MERGE_CONFIG.temp_path, f"warnings-{repo_obj.name}-{repo_obj.branch}.log")
+		error_outpath = os.path.join(merge.model.MERGE_CONFIG.temp_path, f"warnings-{repo_obj.name}-{branch}.log")
 		if len(repo_obj.PROCESSING_WARNINGS):
 			merge.model.PROCESSING_WARNING_STATS.append(
 				{"name": repo_obj.name, "branch": repo_obj.branch, "count": len(repo_obj.PROCESSING_WARNINGS)}
