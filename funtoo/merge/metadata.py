@@ -358,7 +358,11 @@ def extract_ebuild_metadata(repo_obj, atom, ebuild_path=None, env=None, eclass_p
 	else:
 		env["EAPI"] = "0"
 	env["PORTAGE_GID"] = "250"
-	env["PORTAGE_BIN_PATH"] = "/usr/lib/portage/python3.7"
+
+	if os.getenv("PORTAGE_BIN_PATH"):
+		env["PORTAGE_BIN_PATH"] = os.getenv("PORTAGE_BIN_PATH")
+	else:
+		env["PORTAGE_BIN_PATH"] = "/usr/lib/portage/python3.9"
 	env["PORTAGE_ECLASS_LOCATIONS"] = " ".join(eclass_paths)
 	env["EBUILD"] = ebuild_path
 	env["EBUILD_PHASE"] = "depend"
