@@ -270,7 +270,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 		versions_and_release_elements.append((found_version, release))
 
 	if not len(versions_and_release_elements):
-		raise ValueError(f"Could not find a suitable release.")
+		raise ValueError(f"Could not find a suitable github release for {github_user}/{github_repo}.")
 
 	# By default, we should sort our releases by version, and start with the most recent version. This is important for some GitHub
 	# repos that have multiple 'channels' so the releases may vary and most recent by date may not be what we want.
