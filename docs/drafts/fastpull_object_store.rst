@@ -109,15 +109,15 @@ requested the resource. "Refs" are free-form dictionary key-value pairs that are
 look something like this::
 
   "refs" : [
-		{
-		    "type" : "autogen",
-		    "autogen_path" : "kit-fixups/text-kit/curated/dev-texlive",
-			"kit" : "text-kit",
-			"catpkg" : "dev-texlive/texlive-langchinese",
-			"accessed_on" : ISODate("2019-06-21T21:58:43Z"),
-			"final_name": "foo-1.0.tar.gz"
-		}
-	]
+    {
+        "type" : "autogen",
+        "autogen_path" : "kit-fixups/text-kit/curated/dev-texlive",
+        "kit" : "text-kit",
+        "catpkg" : "dev-texlive/texlive-langchinese",
+        "accessed_on" : ISODate("2019-06-21T21:58:43Z"),
+        "final_name": "foo-1.0.tar.gz"
+    }
+  ]
 
 It is highly recommended to add an "accessed_on" field to each ref, which records a timestamp specifying the most
 recent date that the ref has requested the resource, and to update this field with every request. It is also highly
@@ -134,41 +134,8 @@ This will denote a file that was requested, but could not be retrieved. In this 
 entry to indicate what has requested the file, and additional information returned by the BLOS layer related to the
 failed retrieval of the artifact
 
-TODO: add support for requested resources that FAILED to populate the BLOS
-
-This is an old docstring that may not be relevant but is being preserved:
-"""
-The DeepDive database is designed to get wiped and re-loaded to contain only the metadata for all ebuilds processed
-in the last merge-kits run.
-
-In contrast, the Distfile Integrity database is intended to be persistent and store cryptographic hashes related
-to distfiles used by catpkgs. This allows us to autogen ebuilds without having the actual distfile present, and ensures
-that distfile hashes don't magically change if a newly-fetched distfile has been modified upstream.
-
-When using the fastpull database with autogen, we need the Distfile Integrity Database to retrieve existing
-distfiles that have been stored in fastpull. We need a way to map the distfile filename (which is not stored
-in fastpull) to a SHA1 that exists in fastpull. The Distfile Integrity Database provides this mapping.
-
-The Distfile Integrity database associates distfile file names with catpkgs. The catpkg is the 'namespace' for
-any files. Additionally, when run in production mode, the release, kit and branch are recorded in the database.
-
-The one challenge that appears necessary to resolve with the Distfile Integrity Database is that we can potentially have
-multiple 'doit' processes accessing it at the same time and reading and writing to it, due to 'merge-kits'
-multi-threaded architecture.
-
-However, this is not needed -- due to the design of 'merge-kits', and the fact that 'doit'
-will be running on a particular release, kit and branch, any reads and writes will not clobber one another, and thus
-we don't need to arbitrate/lock access to the Distfile Integrity DB. The Architecture makes it safe.
-"""
-
-more docstrings:
-
-This sub deals with the higher-level logic related to downloading of distfiles. Where the 'fetch.py'
-sub deals with grabbing HTTP data from APIs, this is much more geared towards grabbing tarballs that
-are bigger, and organizing them into a distfiles directory. This includes calculating cryptographic
-hashes on the resultant downloads and ensuring they match what we expect.
-
-The implementation is based around a class called `Download`.
+Downloads
+=========
 
 Why do we have a class called 'Download'? Imagine we have an autogen, and it has two Artifacts
 referencing the same file (this can and does happen.) Do we want to download the same file twice?
@@ -182,41 +149,3 @@ for any active downloads of the same file, and if one exists, it will not fire
 off a new download but instead wait for the existing download to complete. So the 'downloader'
 (code trying to download the file) can remain ignorant of the fact that the download was already
 started previously.
-
-
-	"""
-	When we need to download an artifact, we create a download. Multiple, co-existing Artifact
-	objects can reference the same file. Rather than have them try to download the same file
-	at the same time, they leverage a "Download" which eliminates conflicts and manages the
-	retrieval of the file.
-
-	The Download object will record all Artifacts that need this file, and arbitrate the download
-	of this file and update the Artifacts with the completion data when the download is complete.
-
-	A Download will be shared only if the Artifacts fetching the file are storing it as the same
-	final_name. So it's possible that if the final_name differs that files could be theoretically
-	downloaded multiple times or simultaneously and redundantly (but this rarely if ever happens,
-	just worth mentioning and a possible improvement in the future.)
-
-	The
-	"""
-
-
-	# TODO: There is a minor problem with this part of the code in regard to autogens that do a fetch of an artifact, but
-    #       do not pass the artifact to a BreezyBuild. The rust and go autogens currently do this.
-    #       .
-    #       What happens is that while these artifacts gets stored in fastpull, they don't get "pulled" from fastpull if
-    #       you wipe ~/repo_tmp/fetch -- instead they get re-downloaded.
-    #       .
-    #       This is because the lack of the distfile integrity entry means that the artifact can only be looked for 'by name'.
-    #       So the actual filename has to exist in ~/repo_tmp/fetch or it will be re-downloaded.
-    #       .
-    #       Some thought needs to go into this, how it should be resolved, and what optimal design is in this case.
-    #       One idea is to require a catpkg to be specified with every fetch operation, so the distfile integrity catpkg
-    #       can be used.
-    #       .
-    #       Now, these artifacts will never need to be fetched by the end-user, since they are not referenced by ebuilds
-    #       directly. However, it is annoying on an intellectual level :)
-    #       .
-    #       The problem can be considered a more fundamental design problem, related to the lack of clear hierarchy due to
-    #       Hatchisms in the design.

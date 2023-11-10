@@ -77,9 +77,9 @@ simply sit in your local repo, and you can blow them away by running::
 
   $ git clean -fd
 
-When doing developent, we actually *do not* want to commit the auto-generated
+When doing development, we actually *do not* want to commit the auto-generated
 ebuilds themselves to `kit-fixups`_ -- we just want to commit the autogens
-(``autogen.py`` and ``autogen.yaml``.) There is a separate step, peformed by
+(``autogen.py`` and ``autogen.yaml``.) There is a separate step, performed by
 the ``merge-kits`` command, which updates the meta-repo and will commit the
 generated ebuilds to kits which are then pushed out to users. But for
 ``kit-fixups``, we're doing development, not updating the tree, so we just want

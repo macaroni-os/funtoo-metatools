@@ -1,3 +1,87 @@
+metatools 1.3.5
+===============
+
+Released on November 9, 2023.
+
+This is a general update including features and bug
+fixes.
+
+* Support for restarting of aborted downloads using HTTP
+  206 Range requests, which can happen over bad networks
+  or with upstream unreliable network.
+
+* ``doit`` now has a ``--release`` option to specify the
+  release it is doing autogens for. ``merge-kits`` will
+  call ``doit`` with the proper release setting. There
+  is also new support that allows our generators to be
+  release-aware, and this was enable in our pypi 
+  generators, for the following feature related to
+  filtering.
+
+* Add support for ``pypi-*`` generators to filter 
+  upstream packages based on the versions of Python
+  supported in the actual release. This prevents 
+  unsupported versions of packages from entering Funtoo.
+  If no match is found, an error is thrown.
+
+* ``SRC_URI`` improvements:
+
+  Allow the following format for ``src_uri`` in
+  ``autogen.yaml``::
+
+    src_uri:
+      foo:
+        - https://foo.bar.com
+        - https://foo.bar.oni
+      global:
+        - https://bar.foo.com
+
+  The ``simple-1`` generator supports this format to organize
+  manually-defined artifact URLs in the YAML itself, and
+  utilizes the Jinja variable ``{{src_uri_with_use}}`` to
+  expand these to conditional USE artifacts, with ``global``
+  being a non-conditional section. If you use ``{{src_uri}}``
+  in a template, this list will be expanded without any 
+  conditional USE. The ``src_uri`` in the YAML can be a
+  string, a list (no conditional sections) or a nested
+  object as above, and it should all work.
+
+* Improvement to ``github.py`` ``release_gen()`` function
+  to fetch desired tag directly by ref (thanks ``invakid404``)
+
+* Fix ``zip`` artifact extraction.
+
+* More HTTP 304 fixes to try to finally squash this issue.
+
+* Additional debugging for 304 errors as well as improvements
+  in error verbosity in some areas.
+
+* Massive cleanup of output when there are fetch errors, by
+  removing a duplicate traceback.
+
+* Add a feature requested by ``siris`` in ``FL-10055``:
+  when a ``git pull`` fails on a repo, prompt the user and
+  ask them if they want to force pull.
+
+* Complete ``distfile-kit-fetch`` which is a tool to fetch
+  all non-autogenned distfiles (``SRC_URI`` referenced in
+  non-autogenned ebuilds) in a kit. Use as follows::
+
+    distfile-kit-fetch <release> <kit-name>
+
+  It will then proceed to attempt to fetch all distfiles in
+  the kit that are referenced in ebuilds but not already in
+  metatools' object store.
+
+  This is used to populate the CDN with distfiles from
+  static ebuilds.
+
+* Be more robust when handling JSONDecodeErrors from upstream JSON.
+  Previously, we would traceback. Sourceforge in maintenance mode
+  will return a regular non-404 404 page that is NOT JSON. In this
+  case, it would nice to fall back to our cached version of the
+  page.
+
 metatools 1.3.4
 ===============
 

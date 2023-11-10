@@ -78,11 +78,10 @@ async def main_thread(debug):
 			# This means -- we found things to remove from packages.yaml:
 			if found_items:
 				print(f"Found {len(found_items)} items to remove from packages.yaml for {kit}.")
-				foobs = None
 				with open(real_kits[kit].packages_yaml, "r") as f:
-					foobs = yaml.safe_load(f)
+					pkg_contents = yaml.safe_load(f)
 					new_packages_yaml = []
-					for repo in foobs["packages"]:
+					for repo in pkg_contents["packages"]:
 						for section, pkg_list in repo.items():
 							print(f"looking in section {section}")
 							if section in found_items:
@@ -91,14 +90,14 @@ async def main_thread(debug):
 								new_packages_yaml.append({section: sorted(list(new_packages))})
 							else:
 								new_packages_yaml.append({section: pkg_list})
-					foobs["packages"] = new_packages_yaml
+					pkg_contents["packages"] = new_packages_yaml
 				# Attempt to write out to the release-specific packages.yaml file:
 				spec_yaml = real_kits[kit].specific_packages_yaml
 				if not os.path.isdir(os.path.dirname(spec_yaml)):
 					os.makedirs(os.path.dirname(spec_yaml), exist_ok=True)
 				with open(real_kits[kit].specific_packages_yaml, "w") as f:
 					print(f"Writing new YAML to {real_kits[kit].packages_yaml}")
-					yaml.safe_dump(foobs, f)
+					yaml.safe_dump(pkg_contents, f)
 		else:
 			for catpkg in catpkgs:
 				print(f"  {catpkg}")
@@ -109,5 +108,3 @@ if __name__ == "__main__":
 		sys.exit(0)
 	else:
 		sys.exit(1)
-
-

@@ -27,7 +27,7 @@ several technology components, including:
   download of source code.
 * ``deepdive``: Package analytics functionality. This allows the contents
   of Funtoo or your distribution to be analyzed via MongoDB queries to
-  understading relationships between packages.
+  understanding relationships between packages.
 
 .. _GitLab: https://docs.gitlab.com/ee/api/
 .. _GitHub: https://developer.github.com/v3/
@@ -100,7 +100,7 @@ hard to change and adapt to new problems.
 Due to our use of subpop, much of metatools functionality is extensible via
 plugins. Plugins can be used to enhance the core functionality of the tool in a
 modular 'plug-n-play' way, reducing code bloat. Subpop also encourages a simple,
-microservices-style archictecture within the code itself. All this is very good
+microservices-style architecture within the code itself. All this is very good
 for a complex problem like the automation of updates of packages for the world's
 source code.
 
