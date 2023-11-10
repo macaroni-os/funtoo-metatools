@@ -14,7 +14,7 @@ fixes.
   release it is doing autogens for. ``merge-kits`` will
   call ``doit`` with the proper release setting. There
   is also new support that allows our generators to be
-  release-aware, and this was enable in our pypi 
+  release-aware, and this was enabled in our pypi
   generators, for the following feature related to
   filtering.
 
