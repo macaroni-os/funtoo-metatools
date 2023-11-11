@@ -660,25 +660,18 @@ async def start():
 		return True
 	else:
 		pkgtools.model.log.error(f"Autogen failed (count: {len(fail_list)}). {fail_list}")
-		extra_info = []
+		extra_info = set()
 		if len(fail_list):
 			for fail in fail_list:
 				fail_info = getattr(fail, 'info', None)
 				if fail_info:
-					extra_info.append(fail_info)
+					extra_info.add(fail_info)
 				else:
 					exc_info = getattr(fail, 'exception', None)
 					if exc_info:
-						extra_info.append(exc_info())
-		if len(extra_info):
-			# This will remove all duplicates
-			extra_info_dedup = sorted(list(set(extra_info)))
-			if len(extra_info_dedup) != len(extra_info):
-				# TODO: this duplicate failure issue is an ongoing, unresolved bug.
-				pkgtools.model.log.error(
-					f"Number of failures ({len(extra_info)}) had duplicates {len(extra_info) - len(extra_info_dedup)})")
+						extra_info.add(exc_info())
 			pkgtools.model.log.error(f"Errors were encountered when processing the following autogens:")
-			for fail in extra_info:
+			for fail in sorted(list(extra_info)):
 				pkgtools.model.log.error(f" * {fail}")
 			pkgtools.model.log.error(f"End of report.")
 		return False
