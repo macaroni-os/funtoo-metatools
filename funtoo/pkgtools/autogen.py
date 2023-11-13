@@ -303,18 +303,19 @@ async def execute_generator(
 						if isinstance(key, float):
 							# "3.14" unquoted in YAML is a float!
 							key = repr(key)
-						pkginfo = init_pkginfo_for_package(
+						version_pkginfo = init_pkginfo_for_package(
 							recursive_merge(pkginfo, version_info),
 							sub_path,
 							template_path=template_path,
 							gen_path=gen_path,
 						)
+
 						if key is None or key == "latest":
 							if "version" in pkginfo:
-								del pkginfo["version"]
+								del version_pkginfo["version"]
 						else:
-							pkginfo["version"] = key
-						new_pkginfo_list.append(pkginfo)
+							version_pkginfo["version"] = key
+						new_pkginfo_list.append(version_pkginfo)
 				elif isinstance(pkginfo["version"], list):
 					raise TypeError(f"Lists are not yet supported for defining multiple versions. Was processing this: {pkginfo['version']} {autogen_id}")
 		pkginfo_list = new_pkginfo_list
