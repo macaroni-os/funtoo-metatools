@@ -208,6 +208,26 @@ class Download:
 							received_data = True
 					completed = True
 			except httpx.RequestError as e:
+				# TODO: it is possible for resumed download to continually fail. This has been seen with a
+				#       decompressionerror. In this case, ew don't want to infinitely loop here.
+				#       ERROR    Download failure for
+				#          https://invisible-mirror.net/archives/ncurses/6.4/ncurses-6.4-20231209.patch.gz:
+				#          Decompression error: b'PADDING_2' -- attempting to resume
+				# WARNING  >>>TRYING TO RESUME<<<
+				# WARNING  Resume total OK 81343
+				# ERROR    Download failure for
+				#          https://invisible-mirror.net/archives/ncurses/6.4/ncurses-6.4-20231209.patch.gz:
+				#          Decompression error: b'PADDING_2' -- attempting to resume
+				# WARNING  >>>TRYING TO RESUME<<<
+				# WARNING  Resume total OK 81343
+				# ERROR    Download failure for
+				#          https://invisible-mirror.net/archives/ncurses/6.4/ncurses-6.4-20231209.patch.gz:
+				#          Decompression error: b'PADDING_2' -- attempting to resume
+				# WARNING  >>>TRYING TO RESUME<<<
+				# WARNING  Resume total OK 81343
+				# ERROR    Download failure for
+				#          https://invisible-mirror.net/archives/ncurses/6.4/ncurses-6.4-20231209.patch.gz:
+				#          Decompression error: b'PADDING_2' -- attempting to resume
 				if received_data:
 					try_resume = True
 					log.error(f"Download failure for {self.request.url}: {str(e)} -- attempting to resume")
