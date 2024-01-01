@@ -209,7 +209,7 @@ class Download:
 					completed = True
 			except httpx.RequestError as e:
 				# TODO: it is possible for resumed download to continually fail. This has been seen with a
-				#       decompressionerror. In this case, ew don't want to infinitely loop here.
+				#       decompressionerror. In this case, we don't want to infinitely loop here.
 				#       ERROR    Download failure for
 				#          https://invisible-mirror.net/archives/ncurses/6.4/ncurses-6.4-20231209.patch.gz:
 				#          Decompression error: b'PADDING_2' -- attempting to resume
@@ -529,20 +529,16 @@ class WebSpider:
 				pass
 
 	async def acquire_http_client(self, request):
-		# log.debug(f"acquire_http_client: count: {len(self.http_clients)} (request for {request.hostname}) count: {self.fetch_count}")
-		if request.hostname not in self.http_clients:
-			headers, auth = self.get_headers_and_auth(request)
-			client = self.http_clients[request.hostname] = httpx.AsyncClient(transport=self.transport, http2=True,
-			                                                                 base_url=request.hostname, headers=headers,
-			                                                                 auth=auth, follow_redirects=True,
-			                                                                 timeout=8)
-			# httpx seems to cache these, which is bad. We don't want these from a previous client:
-			for strip_header in ["If-None-Match", "If-Modified-Since"]:
-				if strip_header in client.headers:
-					del client.headers[strip_header]
-			return client
-		else:
-			return self.http_clients[request.hostname]
+		headers, auth = self.get_headers_and_auth(request)
+		client = self.http_clients[request.hostname] = httpx.AsyncClient(transport=self.transport, http2=True,
+																		 base_url=request.hostname, headers=headers,
+																		 auth=auth, follow_redirects=True,
+																		 timeout=8)
+		# httpx seems to cache these, which is bad. We don't want these from a previous client:
+		for strip_header in ["If-None-Match", "If-Modified-Since"]:
+			if strip_header in client.headers:
+				del client.headers[strip_header]
+		return client
 
 	def get_headers_and_auth(self, request):
 		if request.extra_headers:
