@@ -546,7 +546,8 @@ def queue_all_yaml_autogens(files=None):
 
 		with open(file, "r") as myf:
 			for rule_name, rule in safe_load(myf.read()).items():
-
+				if rule is None:
+					raise pkgtools.ebuild.BreezyError(f"Malformed rule '{rule_name}' in {file}")
 				if "defaults" in rule:
 					defaults = rule["defaults"].copy()
 				else:

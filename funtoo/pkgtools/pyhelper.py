@@ -112,6 +112,25 @@ def python_version_ok_ge(cur, req):
 	return True
 
 
+def python_version_ok_gt(cur, req):
+	cur_parts = cur.split(".")
+	req_parts = req.split(".")
+	while len(cur_parts) < 3:
+		cur_parts.append("0")
+	while len(req_parts) < 3:
+		req_parts.append("0")
+	cur_parts = list(map(int, cur_parts))
+	req_parts = list(map(int, req_parts))
+	for part in range(0,3):
+		cur = cur_parts[part]
+		req = req_parts[part]
+		if cur > req:
+			return True
+		elif cur < req:
+			return False
+	return False
+
+
 def python_version_ok_ne(cur, req):
 	cur_parts = cur.split(".")
 	req_parts = req.split(".")
@@ -146,12 +165,15 @@ def python_version_ok(cur, release, requires_python_override=None):
 		if req.startswith(">="):
 			result = python_version_ok_ge(cur, req[2:])
 			log.debug(f"python_version_ok_ge {req} {result}")
+		elif req.startswith(">"):
+			result = python_version_ok_ge(cur, req[1:])
+			log.debug(f"python_version_ok_gt {req} {result}")
 		elif req.startswith("!="):
 			result = python_version_ok_ne(cur, req[2:])
-			log.debug(f"python_version_ok_ge {req} {result}")
+			log.debug(f"python_version_ok_ne {req} {result}")
 		elif req.startswith("<") and req[1] != "=":
 			result = python_version_ok_lt(cur, req[1:])
-			log.debug(f"python_version_ok_ge {req} {result}")
+			log.debug(f"python_version_ok_lt {req} {result}")
 		else:
 			raise ValueError(f"WUT???? '{req}'")
 	return result
@@ -424,3 +446,6 @@ assert python_version_ok_lt("3.7.6", "4.0.0") is True
 assert python_version_ok_lt("4.0.1", "4.0.0") is False
 assert python_version_ok_lt("3.7.7", "3.7.7") is False
 assert python_version_ok_lt("3.7.8", "2.7.18") is False
+assert python_version_ok_gt("3.7.8", "3.7.9") is False
+assert python_version_ok_gt("3.9.8", "3.7.9") is True
+assert python_version_ok_gt("3.9.8", "3.9.8") is False
