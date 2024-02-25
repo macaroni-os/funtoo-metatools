@@ -1,3 +1,30 @@
+metatools 1.3.6
+===============
+
+Released on February 25, 2024.
+
+This is a general bug fix release.
+
+* Missing feature: Handle Python version requirements on
+  PyPi with pure ">" operator (was previously unimplemented.)
+
+* Extra attempted httpx header fixes (this only appears to
+  be needed for buggy older versions of httpx so the need
+  for this has been resolved upstream.)
+
+* Document the possibility of an infinite loop in the
+  download resume code.
+
+* Properly handle escaping double-quotes in Python descriptions.
+
+* Bug fix: parsing logic fix for scenario were multiple
+  YAML-defined versions of the same package would allow
+  settings for earlier-defined versions to bleed into later
+  versions.
+
+* Try to clean up excessive listings of autogen failures.
+  Appears to work.
+
 metatools 1.3.5
 ===============
 
