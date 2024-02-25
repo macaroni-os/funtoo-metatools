@@ -143,11 +143,12 @@ def extract_manifest_hashes(man_file):
 				digests = {}
 				while pos < len(ls):
 					hash_type = ls[pos].lower()
+					if pos + 2 > len(ls):
+						raise ValueError(f'Invalid Manifest file format: {man_file}')
 					hash_digest = ls[pos + 1]
 					digests[hash_type] = hash_digest
 					pos += 2
 				man_info[ls[1]] = {"size": ls[2], "hashes": digests}
-	return man_info
 	return man_info
 
 
