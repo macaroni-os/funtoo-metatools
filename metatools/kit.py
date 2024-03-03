@@ -713,7 +713,8 @@ class MetaRepoJobController:
 
 	def __init__(self, model, write=None):
 		self.model = model
-		self.moonbeam = MoonBeam("merge-kits", bind_addr=f"ipc://{self.model.moonbeam_socket}")
+		if self.moonbeam:
+			self.moonbeam = MoonBeam("merge-kits", bind_addr=f"ipc://{self.model.moonbeam_socket}")
 		if write:
 			self.write = write
 		assert isinstance(self.write, bool)
@@ -825,7 +826,8 @@ class MetaRepoJobController:
 		await self.process_all_kits_in_release(method="distfile_scan")
 
 	async def generate(self):
-		self.moonbeam_task = asyncio.create_task(self.moonbeam.start())
+		if self.moonbeam:
+			self.moonbeam_task = asyncio.create_task(self.moonbeam.start())
 		model.log.debug(f"moonbeam: {self.moonbeam} {self.moonbeam_task}")
 		meta_repo_config = model.release_yaml.get_repo_config("meta-repo")
 		self.meta_repo = model.git_class(
