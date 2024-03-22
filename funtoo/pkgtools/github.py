@@ -2,7 +2,7 @@
 # tag_gen and release_gen are higher-level functions that return a dict of items, suitable for
 # augmenting the pkginfo dict, and thus easy to integrate into yaml-based autogens.
 
-from metatools.generator.transform import SortMethod, ReleaseRegexMatcher, TagRegexMatcher, iter_tag_versions
+from metatools.generator.transform import SortMethod, ReleaseRegexMatcher, TagRegexMatcher, RegexMatcher, iter_tag_versions
 
 
 def factor_filters(include):
