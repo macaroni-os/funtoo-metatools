@@ -174,7 +174,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 					continue
 				expanded_assets[
 					asset_filename.format(version=version, github_user=github_user, github_repo=github_repo, tag=tag_name, key=asset_key, **kwargs)] = asset_key
-			hub.pkgtools.model.log.debug(f"github: Expanded assets: {expanded_assets}")
+				hub.pkgtools.model.log.debug(f"github: original asset: {repr(asset_filename)} expanded: {repr(expanded_assets)}")
 			found_assets = {}
 
 			for asset in release['assets']:
@@ -187,7 +187,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 			crates_dict = None
 
 			if len(found_assets.keys()) != len(expanded_assets.keys()):
-				hub.pkgtools.model.log.debug(f"github: Found only these assets: {found_assets}")
+				hub.pkgtools.model.log.debug(f"github: Found only these assets: {found_assets}, assets: {repr(assets.items())}")
 				continue
 
 			if tarball:
