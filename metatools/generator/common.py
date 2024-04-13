@@ -9,7 +9,6 @@ def common_init(hub, pkginfo):
     if "src_uri" in pkginfo:
         new_src_uri = []
         if isinstance(pkginfo["src_uri"], list):
-            artifacts = []
             for url in pkginfo["src_uri"]:
                 new_src_uri.append(hub.Artifact(url=expand_url(url, pkginfo)))
         elif isinstance(pkginfo["src_uri"], str):

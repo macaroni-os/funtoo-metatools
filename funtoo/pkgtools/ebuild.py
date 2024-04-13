@@ -523,13 +523,12 @@ class BreezyBuild:
 				if isinstance(artifact_list, list):
 					out += f"{key}? (\n"
 					for artifact in artifact_list:
-						out += f"{artifact.src_uri}\n"
+						out += f"  {artifact.src_uri}\n"
 					out += ")\n"
 				elif isinstance(artifact_list, Archive) or isinstance(artifact_list, Artifact):
 					out += f"{key}? ( {artifact_list.src_uri} )\n"
 				else:
 					ValueError(f"Found {artifact_list} of type {type(artifact_list)} inside artifacts.")
-
 		return out
 
 	async def setup(self):
@@ -702,7 +701,7 @@ class BreezyBuild:
 		else:
 			template = jinja2.Template(self.template_text)
 		# allow "src_uri" to be used inside all templates to print out official src_uri of all artifacts.
-		template.globals.update({"src_uri": self.src_uri})
+		template.globals.update({"src_uri": self.src_uri_with_use})
 		template.globals.update({"src_uri_with_use": self.src_uri_with_use})
 		with open(self.output_ebuild_path, "wb") as myf:
 			try:
