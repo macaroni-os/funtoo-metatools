@@ -7,7 +7,7 @@ import os
 import shutil
 import threading
 from asyncio import Task
-from collections import OrderedDict
+from collections import OrderedDict, defaultdict
 from collections.abc import Mapping
 from datetime import datetime
 from subprocess import getstatusoutput
@@ -488,7 +488,7 @@ class BreezyBuild:
 		if type(self.artifacts) == list:
 			for artifact in self.artifacts:
 				yield artifact
-		elif type(self.artifacts) in (dict, OrderedDict):
+		elif type(self.artifacts) in (dict, OrderedDict, defaultdict):
 			for key, artifact in self.artifacts.items():
 				if isinstance(artifact, list):
 					for lil_art in artifact:
