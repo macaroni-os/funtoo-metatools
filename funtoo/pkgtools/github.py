@@ -149,6 +149,9 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 
     version, release = versions_and_release_elements[0]
     tag_name = release["tag_name"]
+    upstream_assets_by_name = {}
+    for asset in release['assets']:
+        upstream_assets_by_name[asset['name']] = asset
 
     if tarball or assets:
 
@@ -164,9 +167,6 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 
         artifacts = []
         crates_dict = {}
-        upstream_assets_by_name = {}
-        for asset in release['assets']:
-            upstream_assets_by_name[asset['name']] = asset
 
         if isinstance(assets, dict):
             artifacts = defaultdict(list)
