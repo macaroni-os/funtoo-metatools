@@ -125,8 +125,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
     for release in release_data:
         if any(release[skip] for skip in skip_filters):
             continue
-        tag_name = release['tag_name']
-        match = matcher.match(tag_name, select=select, filter=filter, transform=transform)
+        match = matcher.match(release['tag_name'], select=select, filter=filter, transform=transform)
         if match:
             if version is not None and match != version:
                 continue
@@ -150,6 +149,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
 
     upstream_assets_by_name = {}
     version, release = versions_and_release_elements[0]
+    tag_name = release['tag_name']
     for asset in release['assets']:
         upstream_assets_by_name[asset['name']] = asset
 
