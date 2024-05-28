@@ -136,6 +136,7 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
             continue
         versions_and_release_elements.append((found_version, release))
 
+
     if not len(versions_and_release_elements):
         raise ValueError(f"Could not find a suitable github release for {github_user}/{github_repo}.")
 
@@ -147,9 +148,8 @@ async def release_gen(hub, github_user, github_repo, release_data=None, tarball=
         versions_and_release_elements = sorted(versions_and_release_elements, key=lambda v: matcher.sortable(v[0]),
                                                reverse=True)
 
-    version, release = versions_and_release_elements[0]
-    tag_name = release["tag_name"]
     upstream_assets_by_name = {}
+    version, release = versions_and_release_elements[0]
     for asset in release['assets']:
         upstream_assets_by_name[asset['name']] = asset
 
