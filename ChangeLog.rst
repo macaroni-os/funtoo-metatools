@@ -1,3 +1,36 @@
+metatools 1.3.7
+===============
+
+Released on May 31, 2024.
+
+This is a feature and bug fix release.
+
+* An API change for ``BreezyBuild``'s ``artifacts=`` keyword
+  argument. Now, if a dictionary is specified, then this means
+  that each dictionary key is a conditional USE setting for
+  when the artifact or list of artifacts should be downloaded.
+  The special ``"global"`` key can be used to also specify
+  non-conditional downloads. Correspondingly, the ``assets=``
+  ``github.py`` ``release_gen()`` keyword argument has been
+  updated to work similarly, allowing for conditional USE to
+  be specified easily in ``github-1`` autogens via the ``assets:``
+  YAML. This also allows us to use ``SRC_URI="{{src_uri}}"``
+  almost globally in all templates.
+
+* For autogens, Implement ``versions.generic`` code to replace
+  the need to use Python's ``packaging.version`` code directly.
+  This prevents possible future breakage due to upstream Python
+  version logic changes and should be used by all autogens and
+  generators going forward.
+
+* Gentoo-compatible version code which is a work in progress.
+
+* Improved logging and error messages.
+
+* Disable moonbeam (intra-metatools messaging framework) if not
+  absolutely needed (thanks ``@borisp``)
+
+
 metatools 1.3.6
 ===============
 
