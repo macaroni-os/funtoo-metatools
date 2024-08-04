@@ -51,6 +51,10 @@ BREEZYBUILDS_PENDING = defaultdict(list)
 BREEZYBUILD_TASKS_ACTIVE = defaultdict(list)
 BREEZYBUILD_SUB_INDEX_HANDOFF = {}
 
+METATOOLS_DISTFILES_HOST = os.environ.get(
+	'METATOOLS_DISTFILES_HOST',
+	"https://distfiles.macaronios.org"
+)
 
 def generate_manifests():
 	"""

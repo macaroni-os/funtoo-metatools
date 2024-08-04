@@ -23,6 +23,7 @@ log = logging.getLogger('metatools.autogen')
 
 import dyne.org.funtoo.metatools.pkgtools as pkgtools
 
+#
 
 class BreezyError(Exception):
 	def __init__(self, msg):
@@ -52,7 +53,7 @@ class Archive:
 	@property
 	def url(self):
 		sha = self.final_data["sha512"]
-		return f"https://direct.funtoo.org/{sha[0:2]}/{sha[2:4]}/{sha[4:6]}/{sha}"
+		return f"{pkgtools.autogen.METATOOLS_DISTFILES_HOST}/{sha[0:2]}/{sha[2:4]}/{sha[4:6]}/{sha}"
 
 	@property
 	def src_uri(self):

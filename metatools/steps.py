@@ -45,7 +45,14 @@ class ThirdPartyMirrors(MergeStep):
 	async def run(self, kit_gen):
 		orig = "%s/profiles/thirdpartymirrors" % kit_gen.out_tree.root
 		new = "%s/profiles/thirdpartymirrors.new" % kit_gen.out_tree.root
-		mirrors = "https://direct.funtoo.org"
+		# For sure we could have a better solution.
+		# Temporary workaround
+
+		METATOOLS_DISTFILES_HOST = os.environ.get(
+			'METATOOLS_DISTFILES_HOST',
+			"https://distfiles.macaronios.org"
+		)
+		mirrors = METATOOLS_DISTFILES_HOST
 		a = open(orig, "r")
 		b = open(new, "w")
 		for line in a:
