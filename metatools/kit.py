@@ -830,9 +830,13 @@ class MetaRepoJobController:
 			self.moonbeam_task = asyncio.create_task(self.moonbeam.start())
 		model.log.debug(f"moonbeam: {self.moonbeam} {self.moonbeam_task}")
 		meta_repo_config = model.release_yaml.get_repo_config("meta-repo")
+		meta_repo_branch = model.release_yaml.get_release_metarepo_branch()
+		if meta_repo_branch is None:
+			meta_repo_branch = model.release
+
 		self.meta_repo = model.git_class(
 			name="meta-repo",
-			branch=model.release,
+			branch=meta_repo_branch,
 			url=meta_repo_config['url'] if model.prod else None,
 			root=model.dest_trees + "/meta-repo",
 			origin_check=True if model.prod else None,

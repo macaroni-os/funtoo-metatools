@@ -408,6 +408,9 @@ class ReleaseYAML(YAMLReader):
 	def get_release_metadata(self):
 		return self.get_elem("release/metadata")
 
+	def get_release_metarepo_branch(self):
+		return self.get_elem("release/kit-definitions/meta-repo-branch")
+
 	def get_repo_config(self, repo_name):
 		"""
 		Given a repo/kit named ``repo_name``, determine its remote based on whether we are running in dev or prod mode.
