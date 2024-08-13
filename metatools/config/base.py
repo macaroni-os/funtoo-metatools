@@ -38,7 +38,7 @@ class MinimalConfig(SubPopModel):
 	def work_path(self):
 		home = self.home()
 		if "METATOOLS_WORKSPACE" in os.environ:
-			return os.path.join(os.environ["METATOOLS_WORKSPACE"], "repo_tmp/tmp")
+			return os.path.join(os.environ["METATOOLS_WORKSPACE"], "repo_tmp")
 		elif home:
 			return os.path.join(home, "repo_tmp")
 		else:
