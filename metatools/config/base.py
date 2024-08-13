@@ -66,13 +66,8 @@ class MinimalConfig(SubPopModel):
 		merge-kits may run multiple 'doit's in parallel. In this case, we probably want to segregate their temp
 		paths. We can do this by having a special option passed to doit which can in turn tweak the Configuration
 		object to create unique sub-paths here.
-		This is TODO item!
 		"""
-		home = self.home()
-		if home:
-			return os.path.join(home, "repo_tmp/tmp")
-		else:
-			return "/var/tmp/repo_tmp/tmp"
+		return os.path.join(self.work_path, "tmp")
 
 	@property
 	def fastpull_path(self):
