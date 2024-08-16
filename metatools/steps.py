@@ -653,7 +653,7 @@ class Minify(MergeStep):
 class GenPythonUse(MergeStep):
 	def __init__(self):
 		kit = model.release_yaml.kits["python-kit"][0]
-		release = model.release_yaml.relase
+		release = model.release_yaml.release
 		pydata = kit.settings
 		out_subpath = f"funtoo/kits/python-kit/{release}"
 		self.def_python = pydata["primary"]
