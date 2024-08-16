@@ -605,6 +605,8 @@ class KitGenerator:
 		* kit-fixups/eclass/1.2-release <--------- global eclasses, get installed to all kits unconditionally for release (overrides those above)
 		* kit-fixups/<kit>/global/eclass <-------- global eclasses for a particular kit, goes in all branches (overrides those above)
 		* kit-fixups/<kit>/global/profiles <------ global profile info for a particular kit, goes in all branches (overrides those above)
+		* kit-fixups/<kit>/<release>/eclass <------ eclasses to install in just a specific release of a specific kit (overrides those above)
+		* kit-fixups/<kit>/<release>/profiles <---- profile info to install in just a specific release of a specific kit (overrides those above)
 		* kit-fixups/<kit>/<branch>/eclass <------ eclasses to install in just a specific branch of a specific kit (overrides those above)
 		* kit-fixups/<kit>/<branch>/profiles <---- profile info to install in just a specific branch of a specific kit (overrides those above)
 
@@ -620,7 +622,7 @@ class KitGenerator:
 		eclass_release_path = "eclass/%s" % model.release
 		if os.path.exists(os.path.join(model.kit_fixups.root, eclass_release_path)):
 			steps += [metatools.steps.SyncDir(model.kit_fixups.root, eclass_release_path, "eclass")]
-		fixup_dirs = ["global", "curated", self.kit.branch]
+		fixup_dirs = ["global", "curated", model.release, self.kit.branch]
 		for fixup_dir in fixup_dirs:
 			fixup_path = self.kit.name + "/" + fixup_dir
 			if os.path.exists(model.kit_fixups.root + "/" + fixup_path):
