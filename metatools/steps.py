@@ -653,8 +653,9 @@ class Minify(MergeStep):
 class GenPythonUse(MergeStep):
 	def __init__(self):
 		kit = model.release_yaml.kits["python-kit"][0]
+		release = model.release_yaml.relase
 		pydata = kit.settings
-		out_subpath = f"funtoo/kits/python-kit/{kit.branch}"
+		out_subpath = f"funtoo/kits/python-kit/{release}"
 		self.def_python = pydata["primary"]
 		self.bk_python = pydata["alternate"] if "alternate" in pydata else None
 		self.mask = pydata["mask"]
