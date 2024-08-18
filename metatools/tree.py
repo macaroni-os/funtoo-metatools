@@ -15,12 +15,13 @@ def head_sha1(tree):
 
 class Tree:
 
-	def __init__(self, root=None, model=None):
+	def __init__(self, root=None, model=None, push_all=False):
 		self.root = root
 		self.autogenned = False
 		self.name = None
 		self.merged = []
 		self.forcepush = "--no-force"
+		self.push_all = push_all
 		self.url = None
 		self.model = model
 		self.initialized = False
@@ -172,8 +173,11 @@ class Tree:
 			await self.mirror_local_branches()
 
 	async def mirror_local_branches(self):
-		# This is a special push command that will push local tags and branches *only*
-		await self.run_shell(f"(cd {self.root} && git push {self.forcepush} {self.url} +refs/heads/* +refs/tags/*)")
+		if self.push_all:
+			# This is a special push command that will push local tags and branches *only*
+			await self.run_shell(f"(cd {self.root} && git push {self.forcepush} {self.url} +refs/heads/* +refs/tags/*)")
+		else:
+			await self.run_shell(f"(cd {self.root} && git push {self.forcepush} {self.url} +refs/heads/{self.branch} )")
 
 
 class GitTreeError(Exception):
@@ -233,7 +237,7 @@ class GitTree(Tree):
 			branch: str = None,
 			# Set to True to only enforce the branch on initial clone, and interpret None to mean "keep existing
 			# branch." This allows us to initialize kit-fixups to a developer's branch and only change it when the
-			# developer explicitly specifies the branch. So it changes meaninng from None to "master" to "current
+			# developer explicitly specifies the branch. So it changes meaning from None to "master" to "current
 			# checked out branch".
 			keep_branch: bool = False,
 			url: str = None,
@@ -247,11 +251,12 @@ class GitTree(Tree):
 			destfix: bool = False,
 			reclone: bool = False,
 			pull: bool = True,
+			push_all: bool = False,
 			checkout_all_branches: bool = False,
 			model=None
 	):
 
-		super().__init__(root=root, model=model)
+		super().__init__(root=root, model=model, push_all=push_all)
 
 		self.name = name
 		self.url = url
